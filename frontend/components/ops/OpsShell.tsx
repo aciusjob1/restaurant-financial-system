@@ -23,7 +23,7 @@ const LINKS: Array<{ href: string; label: string }> = [
   { href: '/ops/supplier-payments', label: 'Payments' },
   { href: '/ops/stock-movements', label: 'Stock' },
   { href: '/ops/sales', label: 'Sales' },
-  { href: '/ops/collections', label: 'Collections' },
+  { href: '/ops/shifts', label: 'Shifts' },
   { href: '/ops/reconciliations', label: 'Reconciliations' },
   { href: '/ops/handovers', label: 'Handovers' },
   { href: '/ops/expenses', label: 'Expenses' },
