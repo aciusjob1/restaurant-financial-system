@@ -1,0 +1,3 @@
+-- Phase 11: salary number sequence, SAL-0001, SAL-0002, ...
+-- Idempotent; runs as part of prisma:apply-raw-sql after every migrate.
+CREATE SEQUENCE IF NOT EXISTS salary_number_seq START WITH 1 INCREMENT BY 1;

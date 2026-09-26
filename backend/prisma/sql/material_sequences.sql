@@ -1,0 +1,3 @@
+-- Phase 13: material number sequence, MAT-0001, MAT-0002, ...
+-- Idempotent; runs after every migrate via prisma:apply-raw-sql.
+CREATE SEQUENCE IF NOT EXISTS material_number_seq START WITH 1 INCREMENT BY 1;

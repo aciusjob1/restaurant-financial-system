@@ -1,0 +1,3 @@
+-- Phase 10: expense number sequence, EXP-0001, EXP-0002, ...
+-- Idempotent so the whole sql/ folder is safe to re-run after any migrate.
+CREATE SEQUENCE IF NOT EXISTS expense_number_seq START WITH 1 INCREMENT BY 1;

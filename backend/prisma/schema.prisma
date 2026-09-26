@@ -1,0 +1,768 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  WAITER
+  AUDITOR
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum ShiftStatus {
+  OPEN
+  SUBMITTED
+  RECONCILING
+  CLOSED
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  AIRTEL_MONEY
+  TIGO_PESA
+  HALOPESA
+  BANK
+  CARD
+  OTHER
+}
+
+enum SalesSummarySource {
+  EXISTING_POS
+  MANUAL
+  IMPORT
+  FUTURE_API
+}
+
+enum SalesSummaryStatus {
+  DRAFT
+  VERIFIED
+}
+
+enum ReconciliationStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+}
+
+enum CashHandoverStatus {
+  PENDING
+  CONFIRMED
+}
+
+enum DailyClosingStatus {
+  CLOSED
+  SUPERSEDED
+  REOPENED
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SalaryStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum PurchaseInvoiceStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+model User {
+  id                      String             @id @default(cuid())
+  username                String             @unique
+  fullName                String
+  phone                   String?
+  passwordHash            String
+  role                    Role               @default(WAITER)
+  isActive                Boolean            @default(true)
+  lastLogin               DateTime?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  sessions                Session[]
+  employee                Employee?
+  shifts                  Shift[]
+  collections             Collection[]
+  reconciliations         Reconciliation[]
+  handoversSent           CashHandover[]     @relation("HandoverFrom")
+  handoversRecv           CashHandover[]     @relation("HandoverTo")
+  closingsClosed          DailyClosing[]     @relation("ClosingClosedBy")
+  closingsReopen          DailyClosing[]     @relation("ClosingReopenedBy")
+  expensesCreated         Expense[]          @relation("ExpenseCreatedBy")
+  paidExpenses    Expense[]       @relation("ExpensePaidBy")
+  expensesApproved        Expense[]          @relation("ExpenseApprovedBy")
+  salariesCreated         SalaryRecord[]     @relation("SalaryCreatedBy")
+  salariesApproved        SalaryRecord[]     @relation("SalaryApprovedBy")
+  salaryPayments          SalaryPayment[]    @relation("SalaryPaymentRecordedBy")
+  salaryPaymentsVoided    SalaryPayment[]    @relation("SalaryPaymentVoidedBy")
+  suppliersCreated        Supplier[]         @relation("SupplierCreatedBy")
+  invoicesCreated         PurchaseInvoice[]  @relation("InvoiceCreatedBy")
+  invoicesPosted          PurchaseInvoice[]  @relation("InvoicePostedBy")
+  invoicesCancelled       PurchaseInvoice[]  @relation("InvoiceCancelledBy")
+  supplierPayments        SupplierPayment[]  @relation("SupplierPaymentRecordedBy")
+  supplierPaymentsVoided  SupplierPayment[]  @relation("SupplierPaymentVoidedBy")
+  allocationsVoided       PaymentAllocation[] @relation("AllocationVoidedBy")
+  materialsCreated        Material[]         @relation("MaterialCreatedBy")
+  materialCategoriesCreated MaterialCategory[] @relation("MaterialCategoryCreatedBy")
+
+  stockMovementsCreated   StockMovement[]  @relation("StockMovementCreatedBy")
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Position {
+  id            String     @id @default(cuid())
+  name          String     @unique
+  description   String?
+  defaultSalary Decimal    @db.Decimal(14, 2)
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  employees     Employee[]
+
+  @@index([isActive])
+}
+
+model Employee {
+  id               String            @id @default(cuid())
+  employeeNumber   String            @unique
+  fullName         String
+  phone            String?
+  positionId       String
+  userId           String?           @unique
+  employmentStatus EmploymentStatus  @default(ACTIVE)
+  startDate        DateTime          @db.Date
+  endDate          DateTime?         @db.Date
+  notes            String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  position         Position          @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  salaries         SalaryRecord[]
+
+  @@index([positionId])
+  @@index([employmentStatus])
+  @@index([isActive])
+}
+
+model Shift {
+  id              String          @id @default(cuid())
+  userId          String
+  businessDate    DateTime        @db.Date
+  status          ShiftStatus     @default(OPEN)
+
+  openingCash     Decimal?        @db.Decimal(14, 2)
+
+  startedAt       DateTime        @default(now())
+  endedAt         DateTime?
+
+  submittedAt     DateTime?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+
+  closedBy        String?
+  closedAt        DateTime?
+
+  reopenedBy      String?
+  reopenedAt      DateTime?
+  reopenReason    String?
+
+  notes           String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  collections     Collection[]
+  reconciliation  Reconciliation?
+  expenses        Expense[]
+
+  @@index([userId])
+  @@index([businessDate])
+  @@index([status])
+  @@index([businessDate, status])
+}
+
+model SalesSummary {
+  id              String              @id @default(cuid())
+  businessDate    DateTime            @db.Date
+  source          SalesSummarySource
+  sourceReference String
+  status          SalesSummaryStatus  @default(DRAFT)
+
+  totalSales      Decimal             @db.Decimal(14, 2)
+  cashSales       Decimal             @db.Decimal(14, 2)
+  mobileSales     Decimal             @db.Decimal(14, 2)
+  otherSales      Decimal             @db.Decimal(14, 2)
+
+  enteredBy       String?
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  notes           String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  lines           SalesSummaryLine[]
+
+  @@unique([source, businessDate, sourceReference])
+  @@index([businessDate])
+  @@index([status])
+}
+
+model SalesSummaryLine {
+  id              String         @id @default(cuid())
+  salesSummaryId  String
+  paymentMethod   PaymentMethod
+  amount          Decimal        @db.Decimal(14, 2)
+  notes           String?
+
+  createdAt       DateTime       @default(now())
+
+  salesSummary    SalesSummary   @relation(fields: [salesSummaryId], references: [id], onDelete: Cascade)
+
+  @@index([salesSummaryId])
+  @@index([paymentMethod])
+}
+
+model Collection {
+  id              String        @id @default(cuid())
+  shiftId         String
+  userId          String
+  paymentMethod   PaymentMethod
+  amount          Decimal       @db.Decimal(14, 2)
+  mobileReference String?
+  notes           String?
+
+  voidedAt        DateTime?
+  voidedBy        String?
+  voidReason      String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  shift           Shift         @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([shiftId])
+  @@index([userId])
+  @@index([paymentMethod])
+  @@index([shiftId, paymentMethod])
+}
+
+model Reconciliation {
+  id                String                @id @default(cuid())
+  shiftId           String                @unique
+  userId            String
+
+  expectedCash      Decimal               @db.Decimal(14, 2)
+  expectedMobile    Decimal               @db.Decimal(14, 2)
+
+  actualCash        Decimal?              @db.Decimal(14, 2)
+  actualMobile      Decimal?              @db.Decimal(14, 2)
+
+  cashDifference    Decimal?              @db.Decimal(14, 2)
+  mobileDifference  Decimal?              @db.Decimal(14, 2)
+
+  status            ReconciliationStatus  @default(DRAFT)
+
+  notes             String?
+  submittedAt       DateTime?
+
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  reviewNotes       String?
+
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  shift             Shift                 @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  handover          CashHandover?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model CashHandover {
+  id                String              @id @default(cuid())
+  reconciliationId  String              @unique
+  fromUserId        String
+  toUserId          String
+
+  amount            Decimal             @db.Decimal(14, 2)
+
+  status            CashHandoverStatus  @default(PENDING)
+
+  handedOverAt      DateTime            @default(now())
+  confirmedAt       DateTime?
+
+  notes             String?
+  confirmedNotes    String?
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  reconciliation    Reconciliation      @relation(fields: [reconciliationId], references: [id], onDelete: Restrict)
+  fromUser          User                @relation("HandoverFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser            User                @relation("HandoverTo", fields: [toUserId], references: [id], onDelete: Restrict)
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([status])
+}
+
+model DailyClosing {
+  id                  String              @id @default(cuid())
+  businessDate        DateTime            @db.Date
+  version             Int                 @default(1)
+  status              DailyClosingStatus  @default(CLOSED)
+
+  salesSummaryTotal          Decimal  @db.Decimal(14, 2)
+  salesSummaryCash           Decimal  @db.Decimal(14, 2)
+  salesSummaryMobile         Decimal  @db.Decimal(14, 2)
+  salesSummaryOther          Decimal  @db.Decimal(14, 2)
+
+  expectedCash               Decimal  @db.Decimal(14, 2)
+  expectedMobile             Decimal  @db.Decimal(14, 2)
+
+  actualCash                 Decimal  @db.Decimal(14, 2)
+  actualMobile               Decimal  @db.Decimal(14, 2)
+  cashDifference             Decimal  @db.Decimal(14, 2)
+  mobileDifference           Decimal  @db.Decimal(14, 2)
+
+  cashSalesDiscrepancy       Decimal  @db.Decimal(14, 2)
+  mobileSalesDiscrepancy     Decimal  @db.Decimal(14, 2)
+  otherSalesDiscrepancy      Decimal  @db.Decimal(14, 2)
+
+  totalHandovers             Int
+  totalHandoverAmount        Decimal  @db.Decimal(14, 2)
+  pendingHandoverCount       Int
+  pendingHandoverAmount      Decimal  @db.Decimal(14, 2)
+  confirmedHandoverCount     Int
+  confirmedHandoverAmount    Decimal  @db.Decimal(14, 2)
+
+  shiftCount                 Int
+  reconciliationCount        Int
+  pendingReviewCount         Int
+
+  totalExpenses              Decimal  @default(0.00) @db.Decimal(14, 2)
+  totalCashExpenses          Decimal  @default(0.00) @db.Decimal(14, 2)
+
+  snapshotJson               Json
+
+  closedBy                   String
+  closedAt                   DateTime  @default(now())
+  closedByUser               User      @relation("ClosingClosedBy", fields: [closedBy], references: [id], onDelete: Restrict)
+
+  reopenedBy                 String?
+  reopenedAt                 DateTime?
+  reopenReason               String?
+  reopenedByUser             User?     @relation("ClosingReopenedBy", fields: [reopenedBy], references: [id], onDelete: Restrict)
+
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  @@unique([businessDate, version])
+  @@index([businessDate])
+  @@index([status])
+  @@index([businessDate, status])
+}
+
+model ExpenseCategory {
+  id            String     @id @default(cuid())
+  name          String     @unique
+  description   String?
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  expenses      Expense[]
+
+  @@index([isActive])
+}
+
+model Expense {
+  id              String         @id @default(cuid())
+  expenseNumber   String         @unique
+  businessDate    DateTime       @db.Date
+
+  categoryId      String
+  shiftId         String?
+  createdBy       String
+  approvedBy      String?
+  paidByUserId    String?
+
+  amount          Decimal        @db.Decimal(14, 2)
+  paymentMethod   PaymentMethod
+
+  description     String
+  receiptNumber   String?
+  attachmentPath  String?
+
+  status          ExpenseStatus  @default(DRAFT)
+  notes           String?
+  rejectedReason  String?
+
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  category        ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  shift           Shift?          @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  createdByUser   User            @relation("ExpenseCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approvedByUser  User?           @relation("ExpenseApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  paidByUser      User?           @relation("ExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: Restrict)
+
+  @@index([businessDate])
+  @@index([categoryId])
+  @@index([shiftId])
+  @@index([status])
+  @@index([paymentMethod])
+  @@index([createdBy])
+  @@index([businessDate, status])
+}
+
+model SalaryRecord {
+  id              String       @id @default(cuid())
+  salaryNumber    String       @unique
+  employeeId      String
+
+  periodStart     DateTime     @db.Date
+  periodEnd       DateTime     @db.Date
+  label           String
+
+  baseSalary      Decimal      @db.Decimal(14, 2)
+  adjustments     Decimal      @default(0.00) @db.Decimal(14, 2)
+  deductions      Decimal      @default(0.00) @db.Decimal(14, 2)
+  netSalary       Decimal      @db.Decimal(14, 2)
+
+  status          SalaryStatus @default(DRAFT)
+
+  notes           String?
+
+  createdBy       String
+  approvedBy      String?
+  approvedAt      DateTime?
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdByUser   User         @relation("SalaryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approvedByUser  User?        @relation("SalaryApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  payments        SalaryPayment[]
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([periodEnd])
+  @@index([employeeId, status])
+  @@index([employeeId, periodStart, periodEnd])
+}
+
+model SalaryPayment {
+  id              String        @id @default(cuid())
+  salaryRecordId  String
+
+  amount          Decimal       @db.Decimal(14, 2)
+  paymentMethod   PaymentMethod
+  businessDate    DateTime      @db.Date
+  paidAt          DateTime      @default(now())
+  reference       String?
+  notes           String?
+
+  recordedBy      String
+
+  voidedAt        DateTime?
+  voidedBy        String?
+  voidReason      String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  salaryRecord    SalaryRecord  @relation(fields: [salaryRecordId], references: [id], onDelete: Restrict)
+  recordedByUser  User          @relation("SalaryPaymentRecordedBy", fields: [recordedBy], references: [id], onDelete: Restrict)
+  voidedByUser    User?         @relation("SalaryPaymentVoidedBy", fields: [voidedBy], references: [id], onDelete: SetNull)
+
+  @@index([salaryRecordId])
+  @@index([businessDate])
+  @@index([paymentMethod])
+  @@index([recordedBy])
+  @@index([salaryRecordId, voidedAt])
+}
+
+model Supplier {
+  id              String            @id @default(cuid())
+  supplierNumber  String            @unique
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  contactPerson   String?
+  tin             String?
+  paymentTerms    String?
+  notes           String?
+  isActive        Boolean           @default(true)
+
+  createdBy       String
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  createdByUser   User              @relation("SupplierCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  invoices        PurchaseInvoice[]
+  payments        SupplierPayment[]
+
+  @@index([name])
+  @@index([isActive])
+  @@index([phone])
+}
+
+model PurchaseInvoice {
+  id              String                 @id @default(cuid())
+  invoiceNumber   String
+  supplierId      String
+  date            DateTime               @db.Date
+  businessDate    DateTime               @db.Date
+
+  subtotal        Decimal                @db.Decimal(14, 2)
+  total           Decimal                @db.Decimal(14, 2)
+
+  status          PurchaseInvoiceStatus  @default(DRAFT)
+
+  notes           String?
+
+  createdBy       String
+  postedBy        String?
+  postedAt        DateTime?
+  cancelledBy     String?
+  cancelledAt     DateTime?
+  cancelReason    String?
+
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  supplier        Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdByUser   User                   @relation("InvoiceCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  postedByUser    User?                  @relation("InvoicePostedBy", fields: [postedBy], references: [id], onDelete: SetNull)
+  cancelledByUser User?                  @relation("InvoiceCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  allocations     PaymentAllocation[]
+  items           PurchaseItem[]
+
+  @@unique([supplierId, invoiceNumber])
+  @@index([supplierId])
+  @@index([businessDate])
+  @@index([status])
+  @@index([date])
+}
+
+model PurchaseItem {
+  id                 String           @id @default(cuid())
+  purchaseInvoiceId  String
+  materialId         String?
+
+  quantity           Decimal          @db.Decimal(14, 3)
+  unitPrice          Decimal          @db.Decimal(14, 2)
+  total              Decimal          @db.Decimal(14, 2)
+
+  notes              String?
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  purchaseInvoice    PurchaseInvoice  @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  stockMovement      StockMovement?
+  material           Material?        @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseInvoiceId])
+  @@index([materialId])
+}
+
+model SupplierPayment {
+  id              String              @id @default(cuid())
+  paymentNumber   String              @unique
+  supplierId      String
+
+  businessDate    DateTime            @db.Date
+  amount          Decimal             @db.Decimal(14, 2)
+  paymentMethod   PaymentMethod
+  reference       String?
+  notes           String?
+
+  recordedBy      String
+
+  voidedAt        DateTime?
+  voidedBy        String?
+  voidReason      String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  recordedByUser  User                @relation("SupplierPaymentRecordedBy", fields: [recordedBy], references: [id], onDelete: Restrict)
+  voidedByUser    User?               @relation("SupplierPaymentVoidedBy", fields: [voidedBy], references: [id], onDelete: SetNull)
+  allocations     PaymentAllocation[]
+
+  @@index([supplierId])
+  @@index([businessDate])
+  @@index([paymentMethod])
+  @@index([recordedBy])
+  @@index([supplierId, voidedAt])
+}
+
+model PaymentAllocation {
+  id                 String           @id @default(cuid())
+  supplierPaymentId  String
+  purchaseInvoiceId  String
+
+  amount             Decimal          @db.Decimal(14, 2)
+
+  voidedAt           DateTime?
+  voidedBy           String?
+  voidReason         String?
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  supplierPayment    SupplierPayment  @relation(fields: [supplierPaymentId], references: [id], onDelete: Restrict)
+  purchaseInvoice    PurchaseInvoice  @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+  voidedByUser       User?            @relation("AllocationVoidedBy", fields: [voidedBy], references: [id], onDelete: SetNull)
+
+  @@unique([supplierPaymentId, purchaseInvoiceId])
+  @@index([supplierPaymentId])
+  @@index([purchaseInvoiceId])
+  @@index([purchaseInvoiceId, voidedAt])
+}
+
+model MaterialCategory {
+  id            String     @id @default(cuid())
+  name          String     @unique
+  description   String?
+  isActive      Boolean    @default(true)
+
+  createdBy     String
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  createdByUser User       @relation("MaterialCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  materials     Material[]
+
+  @@index([isActive])
+}
+
+model Material {
+  id              String             @id @default(cuid())
+  materialNumber  String             @unique
+  name            String
+  categoryId      String
+  unit            String
+
+  currentPrice    Decimal            @db.Decimal(14, 2)
+  minimumStock    Decimal            @default(0.00) @db.Decimal(14, 2)
+  currentStock    Decimal            @default(0.000) @db.Decimal(14, 3)
+
+  notes           String?
+  isActive        Boolean            @default(true)
+
+  createdBy       String
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  category        MaterialCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdByUser   User               @relation("MaterialCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  purchaseItems   PurchaseItem[]
+  stockMovements  StockMovement[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+enum StockMovementType {
+  PURCHASE
+  OPENING
+  CONSUMPTION
+  WASTE
+  ADJUSTMENT
+}
+
+enum StockMovementDirection {
+  IN
+  OUT
+}
+
+model StockMovement {
+  id             String                @id @default(cuid())
+  sequence       Int                   @unique @default(autoincrement())
+  materialId     String
+
+  type           StockMovementType
+  direction      StockMovementDirection
+  businessDate   DateTime              @db.Date
+
+  quantity       Decimal               @db.Decimal(14, 3)
+  unitCost       Decimal?              @db.Decimal(14, 2)
+  totalCost      Decimal?              @db.Decimal(14, 2)
+
+  purchaseItemId String?               @unique
+  reversalOfId   String?               @unique
+  reference      String?
+  notes          String?
+
+  createdBy      String
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  material       Material              @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  createdByUser  User                  @relation("StockMovementCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  purchaseItem   PurchaseItem?         @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
+  reversalOf     StockMovement?        @relation("StockMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy     StockMovement?        @relation("StockMovementReversal")
+
+  @@index([materialId, businessDate])
+  @@index([type])
+  @@index([businessDate])
+  @@index([createdBy])
+}

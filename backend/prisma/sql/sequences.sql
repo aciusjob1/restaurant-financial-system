@@ -1,0 +1,3 @@
+-- Employee number sequence: EMP-0001, EMP-0002, ...
+-- Created via a migration. Idempotent so re-runs are safe.
+CREATE SEQUENCE IF NOT EXISTS employee_number_seq START WITH 1 INCREMENT BY 1;
