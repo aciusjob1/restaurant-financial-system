@@ -53,6 +53,20 @@ export default function ReconciliationDetailPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
 
+  // Handover-related state. A handover may only be created by the
+  // reconciliation owner (a WAITER in production), targeting a
+  // MANAGER/OWNER. Amount is server-derived and never sent by the client.
+  const [handover, setHandover] = useState<{
+    id: string;
+    status: 'PENDING' | 'CONFIRMED';
+    amount: string;
+    toUserId: string;
+    confirmedAt: string | null;
+  } | null>(null);
+  const [receiverId, setReceiverId] = useState('');
+  const [handoverNotes, setHandoverNotes] = useState('');
+  const [handoverBusy, setHandoverBusy] = useState(false);
+
   function load() {
     setLoading(true);
     setErr(null);
@@ -69,6 +83,14 @@ export default function ReconciliationDetailPage() {
         );
       })
       .then((sr) => setShift(sr.shift))
+      .then(() =>
+        apiFetch<{ success: true; handovers: Array<{ id: string; status: 'PENDING' | 'CONFIRMED'; amount: string; toUserId: string; confirmedAt: string | null; reconciliationId: string }> }>(
+          `/api/v1/handovers?reconciliationId=${reconId}`
+        )
+      )
+      .then((hr) => {
+        setHandover(hr.handovers.length > 0 ? hr.handovers[0] : null);
+      })
       .catch((e) => setErr(errOf(e)))
       .finally(() => setLoading(false));
   }
@@ -143,6 +165,32 @@ export default function ReconciliationDetailPage() {
       setErr(errOf(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function createHandover() {
+    setErr(null);
+    if (!receiverId) {
+      setErr({ code: 'RECEIVER_REQUIRED', message: 'Select a manager or owner.' });
+      return;
+    }
+    setHandoverBusy(true);
+    try {
+      await apiFetch('/api/v1/handovers', {
+        method: 'POST',
+        body: JSON.stringify({
+          reconciliationId: reconId,
+          toUserId: receiverId,
+          notes: handoverNotes.trim() === '' ? null : handoverNotes.trim(),
+        }),
+      });
+      setReceiverId('');
+      setHandoverNotes('');
+      load();
+    } catch (e) {
+      setErr(errOf(e));
+    } finally {
+      setHandoverBusy(false);
     }
   }
 
@@ -313,6 +361,71 @@ export default function ReconciliationDetailPage() {
       {isReviewed && (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800">
           Reviewed and approved. This reconciliation is now read-only.
+        </div>
+      )}
+
+      {/* Handover panel — visible whenever recon has actualCash (SUBMITTED or REVIEWED). */}
+      {(isSubmitted || isReviewed) && rec.actualCash !== null && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+          <h2 className="text-sm font-medium text-slate-700">Cash handover</h2>
+
+          {handover ? (
+            <div className="text-sm text-slate-700 space-y-1">
+              <div>
+                <span className="text-slate-500">Status: </span>
+                {handover.status === 'CONFIRMED'
+                  ? <span className="rounded bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs">CONFIRMED</span>
+                  : <span className="rounded bg-amber-100 text-amber-800 px-2 py-0.5 text-xs">PENDING</span>}
+              </div>
+              <div><span className="text-slate-500">Amount: </span><span className="font-mono">{handover.amount}</span></div>
+              <div><span className="text-slate-500">To: </span>{userName(handover.toUserId)}</div>
+              {handover.confirmedAt && (
+                <div className="text-xs text-slate-500">Confirmed at {handover.confirmedAt}</div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700">Receiver</span>
+                    <select
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 bg-white"
+                      value={receiverId}
+                      onChange={(e) => setReceiverId(e.target.value)}
+                    >
+                      <option value="">— select a manager or owner —</option>
+                      {users
+                        .filter((u) => u.role === 'MANAGER' || u.role === 'OWNER')
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>{u.fullName} ({u.role})</option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="flex items-end pb-1">
+                  <div className="text-xs text-slate-500">
+                    Amount is server-derived from the reconciliation actual cash
+                    (<span className="font-mono">{rec.actualCash}</span>). You cannot set it.
+                  </div>
+                </div>
+              </div>
+              <TextArea label="Notes (optional)" value={handoverNotes} onChange={setHandoverNotes} rows={2} />
+              <button
+                type="button"
+                onClick={createHandover}
+                disabled={handoverBusy}
+                className="rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60"
+              >
+                {handoverBusy ? 'Creating…' : 'Create handover'}
+              </button>
+              <div className="text-xs text-slate-500">
+                Note: handover creation is WAITER-only in the backend. If you are logged in as
+                OWNER/MANAGER this will be rejected with 403. Same permission tension as collections
+                inside the shift page — to be revisited when the Kiosk UI (Phase 18) lands.
+              </div>
+            </>
+          )}
         </div>
       )}
     </OpsShell>
