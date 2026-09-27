@@ -26,9 +26,11 @@ function serializeShift(s: {
   reopenReason: string | null;
   notes: string | null;
   createdAt: Date;
+  user?: { id: string; fullName: string };
 }) {
   return {
     id: s.id,
+    user: s.user ? { id: s.user.id, fullName: s.user.fullName } : null,
     userId: s.userId,
     businessDate: toDateOnly(s.businessDate),
     status: s.status,
@@ -70,6 +72,7 @@ export async function listShifts(opts: {
     where,
     orderBy: [{ businessDate: 'desc' }, { startedAt: 'desc' }],
     take: 200,
+    include: { user: { select: { id: true, fullName: true } } },
   });
   return rows.map(serializeShift);
 }

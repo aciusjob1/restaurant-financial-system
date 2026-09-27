@@ -37,9 +37,13 @@ function serialize(r: {
   reviewNotes: string | null;
   createdAt: Date;
   updatedAt: Date;
+  user?: { id: string; fullName: string };
+  shift?: { businessDate: Date };
 }) {
   return {
     id: r.id,
+    user: r.user ? { id: r.user.id, fullName: r.user.fullName } : null,
+    shift: r.shift ? { businessDate: r.shift.businessDate } : null,
     shiftId: r.shiftId,
     userId: r.userId,
     expectedCash: toMoneyString(r.expectedCash),
@@ -98,6 +102,7 @@ export async function listReconciliations(opts: {
     where,
     orderBy: [{ createdAt: 'desc' }],
     take: 200,
+    include: { user: { select: { id: true, fullName: true } }, shift: { select: { businessDate: true } } },
   });
   return rows.map(serialize);
 }

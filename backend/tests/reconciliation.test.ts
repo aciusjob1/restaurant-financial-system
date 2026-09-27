@@ -288,3 +288,23 @@ describe('Reconciliation ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã�
     }
   });
 });
+describe('Enrichment - reconciliation list rows expose user + shift', () => {
+  it('GET /api/v1/reconciliations includes user and shift on each row', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.get('/api/v1/reconciliations');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.reconciliations)).toBe(true);
+
+    const withUser = res.body.reconciliations.filter((r: any) => r.user != null);
+    expect(withUser.length).toBeGreaterThan(0);
+
+    for (const r of withUser) {
+      expect(typeof r.user.id).toBe('string');
+      expect(typeof r.user.fullName).toBe('string');
+      expect(r.user.id).toBe(r.userId);
+      expect(r.shift).not.toBeNull();
+      expect(typeof r.shift.businessDate).toBe('string');
+    }
+  });
+});
+

@@ -176,3 +176,22 @@ describe('Shift lifecycle', () => {
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 });
+describe('Enrichment - shift list rows expose user.fullName', () => {
+  it('GET /api/v1/shifts includes user { id, fullName } on each row', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.get('/api/v1/shifts');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.shifts)).toBe(true);
+    expect(res.body.shifts.length).toBeGreaterThan(0);
+
+    const withUser = res.body.shifts.filter((s: any) => s.user != null);
+    expect(withUser.length).toBeGreaterThan(0);
+
+    for (const s of withUser) {
+      expect(typeof s.user.id).toBe('string');
+      expect(typeof s.user.fullName).toBe('string');
+      expect(s.user.id).toBe(s.userId);
+    }
+  });
+});
+

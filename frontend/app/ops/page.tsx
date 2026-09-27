@@ -14,6 +14,7 @@ const DOMAINS: Array<{ href: string; title: string; description: string }> = [
   { href: '/ops/sales',                title: 'Sales',                description: 'Manual sales summary and POS CSV import.' },
   { href: '/ops/shifts',               title: 'Shifts',               description: 'Start shifts and review their lifecycle.' },
   { href: '/ops/reconciliations',      title: 'Reconciliations',      description: 'Review, send back, and approve reconciliations.' },
+  { href: '/ops/collections',          title: 'Collections',          description: 'Record customer payments against an open shift.' },
   { href: '/ops/handovers',            title: 'Handovers',            description: 'Confirm cash handovers from waiters.' },
   { href: '/ops/expenses',             title: 'Expenses',             description: 'Create, submit, approve, and reject expenses.' },
   { href: '/ops/salaries',             title: 'Salaries',             description: 'Create, approve, pay, and void salary payments.' },
