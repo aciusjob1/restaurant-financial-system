@@ -1,23 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 import {
   REPORT_PATHS,
   type DailySalesResponse,
-  type HandoversResponse,
   type SupplierBalancesResponse,
 } from '@/lib/reports';
 
+type Period = 'daily' | 'weekly' | 'monthly' | 'annual';
+
 type Stats = {
-  windowFrom: string;
-  windowTo: string;
+  rangeFrom: string;
+  rangeTo: string;
+  rowCount: number;
   salesTotal: string;
   expenseTotal: string;
   cashDifference: string;
   handoverTotal: string;
-  pendingHandovers: number;
   supplierBalance: string;
 };
 
@@ -27,14 +28,53 @@ type StatsState =
   | { kind: 'forbidden' }
   | { kind: 'error' };
 
-const DASHBOARD_WINDOW_DAYS = 7;
+// ------------------------------------------------------------------
+// Date helpers
+//
+// All helpers operate in the browser's LOCAL timezone and emit
+// YYYY-MM-DD strings, which is what the backend expects. Do NOT use
+// toISOString().slice(0,10) — that converts to UTC and can shift the
+// date by one day at the boundary (relevant at UTC+3 in EAT).
+// ------------------------------------------------------------------
 
-function shortRange(): { from: string; to: string } {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - DASHBOARD_WINDOW_DAYS);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  return { from: fmt(from), to: fmt(to) };
+function localISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function startOfWeekMonday(d: Date): Date {
+  const copy = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = copy.getDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
+  const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+  copy.setDate(copy.getDate() + diff);
+  return copy;
+}
+
+function computeRange(anchorISO: string, period: Period): { from: string; to: string } {
+  const [y, m, d] = anchorISO.split('-').map(Number);
+  if (!y || !m || !d) return { from: anchorISO, to: anchorISO };
+  const anchor = new Date(y, m - 1, d);
+
+  if (period === 'daily') {
+    return { from: anchorISO, to: anchorISO };
+  }
+  if (period === 'weekly') {
+    const start = startOfWeekMonday(anchor);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return { from: localISO(start), to: localISO(end) };
+  }
+  if (period === 'monthly') {
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 0); // day 0 of next month = last of this month
+    return { from: localISO(start), to: localISO(end) };
+  }
+  // annual
+  const start = new Date(y, 0, 1);
+  const end = new Date(y, 11, 31);
+  return { from: localISO(start), to: localISO(end) };
 }
 
 function diffColor(v: string): string {
@@ -42,16 +82,22 @@ function diffColor(v: string): string {
   return v.startsWith('-') ? 'text-red-600' : 'text-slate-900';
 }
 
+// ------------------------------------------------------------------
+// UI atoms
+// ------------------------------------------------------------------
+
 function StatCard({
   label,
   value,
   valueClassName,
   hint,
+  hintMuted,
 }: {
   label: string;
   value: string;
   valueClassName?: string;
   hint?: string;
+  hintMuted?: boolean;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -59,26 +105,41 @@ function StatCard({
       <div className={'mt-2 text-xl font-mono ' + (valueClassName ?? 'text-slate-900')}>
         {value}
       </div>
-      {hint && <div className="mt-1 text-xs text-slate-400">{hint}</div>}
+      {hint && (
+        <div className={'mt-1 text-xs ' + (hintMuted ? 'text-slate-400' : 'text-slate-500')}>
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
 
+const PERIODS: Array<{ key: Period; label: string }> = [
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'annual', label: 'Annual' },
+];
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<StatsState>({ kind: 'loading' });
+  const [fetching, setFetching] = useState(false);
+  const [anchorDate, setAnchorDate] = useState<string>(() => localISO(new Date()));
+  const [period, setPeriod] = useState<Period>('daily');
+
+  const range = useMemo(() => computeRange(anchorDate, period), [anchorDate, period]);
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
+      setFetching(true);
       try {
-        const { from, to } = shortRange();
-        const qs = `from=${from}&to=${to}`;
+        const qs = `from=${range.from}&to=${range.to}`;
 
-        const [daily, handovers, suppliers] = await Promise.all([
+        const [daily, suppliers] = await Promise.all([
           apiFetch<DailySalesResponse>(`${REPORT_PATHS.dailySales}?${qs}`),
-          apiFetch<HandoversResponse>(`${REPORT_PATHS.handovers}?${qs}`),
           apiFetch<SupplierBalancesResponse>(REPORT_PATHS.supplierBalances),
         ]);
 
@@ -86,13 +147,13 @@ export default function DashboardPage() {
         setStats({
           kind: 'ready',
           data: {
-            windowFrom: from,
-            windowTo: to,
+            rangeFrom: range.from,
+            rangeTo: range.to,
+            rowCount: daily.totals.rowCount,
             salesTotal: daily.totals.salesTotal,
             expenseTotal: daily.totals.expenseTotal,
             cashDifference: daily.totals.cashDifference,
             handoverTotal: daily.totals.handoverTotal,
-            pendingHandovers: handovers.totals.pendingCount,
             supplierBalance: suppliers.totals.balance,
           },
         });
@@ -103,11 +164,17 @@ export default function DashboardPage() {
           if (err.status === 403) { setStats({ kind: 'forbidden' }); return; }
         }
         setStats({ kind: 'error' });
+      } finally {
+        if (!cancelled) setFetching(false);
       }
     })();
 
     return () => { cancelled = true; };
-  }, [router]);
+  }, [range.from, range.to, router]);
+
+  function resetToToday() {
+    setAnchorDate(localISO(new Date()));
+  }
 
   return (
     <>
@@ -116,13 +183,56 @@ export default function DashboardPage() {
       </header>
 
       <section className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-medium text-slate-900">Snapshot</h2>
-          {stats.kind === 'ready' && (
-            <span className="text-xs text-slate-500">
-              {stats.data.windowFrom} → {stats.data.windowTo}
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wide text-slate-500">Date</span>
+            <input
+              type="date"
+              value={anchorDate}
+              onChange={(e) => { if (e.target.value) setAnchorDate(e.target.value); }}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={resetToToday}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Today
+          </button>
+
+          <div className="flex items-center rounded-lg border border-slate-300 overflow-hidden">
+            {PERIODS.map((p, i) => {
+              const active = period === p.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setPeriod(p.key)}
+                  className={[
+                    'px-3 py-2 text-sm',
+                    i > 0 ? 'border-l border-slate-300' : '',
+                    active
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:bg-slate-50',
+                  ].join(' ')}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="ml-auto flex items-center gap-3">
+            {fetching && (
+              <span className="text-xs text-slate-400">Refreshing…</span>
+            )}
+            <span className="text-xs text-slate-500 font-mono">
+              {range.from} → {range.to}
             </span>
-          )}
+          </div>
         </div>
 
         {stats.kind === 'loading' && (
@@ -144,25 +254,31 @@ export default function DashboardPage() {
         )}
 
         {stats.kind === 'ready' && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <StatCard label="Sales" value={stats.data.salesTotal} />
-            <StatCard label="Expenses" value={stats.data.expenseTotal} />
-            <StatCard
-              label="Cash Diff"
-              value={stats.data.cashDifference}
-              valueClassName={diffColor(stats.data.cashDifference)}
-            />
-            <StatCard label="Handovers" value={stats.data.handoverTotal} />
-            <StatCard
-              label="Supplier Balance"
-              value={stats.data.supplierBalance}
-              hint={
-                stats.data.pendingHandovers > 0
-                  ? `${stats.data.pendingHandovers} handover${stats.data.pendingHandovers === 1 ? '' : 's'} pending`
-                  : undefined
-              }
-            />
-          </div>
+          <>
+            {stats.data.rowCount === 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-500">
+                No business-day records in this range. The figures below are the
+                backend&apos;s totals for {stats.data.rangeFrom} → {stats.data.rangeTo}.
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <StatCard label="Sales" value={stats.data.salesTotal} />
+              <StatCard label="Expenses" value={stats.data.expenseTotal} />
+              <StatCard
+                label="Cash Diff"
+                value={stats.data.cashDifference}
+                valueClassName={diffColor(stats.data.cashDifference)}
+              />
+              <StatCard label="Handovers" value={stats.data.handoverTotal} />
+              <StatCard
+                label="Supplier Balance"
+                value={stats.data.supplierBalance}
+                hint="Current balance • As of today"
+                hintMuted
+              />
+            </div>
+          </>
         )}
       </section>
 
