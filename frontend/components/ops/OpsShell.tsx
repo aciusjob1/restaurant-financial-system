@@ -19,6 +19,8 @@ const LINKS: Array<{ href: string; label: string }> = [
   { href: '/ops/materials', label: 'Materials' },
   { href: '/ops/material-categories', label: 'Categories' },
   { href: '/ops/suppliers', label: 'Suppliers' },
+  { href: '/ops/employees', label: 'Employees' },
+  { href: '/ops/positions', label: 'Positions' },
   { href: '/ops/purchase-invoices', label: 'Invoices' },
   { href: '/ops/supplier-payments', label: 'Payments' },
   { href: '/ops/stock-movements', label: 'Stock' },
