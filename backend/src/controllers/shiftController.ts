@@ -3,6 +3,7 @@ import * as shiftService from '../services/shiftService.js';
 import type {
   StartShiftInput,
   TransitionShiftInput,
+  SetOpeningCashInput,
   ListShiftsQuery,
 } from '../validators/shift.js';
 
@@ -43,6 +44,16 @@ export async function transitionShift(req: Request, res: Response) {
     actor: { id: req.user!.id, role: req.user!.role },
     to: input.to,
     reason: input.reason,
+  });
+  res.json({ success: true, shift });
+}
+
+export async function setOpeningCash(req: Request, res: Response) {
+  const input = req.body as SetOpeningCashInput;
+  const shift = await shiftService.setOpeningCash({
+    id: req.params.id!,
+    actor: { id: req.user!.id, role: req.user!.role },
+    openingCash: input.openingCash,
   });
   res.json({ success: true, shift });
 }

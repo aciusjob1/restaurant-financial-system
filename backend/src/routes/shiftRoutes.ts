@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as shiftController from '../controllers/shiftController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
-import { StartShiftSchema, TransitionShiftSchema } from '../validators/shift.js';
+import { StartShiftSchema, TransitionShiftSchema, SetOpeningCashSchema } from '../validators/shift.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const shiftRouter = Router();
@@ -30,4 +30,12 @@ shiftRouter.post(
   requireRole('WAITER', 'MANAGER', 'OWNER'),
   validateBody(TransitionShiftSchema),
   asyncHandler(shiftController.transitionShift)
+);
+// Recovery: MANAGER/OWNER supplies missing opening cash on an already-OPEN shift.
+// Set-once; 409 if already populated.
+shiftRouter.post(
+  '/:id/opening-cash',
+  requireRole('MANAGER', 'OWNER'),
+  validateBody(SetOpeningCashSchema),
+  asyncHandler(shiftController.setOpeningCash)
 );

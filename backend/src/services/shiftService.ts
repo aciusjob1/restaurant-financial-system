@@ -13,6 +13,7 @@ function serializeShift(s: {
   businessDate: Date;
   status: ShiftStatus;
   openingCash: Prisma.Decimal | null;
+  openingCashSetByUserId: string | null;
   startedAt: Date;
   endedAt: Date | null;
   submittedAt: Date | null;
@@ -32,6 +33,7 @@ function serializeShift(s: {
     businessDate: toDateOnly(s.businessDate),
     status: s.status,
     openingCash: s.openingCash === null ? null : toMoneyString(s.openingCash),
+    openingCashSetByUserId: s.openingCashSetByUserId,
     startedAt: s.startedAt.toISOString(),
     endedAt: s.endedAt ? s.endedAt.toISOString() : null,
     submittedAt: s.submittedAt ? s.submittedAt.toISOString() : null,
@@ -129,6 +131,32 @@ export async function startShift(input: {
     }
     throw err;
   }
+}
+
+export async function setOpeningCash(input: {
+  id: string;
+  actor: { id: string; role: Role };
+  openingCash: string;
+}) {
+  const existing = await prisma.shift.findUnique({ where: { id: input.id } });
+  if (!existing) {
+    throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift does not exist.');
+  }
+  if (existing.status !== 'OPEN') {
+    throw new ApiError(409, 'SHIFT_NOT_OPEN', 'Opening cash can only be declared on an OPEN shift.');
+  }
+  if (existing.openingCash !== null) {
+    throw new ApiError(409, 'OPENING_CASH_ALREADY_SET', 'Opening cash has already been declared for this shift.');
+  }
+
+  const row = await prisma.shift.update({
+    where: { id: input.id },
+    data: {
+      openingCash: toDecimal(input.openingCash),
+      openingCashSetByUserId: input.actor.id,
+    },
+  });
+  return serializeShift(row);
 }
 
 export async function transitionShift(input: {

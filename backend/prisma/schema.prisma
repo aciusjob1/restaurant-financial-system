@@ -101,6 +101,7 @@ model User {
   sessions                Session[]
   employee                Employee?
   shifts                  Shift[]
+  shiftsOpeningCashSetBy  Shift[]         @relation("ShiftOpeningCashSetBy")
   collections             Collection[]
   reconciliations         Reconciliation[]
   handoversSent           CashHandover[]     @relation("HandoverFrom")
@@ -190,6 +191,7 @@ model Shift {
   status          ShiftStatus     @default(OPEN)
 
   openingCash     Decimal?        @db.Decimal(14, 2)
+  openingCashSetByUserId String?
 
   startedAt       DateTime        @default(now())
   endedAt         DateTime?
@@ -211,6 +213,7 @@ model Shift {
   updatedAt       DateTime        @updatedAt
 
   user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  openingCashSetByUser User?           @relation("ShiftOpeningCashSetBy", fields: [openingCashSetByUserId], references: [id], onDelete: Restrict)
   collections     Collection[]
   reconciliation  Reconciliation?
   expenses        Expense[]

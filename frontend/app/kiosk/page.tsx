@@ -207,7 +207,7 @@ export default function KioskPage() {
         method: 'POST',
         body: JSON.stringify({
           businessDate,
-          openingCash: openingCash.trim() === '' ? undefined : openingCash.trim(),
+          openingCash: openingCash.trim(),
           notes: shiftNotes.trim() === '' ? null : shiftNotes.trim(),
         }),
       });
@@ -379,7 +379,7 @@ export default function KioskPage() {
           <h2 className="text-base font-medium text-slate-900">Start your shift</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <DateField label="Business date" value={businessDate} onChange={setBusinessDate} required />
-            <DecimalField label="Opening cash" value={openingCash} onChange={setOpeningCash} placeholder="0.00" />
+            <DecimalField label="Opening cash" value={openingCash} onChange={setOpeningCash} placeholder="0.00" required />
           </div>
           <TextArea label="Notes (optional)" value={shiftNotes} onChange={setShiftNotes} rows={2} />
           <SubmitButton busy={busy}>Start shift</SubmitButton>

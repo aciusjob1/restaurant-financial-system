@@ -13,13 +13,17 @@ const MoneyString = z
 
 export const StartShiftSchema = z.object({
   businessDate: DateOnly.optional(),
-  openingCash: MoneyString.optional(),
+  openingCash: MoneyString,
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export const TransitionShiftSchema = z.object({
   to: z.enum(['SUBMITTED', 'RECONCILING', 'CLOSED', 'OPEN']),
   reason: z.string().trim().max(500).optional(),
+});
+
+export const SetOpeningCashSchema = z.object({
+  openingCash: MoneyString,
 });
 
 export const ListShiftsQuerySchema = z.object({
@@ -30,4 +34,5 @@ export const ListShiftsQuerySchema = z.object({
 
 export type StartShiftInput = z.infer<typeof StartShiftSchema>;
 export type TransitionShiftInput = z.infer<typeof TransitionShiftSchema>;
+export type SetOpeningCashInput = z.infer<typeof SetOpeningCashSchema>;
 export type ListShiftsQuery = z.infer<typeof ListShiftsQuerySchema>;
