@@ -10,11 +10,6 @@ import {
   type SupplierBalancesResponse,
 } from '@/lib/reports';
 
-type MeResponse = {
-  success: true;
-  user: { id: string; username: string; fullName: string; role: string; isActive: boolean };
-};
-
 type Stats = {
   windowFrom: string;
   windowTo: string;
@@ -27,7 +22,6 @@ type Stats = {
 };
 
 type StatsState =
-  | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'ready'; data: Stats }
   | { kind: 'forbidden' }
@@ -72,34 +66,10 @@ function StatCard({
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [me, setMe] = useState<MeResponse['user'] | null>(null);
-  const [stats, setStats] = useState<StatsState>({ kind: 'idle' });
+  const [stats, setStats] = useState<StatsState>({ kind: 'loading' });
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await apiFetch<MeResponse>('/api/v1/auth/me');
-        if (cancelled) return;
-        // WAITERs have their own surface; the dashboard's stats panels
-        // are not useful to them.
-        if (res.user.role === 'WAITER') {
-          router.push('/kiosk');
-          return;
-        }
-        setMe(res.user);
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.status === 401) router.push('/login');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [router]);
-
-  useEffect(() => {
-    if (!me) return;
-    let cancelled = false;
-    setStats({ kind: 'loading' });
 
     (async () => {
       try {
@@ -137,26 +107,12 @@ export default function DashboardPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [me, router]);
-
-  async function logout() {
-    await apiFetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => {});
-    router.push('/login');
-  }
-
-  if (!me) return <main className="p-6">Loading...</main>;
+  }, [router]);
 
   return (
-    <main className="p-6 space-y-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-slate-500">{me.fullName} - {me.role}</p>
-        </div>
-        <button onClick={logout}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
-          Sign out
-        </button>
+    <>
+      <header>
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
       </header>
 
       <section className="space-y-3">
@@ -222,6 +178,6 @@ export default function DashboardPage() {
           Open reports
         </a>
       </section>
-    </main>
+    </>
   );
 }
