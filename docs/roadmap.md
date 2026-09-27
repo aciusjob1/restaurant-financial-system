@@ -118,12 +118,18 @@ locked; 17.7 pending.
 ---
 ## Phase 18 — Waiter Kiosk
 
-**Status:** ⏭️ NEXT (after 17.7)
+**Status:** CLOSED (2026-09-27)
 
 **Deliverables:** a single-tablet, one-handed workflow for a waiter on a
 shared device: open shift, declare cash, declare mobile, submit
-reconciliation, confirm cash handover. Deliberately narrow in scope — not
-thirteen management screens. Frontend-only; no backend changes expected.
+reconciliation, create cash handover (manager/owner confirms receipt).
+Deliberately narrow in scope — not thirteen management screens.
+
+**Note:** Two backend changes were required beyond the original
+"frontend-only" expectation — the handover receiver list endpoint (18.2a)
+and the opening-cash invariant + recovery path (18.2c). See
+`docs/phases/18-waiter-kiosk.md` for the retrospective scope and
+verification record.
 
 ---
 
