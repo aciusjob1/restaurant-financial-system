@@ -464,3 +464,32 @@ describe('Stock movements — extra invariants', () => {
     expect(sum.toFixed(3)).toBe(cached);
   });
 });
+describe('Stock movement — type/direction invariants', () => {
+  it('rejects CONSUMPTION + IN (400 VALIDATION_ERROR)', async () => {
+    const mgr = await loginAs(MANAGER);
+    const res = await mgr.post('/api/v1/stock-movements').send({
+      materialId: materialAId,
+      type: 'CONSUMPTION',
+      direction: 'IN',
+      businessDate: D_ADJUST,
+      quantity: '1.000',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('still accepts CONSUMPTION + OUT (regression)', async () => {
+    const mgr = await loginAs(MANAGER);
+    const res = await mgr.post('/api/v1/stock-movements').send({
+      materialId: materialAId,
+      type: 'CONSUMPTION',
+      direction: 'OUT',
+      businessDate: D_ADJUST,
+      quantity: '1.000',
+      unitCost: '2500.00',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.movement.type).toBe('CONSUMPTION');
+    expect(res.body.movement.direction).toBe('OUT');
+  });
+});

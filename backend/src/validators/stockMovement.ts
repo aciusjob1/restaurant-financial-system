@@ -13,16 +13,24 @@ const PositiveQuantityString = QuantityString.refine(
   { message: 'Quantity must be positive.' }
 );
 
-export const CreateStockMovementSchema = z.object({
-  materialId: z.string().min(1),
-  type: z.enum(['OPENING', 'CONSUMPTION', 'WASTE', 'ADJUSTMENT']),
-  direction: z.enum(['IN', 'OUT']),
-  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  quantity: PositiveQuantityString,
-  unitCost: MoneyString.nullable().optional(),
-  reference: z.string().trim().max(200).nullable().optional(),
-  notes: z.string().trim().max(500).nullable().optional(),
-});
+export const CreateStockMovementSchema = z
+  .object({
+    materialId: z.string().min(1),
+    type: z.enum(['OPENING', 'CONSUMPTION', 'WASTE', 'ADJUSTMENT']),
+    direction: z.enum(['IN', 'OUT']),
+    businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    quantity: PositiveQuantityString,
+    unitCost: MoneyString.nullable().optional(),
+    reference: z.string().trim().max(200).nullable().optional(),
+    notes: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine(
+    (v) => !(v.type === 'CONSUMPTION' && v.direction === 'IN'),
+    {
+      message: 'CONSUMPTION must be OUT — stock cannot be added by consuming.',
+      path: ['direction'],
+    }
+  );
 
 export const ListStockMovementsQuery = z.object({
   materialId: z.string().optional(),
