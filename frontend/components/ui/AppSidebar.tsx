@@ -25,14 +25,34 @@ type AppSidebarProps = {
 };
 
 /**
+ * Small matchMedia hook. Returns true when the viewport currently
+ * matches the supplied media query, and updates on resize.
+ *
+ * Runs client-side only (the component is marked 'use client').
+ */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia(query);
+    const handler = () => setMatches(mql.matches);
+    handler();
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [query]);
+  return matches;
+}
+
+/**
  * Shared application sidebar used by /ops, /reports, and /dashboard.
  *
- * Behaviour:
- *  - Desktop (lg+): fixed rail, toggles 240px <-> 64px, persisted per
- *    storageKey in localStorage.
- *  - Tablet/mobile: off-canvas drawer with backdrop; closes on link
- *    navigation, backdrop click, or Escape.
- *  - Sign-out is owned here so consumers do not duplicate the call.
+ * Responsive tiers:
+ *   - below lg (1024px): off-canvas drawer with backdrop
+ *   - lg to xl (1024-1280px): auto-collapsed icon rail; the toggle
+ *     button is hidden because resizing is the way to expand
+ *   - xl and up (1280px+): manual toggle, persisted per storageKey
+ *
+ * Sign-out is owned here so consumers do not duplicate the call.
  */
 export function AppSidebar({
   title,
@@ -49,6 +69,10 @@ export function AppSidebar({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
+  // Viewport tier checks.
+  const isMedium = useMediaQuery('(min-width: 1024px) and (max-width: 1279.98px)');
+
+  // Read persisted rail state once on mount.
   useEffect(() => {
     try {
       if (localStorage.getItem(storageKey) === '1') setCollapsed(true);
@@ -56,6 +80,7 @@ export function AppSidebar({
     setHydrated(true);
   }, [storageKey]);
 
+  // Persist only the user's choice (not the auto-collapsed state).
   useEffect(() => {
     if (!hydrated) return;
     try { localStorage.setItem(storageKey, collapsed ? '1' : '0'); } catch { /* ignore */ }
@@ -78,8 +103,11 @@ export function AppSidebar({
     router.push('/login');
   }
 
-  const widthCls = collapsed ? 'lg:w-16' : 'lg:w-60';
-  const padCls   = collapsed ? 'lg:pl-16' : 'lg:pl-60';
+  // What the rail actually renders as: auto-collapsed takes priority.
+  const effectiveCollapsed = isMedium || collapsed;
+
+  const widthCls = effectiveCollapsed ? 'lg:w-16' : 'lg:w-60';
+  const padCls   = effectiveCollapsed ? 'lg:pl-16' : 'lg:pl-60';
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -124,25 +152,43 @@ export function AppSidebar({
             href={homeHref}
             className={[
               'font-medium text-slate-900 truncate',
-              collapsed ? 'lg:hidden' : '',
+              effectiveCollapsed ? 'lg:hidden' : '',
             ].join(' ')}
           >
             {title}
           </Link>
-          <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            className={[
-              'hidden lg:inline-flex p-1.5 rounded-lg hover:bg-slate-100',
-              collapsed ? 'mx-auto' : 'ml-auto',
-            ].join(' ')}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed
-              ? <PanelLeftOpen className="w-4 h-4 text-slate-600" />
-              : <PanelLeftClose className="w-4 h-4 text-slate-600" />}
-          </button>
+
+          {/* Manual toggle — only shown on wide (xl+) screens.
+              At medium widths the rail is auto-collapsed and the
+              toggle would be inert, so we hide it. */}
+          {!isMedium && (
+            <button
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              className={[
+                'hidden lg:inline-flex p-1.5 rounded-lg hover:bg-slate-100',
+                effectiveCollapsed ? 'mx-auto' : 'ml-auto',
+              ].join(' ')}
+              aria-label={effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {effectiveCollapsed
+                ? <PanelLeftOpen className="w-4 h-4 text-slate-600" />
+                : <PanelLeftClose className="w-4 h-4 text-slate-600" />}
+            </button>
+          )}
+
+          {/* When auto-collapsed on medium, show a static icon as a
+              visual indicator that the rail is what it is. */}
+          {isMedium && (
+            <span
+              className="hidden lg:inline-flex mx-auto p-1.5 text-slate-400"
+              title="Auto-collapsed — widen the window to expand"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </span>
+          )}
+
           <button
             type="button"
             onClick={() => setDrawerOpen(false)}
@@ -162,18 +208,18 @@ export function AppSidebar({
               <Link
                 key={l.href}
                 href={l.href}
-                title={collapsed ? l.label : undefined}
+                title={effectiveCollapsed ? l.label : undefined}
                 aria-current={active ? 'page' : undefined}
                 className={[
                   'flex items-center gap-3 mx-2 my-0.5 px-2 py-2 rounded-lg text-sm',
                   active
                     ? 'bg-slate-900 text-white hover:bg-slate-900'
                     : 'text-slate-700 hover:bg-slate-100',
-                  collapsed ? 'lg:justify-center lg:px-0' : '',
+                  effectiveCollapsed ? 'lg:justify-center lg:px-0' : '',
                 ].join(' ')}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                <span className={collapsed ? 'lg:hidden' : ''}>{l.label}</span>
+                <span className={effectiveCollapsed ? 'lg:hidden' : ''}>{l.label}</span>
               </Link>
             );
           })}
@@ -181,7 +227,7 @@ export function AppSidebar({
 
         {/* Footer: user + sign-out */}
         <div className="border-t border-slate-200 p-3 space-y-2">
-          <div className={['flex items-center gap-2', collapsed ? 'lg:hidden' : ''].join(' ')}>
+          <div className={['flex items-center gap-2', effectiveCollapsed ? 'lg:hidden' : ''].join(' ')}>
             <div className="w-7 h-7 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center shrink-0">
               {me.fullName.slice(0, 1).toUpperCase()}
             </div>
@@ -194,15 +240,15 @@ export function AppSidebar({
             type="button"
             onClick={handleSignOut}
             disabled={signingOut}
-            title={collapsed ? 'Sign out' : undefined}
+            title={effectiveCollapsed ? 'Sign out' : undefined}
             className={[
               'flex items-center gap-2 w-full px-2 py-2 rounded-lg text-sm',
               'text-slate-700 hover:bg-slate-100 disabled:opacity-60',
-              collapsed ? 'lg:justify-center lg:px-0' : '',
+              effectiveCollapsed ? 'lg:justify-center lg:px-0' : '',
             ].join(' ')}
           >
             <LogOut className="w-4 h-4 shrink-0" />
-            <span className={collapsed ? 'lg:hidden' : ''}>
+            <span className={effectiveCollapsed ? 'lg:hidden' : ''}>
               {signingOut ? 'Signing out…' : 'Sign out'}
             </span>
           </button>
