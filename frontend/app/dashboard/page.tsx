@@ -105,7 +105,7 @@ function StatCard({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={'mt-2 text-xl font-mono ' + (valueClassName ?? 'text-slate-900')}>
+      <div className={'mt-2 text-lg font-mono ' + (valueClassName ?? 'text-slate-900')}>
         {value}
       </div>
       {hint && (
@@ -268,7 +268,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <StatCard label="Sales" value={stats.data.salesTotal} />
               <StatCard
                 label="Collected"
