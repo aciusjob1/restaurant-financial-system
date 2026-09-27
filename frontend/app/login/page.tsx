@@ -15,11 +15,12 @@ export default function LoginPage() {
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      await apiFetch('/api/v1/auth/login', {
+      const res = await apiFetch<{ success: true; user: { role: string } }>('/api/v1/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-      router.push('/dashboard');
+      // WAITERs land on the kiosk; every other role on the dashboard.
+      router.push(res.user.role === 'WAITER' ? '/kiosk' : '/dashboard');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Unable to sign in.');
     } finally { setBusy(false); }

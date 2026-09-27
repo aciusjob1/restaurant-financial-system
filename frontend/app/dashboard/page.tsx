@@ -80,7 +80,14 @@ export default function DashboardPage() {
     (async () => {
       try {
         const res = await apiFetch<MeResponse>('/api/v1/auth/me');
-        if (!cancelled) setMe(res.user);
+        if (cancelled) return;
+        // WAITERs have their own surface; the dashboard's stats panels
+        // are not useful to them.
+        if (res.user.role === 'WAITER') {
+          router.push('/kiosk');
+          return;
+        }
+        setMe(res.user);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) router.push('/login');

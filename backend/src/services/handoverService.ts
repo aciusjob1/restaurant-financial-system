@@ -189,3 +189,22 @@ export async function confirmHandover(input: {
   });
   return serialize(row);
 }
+/**
+ * Reduced projection of users who may receive a cash handover.
+ * Used by the WAITER kiosk to populate the "receiver" dropdown.
+ *
+ * Returns only active MANAGER and OWNER users, with id/fullName/role.
+ * No email, phone, or permission fields. Filtering is enforced by the
+ * query — the frontend must not decide who is eligible.
+ */
+export async function listReceivableUsers() {
+  const rows = await prisma.user.findMany({
+    where: {
+      role: { in: ['MANAGER', 'OWNER'] },
+      isActive: true,
+    },
+    select: { id: true, fullName: true, role: true },
+    orderBy: [{ role: 'asc' }, { fullName: 'asc' }],
+  });
+  return rows;
+}

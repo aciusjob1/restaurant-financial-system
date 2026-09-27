@@ -257,3 +257,46 @@ describe('Cash handover — preconditions and permissions', () => {
     }
   });
 });
+describe('Cash handover — receiver list for the kiosk', () => {
+  it('WAITER can fetch the reduced receiver list (active MANAGER/OWNER only)', async () => {
+    const w = await loginAs(WAITER);
+    const res = await w.get('/api/v1/handovers/receivable-users');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.users)).toBe(true);
+
+    // Every entry must be an active MANAGER or OWNER, and nothing else.
+    for (const u of res.body.users) {
+      expect(['MANAGER', 'OWNER']).toContain(u.role);
+      expect(u).toHaveProperty('id');
+      expect(u).toHaveProperty('fullName');
+      expect(u).toHaveProperty('role');
+      // Reduced projection — no email, no phone, no isActive, no permissions.
+      expect(u).not.toHaveProperty('email');
+      expect(u).not.toHaveProperty('phone');
+      expect(u).not.toHaveProperty('isActive');
+      expect(u).not.toHaveProperty('passwordHash');
+    }
+
+    // Our seeded MANAGER and OWNER from this test file appear.
+    const names = res.body.users.map((u: { fullName: string }) => u.fullName);
+    expect(names).toContain(MANAGER.fullName);
+    expect(names).toContain(OWNER.fullName);
+
+    // WAITER and AUDITOR are NOT eligible receivers.
+    expect(names).not.toContain(WAITER.fullName);
+    expect(names).not.toContain(WAITER2.fullName);
+    expect(names).not.toContain(AUDITOR.fullName);
+  });
+
+  it('the returned IDs are usable as toUserId when creating a handover', async () => {
+    // Purely a shape/contract assertion — proves the endpoint returns
+    // an id that satisfies the handover validator's min(1).
+    const w = await loginAs(WAITER);
+    const res = await w.get('/api/v1/handovers/receivable-users');
+    expect(res.status).toBe(200);
+    expect(res.body.users.length).toBeGreaterThan(0);
+    expect(typeof res.body.users[0].id).toBe('string');
+    expect(res.body.users[0].id.length).toBeGreaterThan(0);
+  });
+});

@@ -51,3 +51,7 @@ export async function confirmHandover(req: Request, res: Response) {
   });
   res.json({ success: true, handover });
 }
+export async function listReceivableUsers(_req: Request, res: Response) {
+  const users = await handoverService.listReceivableUsers();
+  res.json({ success: true, users });
+}

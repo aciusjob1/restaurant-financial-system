@@ -14,6 +14,15 @@ handoverRouter.use(requireAuth);
 
 // Read: all roles (WAITER scoped in service to their own).
 handoverRouter.get('/', asyncHandler(handoverController.listHandovers));
+// Receivers for the WAITER kiosk "create handover" dropdown.
+// Reduced projection (id/fullName/role only), active MANAGER/OWNER only.
+// Must come before /:id so it isn't swallowed by the wildcard route.
+handoverRouter.get(
+  '/receivable-users',
+  requireRole('WAITER', 'MANAGER', 'OWNER'),
+  asyncHandler(handoverController.listReceivableUsers)
+);
+
 handoverRouter.get('/:id', asyncHandler(handoverController.getHandover));
 
 // Create: WAITER only (their own reconciliation).
