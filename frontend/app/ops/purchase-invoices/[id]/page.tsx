@@ -309,11 +309,12 @@ export default function PurchaseInvoiceDetailPage() {
             value={editInvoiceNumber}
             onChange={setEditInvoiceNumber}
             required
+            disabled={!isDraft}
           />
-          <DateField label="Invoice date" value={editDate} onChange={setEditDate} required />
-          <DateField label="Business date" value={editBusinessDate} onChange={setEditBusinessDate} required />
+          <DateField label="Invoice date" value={editDate} onChange={setEditDate} required disabled={!isDraft} />
+          <DateField label="Business date" value={editBusinessDate} onChange={setEditBusinessDate} required disabled={!isDraft} />
         </div>
-        <TextArea label="Notes" value={editNotes} onChange={setEditNotes} rows={2} />
+        <TextArea label="Notes" value={editNotes} onChange={setEditNotes} rows={2} disabled={!isDraft} />
         <div className="flex flex-wrap items-center gap-3">
           {isDraft && (
             <SubmitButton busy={headerBusy}>Save header</SubmitButton>

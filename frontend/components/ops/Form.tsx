@@ -8,6 +8,7 @@ type FieldBase = {
   onChange: (v: string) => void;
   required?: boolean;
   placeholder?: string;
+  disabled?: boolean;
 };
 
 function Label({ text, children }: { text: string; children: ReactNode }) {
@@ -20,7 +21,7 @@ function Label({ text, children }: { text: string; children: ReactNode }) {
 }
 
 const INPUT_CLS =
-  'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none';
+  'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none disabled:bg-slate-50 disabled:text-slate-500';
 
 export function TextField(p: FieldBase & { autoComplete?: string }) {
   return (
@@ -33,6 +34,7 @@ export function TextField(p: FieldBase & { autoComplete?: string }) {
         required={p.required}
         placeholder={p.placeholder}
         autoComplete={p.autoComplete}
+        disabled={p.disabled}
       />
     </Label>
   );
@@ -49,6 +51,7 @@ export function DecimalField(p: FieldBase) {
         onChange={(e) => p.onChange(e.target.value)}
         required={p.required}
         placeholder={p.placeholder}
+        disabled={p.disabled}
       />
     </Label>
   );
@@ -63,6 +66,7 @@ export function DateField(p: FieldBase) {
         value={p.value}
         onChange={(e) => p.onChange(e.target.value)}
         required={p.required}
+        disabled={p.disabled}
       />
     </Label>
   );
@@ -74,6 +78,7 @@ export function SelectField(p: {
   onChange: (v: string) => void;
   options: Array<{ value: string; label: string }>;
   required?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Label text={p.label}>
@@ -82,6 +87,7 @@ export function SelectField(p: {
         value={p.value}
         onChange={(e) => p.onChange(e.target.value)}
         required={p.required}
+        disabled={p.disabled}
       >
         {p.options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -101,6 +107,7 @@ export function TextArea(p: FieldBase & { rows?: number }) {
         required={p.required}
         placeholder={p.placeholder}
         rows={p.rows ?? 3}
+        disabled={p.disabled}
       />
     </Label>
   );
