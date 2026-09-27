@@ -117,6 +117,7 @@ export async function createCollection(input: {
       data: {
         shiftId: input.shiftId,
         userId: input.actor.id,
+        createdById: input.actor.id,
         paymentMethod: input.paymentMethod,
         amount: toDecimal(input.amount),
         mobileReference: input.mobileReference,

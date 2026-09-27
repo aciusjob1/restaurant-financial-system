@@ -234,6 +234,7 @@ beforeAll(async () => {
     data: {
       shiftId: shift.id,
       userId: waiterId,
+      createdById: waiterId,
       paymentMethod: 'CASH',
       amount: '700.00',
     },
@@ -242,6 +243,7 @@ beforeAll(async () => {
     data: {
       shiftId: shift.id,
       userId: waiterId,
+      createdById: waiterId,
       paymentMethod: 'MPESA',
       amount: '300.00',
       mobileReference: 'MPESA-P16-001',
@@ -271,6 +273,7 @@ beforeAll(async () => {
     data: {
       reconciliationId: recon.id,
       fromUserId: waiterId,
+      createdById: waiterId,
       toUserId: managerId,
       amount: '695.00',
       status: 'CONFIRMED',

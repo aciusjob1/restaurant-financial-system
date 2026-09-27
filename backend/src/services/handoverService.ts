@@ -142,6 +142,7 @@ export async function createHandover(input: {
       data: {
         reconciliationId: recon.id,
         fromUserId: input.actor.id,
+        createdById: input.actor.id,
         toUserId: input.toUserId,
         amount: recon.actualCash, // server-derived; client cannot choose
         notes: input.notes,
