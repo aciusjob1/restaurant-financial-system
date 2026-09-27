@@ -25,6 +25,12 @@ type AppSidebarProps = {
 };
 
 /**
+ * How long the user must be idle before the rail auto-collapses on
+ * wide desktops. Tune here. 0 disables idle-collapse entirely.
+ */
+const IDLE_COLLAPSE_MS = 10_000;
+
+/**
  * Small matchMedia hook. Returns true when the viewport currently
  * matches the supplied media query, and updates on resize.
  *
@@ -50,7 +56,8 @@ function useMediaQuery(query: string): boolean {
  *   - below lg (1024px): off-canvas drawer with backdrop
  *   - lg to xl (1024-1280px): auto-collapsed icon rail; the toggle
  *     button is hidden because resizing is the way to expand
- *   - xl and up (1280px+): manual toggle, persisted per storageKey
+ *   - xl and up (1280px+): manual toggle, persisted per storageKey,
+ *     plus an idle auto-collapse after IDLE_COLLAPSE_MS of no input
  *
  * Sign-out is owned here so consumers do not duplicate the call.
  */
@@ -64,13 +71,15 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);       // user preference
   const [hydrated, setHydrated] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [idleCollapsed, setIdleCollapsed] = useState(false); // transient
 
   // Viewport tier checks.
   const isMedium = useMediaQuery('(min-width: 1024px) and (max-width: 1279.98px)');
+  const isWide   = useMediaQuery('(min-width: 1280px)');
 
   // Read persisted rail state once on mount.
   useEffect(() => {
@@ -80,11 +89,47 @@ export function AppSidebar({
     setHydrated(true);
   }, [storageKey]);
 
-  // Persist only the user's choice (not the auto-collapsed state).
+  // Persist ONLY the user's choice. idleCollapsed is transient and is
+  // never written here, so leaving a wide viewport cannot corrupt the
+  // user's saved preference.
   useEffect(() => {
     if (!hydrated) return;
     try { localStorage.setItem(storageKey, collapsed ? '1' : '0'); } catch { /* ignore */ }
   }, [collapsed, hydrated, storageKey]);
+
+  // Idle auto-collapse — wide desktops only, and only when the user's
+  // preference is expanded (nothing to hide if they already collapsed).
+  // The state is visual: any input clears it and restarts the timer.
+  useEffect(() => {
+    if (!hydrated || IDLE_COLLAPSE_MS <= 0) return;
+    if (!isWide || collapsed) {
+      setIdleCollapsed(false);
+      return;
+    }
+
+    let timer = window.setTimeout(() => setIdleCollapsed(true), IDLE_COLLAPSE_MS);
+    const reset = () => {
+      setIdleCollapsed(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setIdleCollapsed(true), IDLE_COLLAPSE_MS);
+    };
+
+    // Note: mousedown is deliberately NOT a reset trigger, so that a
+    // click on the toggle button (which may happen without any mouse
+    // movement) can be interpreted as "un-hide" by handleToggleClick.
+    window.addEventListener('mousemove', reset);
+    window.addEventListener('keydown', reset);
+    window.addEventListener('touchstart', reset);
+    window.addEventListener('scroll', reset, { passive: true });
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('mousemove', reset);
+      window.removeEventListener('keydown', reset);
+      window.removeEventListener('touchstart', reset);
+      window.removeEventListener('scroll', reset);
+    };
+  }, [hydrated, isWide, collapsed]);
 
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
@@ -103,8 +148,20 @@ export function AppSidebar({
     router.push('/login');
   }
 
-  // What the rail actually renders as: auto-collapsed takes priority.
-  const effectiveCollapsed = isMedium || collapsed;
+  // What the rail actually renders as: auto-collapse (viewport OR idle)
+  // takes priority over the user's stored preference.
+  const effectiveCollapsed = isMedium || collapsed || idleCollapsed;
+
+  function handleToggleClick() {
+    // If the rail is collapsed purely because of idle, this click means
+    // "show me the rail" — clear the transient state, do not flip the
+    // user's preference.
+    if (effectiveCollapsed && !collapsed && !isMedium) {
+      setIdleCollapsed(false);
+      return;
+    }
+    setCollapsed((v) => !v);
+  }
 
   const widthCls = effectiveCollapsed ? 'lg:w-16' : 'lg:w-60';
   const padCls   = effectiveCollapsed ? 'lg:pl-16' : 'lg:pl-60';
@@ -158,13 +215,13 @@ export function AppSidebar({
             {title}
           </Link>
 
-          {/* Manual toggle — only shown on wide (xl+) screens.
+          {/* Manual toggle — shown on wide (xl+) screens.
               At medium widths the rail is auto-collapsed and the
               toggle would be inert, so we hide it. */}
           {!isMedium && (
             <button
               type="button"
-              onClick={() => setCollapsed((v) => !v)}
+              onClick={handleToggleClick}
               className={[
                 'hidden lg:inline-flex p-1.5 rounded-lg hover:bg-slate-100',
                 effectiveCollapsed ? 'mx-auto' : 'ml-auto',
