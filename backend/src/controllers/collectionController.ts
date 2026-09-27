@@ -42,6 +42,7 @@ export async function createCollection(req: Request, res: Response) {
     amount: input.amount,
     mobileReference: input.mobileReference ?? null,
     notes: input.notes ?? null,
+    onBehalfOfUserId: input.onBehalfOfUserId ?? null,
   });
   res.status(201).json({ success: true, collection });
 }

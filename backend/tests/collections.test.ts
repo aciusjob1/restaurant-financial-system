@@ -94,12 +94,69 @@ describe('Collections', () => {
     expect(res.status).toBe(403);
   });
 
-  it('MANAGER cannot create a collection on behalf of a waiter (403)', async () => {
+  it('MANAGER without onBehalfOfUserId is rejected (400)', async () => {
     const agent = await loginAs(MANAGER);
     const res = await agent.post('/api/v1/collections').send({
       shiftId: waiterShiftId,
       paymentMethod: 'CASH',
       amount: '100.00',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('MANAGER creates a collection on behalf of a waiter; userId = waiter, createdById = manager', async () => {
+    const w = await loginAs(WAITER);
+    const meW = await w.get('/api/v1/auth/me');
+    const waiterId = meW.body.user.id;
+
+    const m = await loginAs(MANAGER);
+    const meM = await m.get('/api/v1/auth/me');
+    const managerId = meM.body.user.id;
+
+    const REF = 'PHASE19B-COL-1';
+    const res = await m.post('/api/v1/collections').send({
+      shiftId: waiterShiftId,
+      paymentMethod: 'MPESA',
+      amount: '7777.00',
+      mobileReference: REF,
+      onBehalfOfUserId: waiterId,
+    });
+    expect(res.status).toBe(201);
+
+    const row = await prisma.collection.findFirst({ where: { mobileReference: REF } });
+    expect(row).not.toBeNull();
+    expect(row!.userId).toBe(waiterId);
+    expect(row!.createdById).toBe(managerId);
+  });
+
+  it('WAITER passing a different onBehalfOfUserId is rejected (403)', async () => {
+    const w = await loginAs(WAITER);
+    const w2 = await loginAs(WAITER2);
+    const meW2 = await w2.get('/api/v1/auth/me');
+    const waiter2Id = meW2.body.user.id;
+
+    const res = await w.post('/api/v1/collections').send({
+      shiftId: waiterShiftId,
+      paymentMethod: 'CASH',
+      amount: '100.00',
+      onBehalfOfUserId: waiter2Id,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it('MANAGER cannot create on behalf of a user who does not own the shift (403)', async () => {
+    const w2 = await loginAs(WAITER2);
+    const meW2 = await w2.get('/api/v1/auth/me');
+    const waiter2Id = meW2.body.user.id;
+
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/collections').send({
+      shiftId: waiterShiftId,
+      paymentMethod: 'CASH',
+      amount: '100.00',
+      onBehalfOfUserId: waiter2Id,
     });
     expect(res.status).toBe(403);
   });

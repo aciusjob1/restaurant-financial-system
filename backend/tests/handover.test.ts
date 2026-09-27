@@ -11,7 +11,9 @@ const MANAGER = { username: 'phase8-manager', password: 'ManagerPassword!234', f
 const WAITER = { username: 'phase8-waiter', password: 'WaiterPassword!234', fullName: 'Phase 8 Waiter', role: 'WAITER' as const };
 const WAITER2 = { username: 'phase8-waiter2', password: 'WaiterPassword!234', fullName: 'Phase 8 Waiter 2', role: 'WAITER' as const };
 const AUDITOR = { username: 'phase8-auditor', password: 'AuditorPassword!234', fullName: 'Phase 8 Auditor', role: 'AUDITOR' as const };
-const ALL = [OWNER, MANAGER, WAITER, WAITER2, AUDITOR];
+const ON_BEHALF_WAITER = { username: 'phase19b-waiter-a', password: 'WaiterPassword!234', fullName: 'Phase 19b Waiter A', role: 'WAITER' as const };
+const ON_BEHALF_WAITER2 = { username: 'phase19b-waiter-b', password: 'WaiterPassword!234', fullName: 'Phase 19b Waiter B', role: 'WAITER' as const };
+const ALL = [OWNER, MANAGER, WAITER, WAITER2, AUDITOR, ON_BEHALF_WAITER, ON_BEHALF_WAITER2];
 
 // Dedicated business date for this test file.
 const TEST_DATE = '2099-12-10';
@@ -202,14 +204,15 @@ describe('Cash handover — preconditions and permissions', () => {
     expect(res.status).toBe(403);
   });
 
-  it('MANAGER cannot create a handover on behalf of a waiter (403)', async () => {
+  it('MANAGER without onBehalfOfUserId is rejected (400)', async () => {
     const m = await loginAs(MANAGER);
     const meMgr = await m.get('/api/v1/auth/me');
     const res = await m.post('/api/v1/handovers').send({
       reconciliationId: recon2,
       toUserId: meMgr.body.user.id,
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
   it('WAITER cannot confirm a handover (403)', async () => {
@@ -298,5 +301,117 @@ describe('Cash handover — receiver list for the kiosk', () => {
     expect(res.body.users.length).toBeGreaterThan(0);
     expect(typeof res.body.users[0].id).toBe('string');
     expect(res.body.users[0].id.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Cash handover — on behalf (Phase 19b)', () => {
+  let reconOnBehalf: string;
+  const ON_BEHALF_DATE = '2099-12-13';
+
+  it('on-behalf waiter2 sets up a reconciliation', async () => {
+    const w2 = await loginAs(ON_BEHALF_WAITER2);
+    const s = await w2.post('/api/v1/shifts').send({
+      businessDate: ON_BEHALF_DATE, openingCash: '0.00',
+    });
+    expect(s.status).toBe(201);
+    const shiftId = s.body.shift.id;
+
+    const c = await w2.post('/api/v1/collections').send({
+      shiftId, paymentMethod: 'CASH', amount: '30000.00',
+    });
+    expect(c.status).toBe(201);
+
+    await w2.post(`/api/v1/shifts/${shiftId}/transition`).send({ to: 'SUBMITTED' });
+    const r = await w2.post('/api/v1/reconciliations').send({ shiftId });
+    expect(r.status).toBe(201);
+    reconOnBehalf = r.body.reconciliation.id;
+
+    await w2.patch(`/api/v1/reconciliations/${reconOnBehalf}`).send({
+      actualCash: '30000.00', actualMobile: '0.00',
+    });
+    await w2.post(`/api/v1/reconciliations/${reconOnBehalf}/submit`).send({});
+  });
+
+  it('MANAGER creates a handover on behalf of a waiter; fromUserId = waiter, createdById = manager', async () => {
+    const w2 = await loginAs(ON_BEHALF_WAITER2);
+    const meW2 = await w2.get('/api/v1/auth/me');
+    const waiter2Id = meW2.body.user.id;
+
+    const m = await loginAs(MANAGER);
+    const meM = await m.get('/api/v1/auth/me');
+    const managerId = meM.body.user.id;
+
+    const res = await m.post('/api/v1/handovers').send({
+      reconciliationId: reconOnBehalf,
+      toUserId: managerId,
+      onBehalfOfUserId: waiter2Id,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.handover.amount).toBe('30000.00');
+    expect(res.body.handover.status).toBe('PENDING');
+
+    const row = await prisma.cashHandover.findFirst({
+      where: { reconciliationId: reconOnBehalf },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.fromUserId).toBe(waiter2Id);
+    expect(row!.createdById).toBe(managerId);
+    expect(row!.toUserId).toBe(managerId);
+  });
+
+  it('MANAGER who created on behalf confirms the handover (200)', async () => {
+    const m = await loginAs(MANAGER);
+    const list = await m.get('/api/v1/handovers?reconciliationId=' + reconOnBehalf);
+    expect(list.status).toBe(200);
+    expect(list.body.handovers.length).toBeGreaterThan(0);
+    const handoverId = list.body.handovers[0].id;
+
+    const res = await m.post(`/api/v1/handovers/${handoverId}/confirm`).send({});
+    expect(res.status).toBe(200);
+    expect(res.body.handover.status).toBe('CONFIRMED');
+  });
+
+  it('OWNER creates a handover on behalf of a waiter (201)', async () => {
+    const ON_BEHALF_DATE_2 = '2099-12-14';
+    const w = await loginAs(ON_BEHALF_WAITER);
+    const s = await w.post('/api/v1/shifts').send({
+      businessDate: ON_BEHALF_DATE_2, openingCash: '0.00',
+    });
+    expect(s.status).toBe(201);
+    const shiftId = s.body.shift.id;
+
+    await w.post('/api/v1/collections').send({
+      shiftId, paymentMethod: 'CASH', amount: '40000.00',
+    });
+    await w.post(`/api/v1/shifts/${shiftId}/transition`).send({ to: 'SUBMITTED' });
+    const r = await w.post('/api/v1/reconciliations').send({ shiftId });
+    expect(r.status).toBe(201);
+    const reconId = r.body.reconciliation.id;
+
+    await w.patch(`/api/v1/reconciliations/${reconId}`).send({
+      actualCash: '40000.00', actualMobile: '0.00',
+    });
+    await w.post(`/api/v1/reconciliations/${reconId}/submit`).send({});
+
+    const meW = await w.get('/api/v1/auth/me');
+    const waiterId = meW.body.user.id;
+
+    const o = await loginAs(OWNER);
+    const meO = await o.get('/api/v1/auth/me');
+    const ownerId = meO.body.user.id;
+
+    const res = await o.post('/api/v1/handovers').send({
+      reconciliationId: reconId,
+      toUserId: ownerId,
+      onBehalfOfUserId: waiterId,
+    });
+    expect(res.status).toBe(201);
+
+    const row = await prisma.cashHandover.findFirst({
+      where: { reconciliationId: reconId },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.fromUserId).toBe(waiterId);
+    expect(row!.createdById).toBe(ownerId);
   });
 });

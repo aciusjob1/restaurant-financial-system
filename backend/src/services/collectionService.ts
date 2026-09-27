@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../errors/ApiError.js';
+import { resolveAttributedUser } from '../utils/attributedUser.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import type { PaymentMethod, Prisma } from '@prisma/client';
 
@@ -95,20 +96,14 @@ export async function createCollection(input: {
   amount: string;
   mobileReference: string | null;
   notes: string | null;
+  onBehalfOfUserId: string | null;
 }) {
-  // Only the owning waiter may declare on their own shift.
-  // Managers/owners/auditors cannot create collections on behalf of waiters.
-  if (input.actor.role !== 'WAITER') {
-    throw new ApiError(
-      403,
-      'FORBIDDEN',
-      'Only the shift owner may declare collections.'
-    );
-  }
+  // Resolve attributed user: WAITER → self; MANAGER/OWNER → required target.
+  const attributedUserId = resolveAttributedUser(input.actor, input.onBehalfOfUserId);
 
   const shift = await loadEditableShift(input.shiftId);
-  if (shift.userId !== input.actor.id) {
-    throw new ApiError(403, 'FORBIDDEN', 'That shift does not belong to you.');
+  if (shift.userId !== attributedUserId) {
+    throw new ApiError(403, 'FORBIDDEN', 'Shift is not owned by the attributed user.');
   }
   assertShiftOpen(shift.status, 'create');
 
@@ -116,7 +111,7 @@ export async function createCollection(input: {
     const row = await prisma.collection.create({
       data: {
         shiftId: input.shiftId,
-        userId: input.actor.id,
+        userId: attributedUserId,
         createdById: input.actor.id,
         paymentMethod: input.paymentMethod,
         amount: toDecimal(input.amount),

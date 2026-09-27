@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../errors/ApiError.js';
+import { resolveAttributedUser } from '../utils/attributedUser.js';
 import { toMoneyString } from '../utils/money.js';
 import type { CashHandoverStatus, Prisma } from '@prisma/client';
 
@@ -92,22 +93,17 @@ export async function createHandover(input: {
   reconciliationId: string;
   toUserId: string;
   notes: string | null;
+  onBehalfOfUserId: string | null;
 }) {
-  // Only the reconciliation owner (a waiter) creates the handover.
-  if (input.actor.role !== 'WAITER') {
-    throw new ApiError(
-      403,
-      'FORBIDDEN',
-      'Only the reconciliation owner may create a handover.'
-    );
-  }
+  // Resolve attributed user: WAITER → self; MANAGER/OWNER → required target.
+  const attributedUserId = resolveAttributedUser(input.actor, input.onBehalfOfUserId);
 
   const recon = await prisma.reconciliation.findUnique({
     where: { id: input.reconciliationId },
   });
   if (!recon) throw new ApiError(404, 'RECON_NOT_FOUND', 'Reconciliation not found.');
-  if (recon.userId !== input.actor.id) {
-    throw new ApiError(403, 'FORBIDDEN', 'That reconciliation does not belong to you.');
+  if (recon.userId !== attributedUserId) {
+    throw new ApiError(403, 'FORBIDDEN', 'Reconciliation is not owned by the attributed user.');
   }
   if (recon.status !== 'SUBMITTED' && recon.status !== 'REVIEWED') {
     throw new ApiError(
@@ -141,7 +137,7 @@ export async function createHandover(input: {
     const row = await prisma.cashHandover.create({
       data: {
         reconciliationId: recon.id,
-        fromUserId: input.actor.id,
+        fromUserId: attributedUserId,
         createdById: input.actor.id,
         toUserId: input.toUserId,
         amount: recon.actualCash, // server-derived; client cannot choose

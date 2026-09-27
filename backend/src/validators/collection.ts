@@ -29,6 +29,9 @@ export const CreateCollectionSchema = z.object({
   amount: PositiveMoneyString,
   mobileReference: z.string().trim().max(64).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
+  // MANAGER/OWNER only: attribute this collection to a specific waiter.
+  // WAITER must omit or set to own id.
+  onBehalfOfUserId: z.string().min(1).nullable().optional(),
 });
 
 export const UpdateCollectionSchema = z.object({

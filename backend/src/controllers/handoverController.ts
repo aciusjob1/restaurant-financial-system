@@ -38,6 +38,7 @@ export async function createHandover(req: Request, res: Response) {
     reconciliationId: input.reconciliationId,
     toUserId: input.toUserId,
     notes: input.notes ?? null,
+    onBehalfOfUserId: input.onBehalfOfUserId ?? null,
   });
   res.status(201).json({ success: true, handover });
 }

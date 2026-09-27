@@ -17,10 +17,11 @@ collectionRouter.use(requireAuth);
 collectionRouter.get('/', asyncHandler(collectionController.listCollections));
 collectionRouter.get('/:id', asyncHandler(collectionController.getCollection));
 
-// Create: WAITER only (their own shift).
+// Create: WAITER (own shift) or MANAGER/OWNER (on behalf of a waiter via
+// onBehalfOfUserId). AUDITOR excluded.
 collectionRouter.post(
   '/',
-  requireRole('WAITER'),
+  requireRole('WAITER', 'MANAGER', 'OWNER'),
   validateBody(CreateCollectionSchema),
   asyncHandler(collectionController.createCollection)
 );

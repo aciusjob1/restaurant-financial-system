@@ -25,10 +25,11 @@ handoverRouter.get(
 
 handoverRouter.get('/:id', asyncHandler(handoverController.getHandover));
 
-// Create: WAITER only (their own reconciliation).
+// Create: WAITER (own reconciliation) or MANAGER/OWNER (on behalf of a
+// waiter via onBehalfOfUserId). AUDITOR excluded.
 handoverRouter.post(
   '/',
-  requireRole('WAITER'),
+  requireRole('WAITER', 'MANAGER', 'OWNER'),
   validateBody(CreateCashHandoverSchema),
   asyncHandler(handoverController.createHandover)
 );
