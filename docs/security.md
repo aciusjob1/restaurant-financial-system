@@ -177,3 +177,18 @@ listed as *not yet in place*:
 - **Secure file upload handling** — expense receipt attachments exist
   but their upload path is not hardened.
 - **Trust boundary diagram review** for LAN deployment (Phase 22).
+
+---
+
+## Related: Data Retention
+
+This document covers session handling, authentication, and access
+control. For how the system treats deletion, correction, and
+lifecycle across financial records, see:
+
+- `docs/data-retention.md` — Data Retention Policy
+
+The short version: financial and operational records are preserved;
+business meaning changes through status and state transitions, not
+through row deletion. The only exception is DRAFT purchase invoices,
+which can be physically removed before they enter the ledger.

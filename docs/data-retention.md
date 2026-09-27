@@ -22,9 +22,8 @@ This preserves:
 - Historical reporting (a month's totals don't change because a
   supplier was deactivated)
 - Auditability (who voided what, when, and why)
-- Foreign-key integrity (`onDelete: Restrict` is used across the
-  schema — a supplier with invoices cannot be removed even by a
-  direct Prisma call)
+- Foreign-key integrity — constraints are used to protect historical
+  relationships, with restrictive deletion behavior where appropriate
 - Reconciliation calculations (expected vs actual still resolve)
 - Accountability for financial actions
 
@@ -42,9 +41,9 @@ This preserves:
 | Positions | No | Create-only (no delete, no edit) |
 | Users | No | `PATCH` with `isActive: false` |
 | Collections | No | `POST /:id/void` with reason |
-| Reconciliations | No | State machine: DRAFT → SUBMITTED → REVIEWED; SEND_BACK returns to DRAFT |
-| Handovers | No | PENDING → CONFIRMED (see §4) |
-| Shifts | No | State machine: OPEN → SUBMITTED → RECONCILING → CLOSED (terminal) |
+| Reconciliations | No | State machine: DRAFT -> SUBMITTED -> REVIEWED; SEND_BACK returns to DRAFT |
+| Handovers | No | PENDING -> CONFIRMED (see §4) |
+| Shifts | No | State machine: OPEN -> SUBMITTED -> RECONCILING -> CLOSED (terminal) |
 | Expenses | No | State machine + `reject` with reason |
 | Salaries | No | `POST /:id/void` for payments |
 | Salary payments | No | `POST /:id/void` |
@@ -61,15 +60,20 @@ This preserves:
 
 ## 3. The DRAFT carve-out
 
-`DELETE /api/v1/purchase-invoices/:id` and
-`PUT /api/v1/purchase-invoices/:id/items` are the only endpoints in
-the system that physically remove rows. They are constrained:
+The route audit verified two physical-removal operations:
+
+- `DELETE /api/v1/purchase-invoices/:id` (delete a DRAFT invoice)
+- `PUT /api/v1/purchase-invoices/:id/items` (replace items on a
+  DRAFT invoice)
+
+Both are constrained:
 
 - The invoice must still be in DRAFT status. Once `POST /:id/post`
   runs, the invoice becomes immutable and only `POST /:id/cancel` is
   available.
-- The nested items router is mounted under `purchase-invoices/:id/items`.
-  The parent service rejects replace attempts on non-DRAFT invoices.
+- The nested items router is mounted under
+  `purchase-invoices/:id/items`. The parent service rejects replace
+  attempts on non-DRAFT invoices.
 - The FK from `PurchaseItem` back to `PurchaseInvoice` uses
   `onDelete: Cascade` — deliberate, because items cannot exist
   without their invoice.
@@ -97,22 +101,18 @@ preserved either way. But it is a workflow gap: the only way to
 correct a bad PENDING handover is to confirm it and then correct
 downstream records manually, or leave it hanging forever.
 
-**Options considered:**
+**This is backlogged, not solved.** When it is eventually designed,
+the question of who may cancel (waiter, manager/owner, or both)
+should be answered from the real operational workflow, not assumed
+now. Candidate mechanisms to consider:
 
-- **A — Add `CANCELLED` state, actor = waiter, only from PENDING.**
-  Clean, mirrors the pattern used elsewhere (collections have void,
-  salaries have void, supplier payments have void). Requires a
-  migration and a state-machine change.
-- **B — Add `REJECTED` state, actor = MANAGER/OWNER, only from
-  PENDING.** Mirrors the reconciliation SEND_BACK flow.
-- **C — Leave as-is.** Accept PENDING → CONFIRMED as the only path.
-  Document the limitation.
+- Add a `CANCELLED` state, actor TBD.
+- Add a `REJECTED` state, actor MANAGER/OWNER (mirrors reconciliation
+  SEND_BACK).
+- Leave as-is and document the limitation.
 
-**Recommendation:** **A.** It is consistent with how every other
-domain handles a "created in error" case, and it does not introduce a
-second actor for the same transition. A waiter who picks the wrong
-receiver should be able to withdraw the handover before it reaches
-that receiver.
+The record-preservation angle is already handled by the existing
+schema; the open question is purely about workflow.
 
 This is a backlog item, not a blocker for Phase 19.
 
@@ -122,9 +122,10 @@ This is a backlog item, not a blocker for Phase 19.
 
 - **Nothing they create is silently lost.** Records persist unless
   they are DRAFT purchase invoices.
-- **Nothing they record is silently changed.** Every state transition
-  records the actor and a timestamp; some transitions also require a
-  reason (void, reject, send back).
+- **Financially significant actions are not silently erased.**
+  Lifecycle transitions preserve the underlying record and record the
+  relevant actor and timestamp; transitions that require
+  justification also record a reason.
 - **Deactivating is not deleting.** A deactivated supplier still
   appears in historical invoices and reports. That is intentional.
 - **Mistakes are corrected by adding a new state, not by removing the
@@ -146,9 +147,14 @@ Route audit on 2026-09-27 across all files under `backend/src/routes`:
 | PUT | 1 | `replaceItems` on DRAFT invoice |
 | DELETE | 1 | `deleteDraftInvoice` on DRAFT invoice |
 
-Total: **2 mutating-in-the-strong-sense endpoints**, both scoped to
-DRAFT purchase invoices. Every other state change is a POST or PATCH
-that preserves the row.
+Total: **2 strong mutating endpoints**, both scoped to DRAFT purchase
+invoices. Every other state change is a POST or PATCH that preserves
+the row.
+
+Note: the initial route scan misattributed the DELETE endpoint to
+suppliers. Manual inspection of `supplierRoutes.ts` confirmed the
+route belongs to `purchaseInvoiceRouter`. The route count remains
+accurate; the ownership was corrected by reading the source.
 
 ---
 
