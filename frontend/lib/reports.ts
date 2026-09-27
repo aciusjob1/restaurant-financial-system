@@ -12,6 +12,8 @@ export type DailySalesRow = {
   mobileSales: string;
   otherSales: string;
   collectionsTotal: string;
+  collectionsCash: string;
+  collectionsMobile: string;
   expectedCash: string;
   expectedMobile: string;
   actualCash: string;
@@ -32,6 +34,9 @@ export type DailySalesResponse = {
     cashDifference: string;
     mobileDifference: string;
     handoverTotal: string;
+    collectionsTotal: string;
+    collectionsCash: string;
+    collectionsMobile: string;
     rowCount: number;
   };
 };

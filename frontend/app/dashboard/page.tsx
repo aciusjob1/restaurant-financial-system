@@ -16,6 +16,9 @@ type Stats = {
   rangeTo: string;
   rowCount: number;
   salesTotal: string;
+  collectionsTotal: string;
+  collectionsCash: string;
+  collectionsMobile: string;
   expenseTotal: string;
   cashDifference: string;
   handoverTotal: string;
@@ -151,6 +154,9 @@ export default function DashboardPage() {
             rangeTo: range.to,
             rowCount: daily.totals.rowCount,
             salesTotal: daily.totals.salesTotal,
+            collectionsTotal: daily.totals.collectionsTotal,
+            collectionsCash: daily.totals.collectionsCash,
+            collectionsMobile: daily.totals.collectionsMobile,
             expenseTotal: daily.totals.expenseTotal,
             cashDifference: daily.totals.cashDifference,
             handoverTotal: daily.totals.handoverTotal,
@@ -264,9 +270,15 @@ export default function DashboardPage() {
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
               <StatCard label="Sales" value={stats.data.salesTotal} />
+              <StatCard
+                label="Collected"
+                value={stats.data.collectionsTotal}
+                hint={`Cash ${stats.data.collectionsCash} - Mobile ${stats.data.collectionsMobile}`}
+                hintMuted
+              />
               <StatCard label="Expenses" value={stats.data.expenseTotal} />
               <StatCard
-                label="Cash Diff"
+                label="Cash Difference"
                 value={stats.data.cashDifference}
                 valueClassName={diffColor(stats.data.cashDifference)}
               />

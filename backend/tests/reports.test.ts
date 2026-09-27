@@ -493,6 +493,9 @@ describe('Reports — daily sales & cash position', () => {
     expect(res.body.totals.salesTotal).toBe('0.00');
     expect(res.body.totals.cashDifference).toBe('0.00');
     expect(res.body.totals.rowCount).toBe(0);
+    expect(res.body.totals.collectionsTotal).toBe('0.00');
+    expect(res.body.totals.collectionsCash).toBe('0.00');
+    expect(res.body.totals.collectionsMobile).toBe('0.00');
   });
 
   it('totals reflect the full filtered range regardless of limit', async () => {
@@ -504,6 +507,22 @@ describe('Reports — daily sales & cash position', () => {
     expect(res.body.rows.length).toBeLessThanOrEqual(1);
     // Total sales across D1 + D2 = 1500
     expect(res.body.totals.salesTotal).toBe('1500.00');
+  });
+
+  it('collections totals are present and split by payment bucket', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.get(
+      '/api/v1/reports/daily-sales?from=' + D_FROM + '&to=' + D_TO
+    );
+    expect(res.status).toBe(200);
+
+    const t = res.body.totals;
+    expect(typeof t.collectionsTotal).toBe('string');
+    expect(typeof t.collectionsCash).toBe('string');
+    expect(typeof t.collectionsMobile).toBe('string');
+    expect(t.collectionsTotal).toMatch(/^\d+\.\d{2}$/);
+    expect(t.collectionsCash).toMatch(/^\d+\.\d{2}$/);
+    expect(t.collectionsMobile).toMatch(/^\d+\.\d{2}$/);
   });
 });
 

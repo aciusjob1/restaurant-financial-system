@@ -59,6 +59,8 @@ type DailyRow = {
   mobileSales: Prisma.Decimal;
   otherSales: Prisma.Decimal;
   collectionsTotal: Prisma.Decimal;
+  collectionsCash: Prisma.Decimal;
+  collectionsMobile: Prisma.Decimal;
   expectedCash: Prisma.Decimal;
   expectedMobile: Prisma.Decimal;
   actualCash: Prisma.Decimal;
@@ -78,6 +80,8 @@ function makeDailyRow(key: string): DailyRow {
     mobileSales: toDecimal('0'),
     otherSales: toDecimal('0'),
     collectionsTotal: toDecimal('0'),
+    collectionsCash: toDecimal('0'),
+    collectionsMobile: toDecimal('0'),
     expectedCash: toDecimal('0'),
     expectedMobile: toDecimal('0'),
     actualCash: toDecimal('0'),
@@ -186,6 +190,10 @@ export async function dailySalesReport(
   for (const c of collections) {
     const r = get(dateKey(c.shift.businessDate));
     r.collectionsTotal = r.collectionsTotal.plus(c.amount);
+    const bucket = paymentBucket(c.paymentMethod);
+    if (bucket === 'CASH') r.collectionsCash = r.collectionsCash.plus(c.amount);
+    else if (bucket === 'MOBILE') r.collectionsMobile = r.collectionsMobile.plus(c.amount);
+    // OTHER contributes to collectionsTotal only
   }
   for (const r0 of recons) {
     const r = get(dateKey(r0.shift.businessDate));
@@ -223,6 +231,9 @@ export async function dailySalesReport(
       cashDifference: acc.cashDifference.plus(r.cashDifference),
       mobileDifference: acc.mobileDifference.plus(r.mobileDifference),
       handoverTotal: acc.handoverTotal.plus(r.handoverTotal),
+      collectionsTotal: acc.collectionsTotal.plus(r.collectionsTotal),
+      collectionsCash: acc.collectionsCash.plus(r.collectionsCash),
+      collectionsMobile: acc.collectionsMobile.plus(r.collectionsMobile),
     }),
     {
       salesTotal: toDecimal('0'),
@@ -230,6 +241,9 @@ export async function dailySalesReport(
       cashDifference: toDecimal('0'),
       mobileDifference: toDecimal('0'),
       handoverTotal: toDecimal('0'),
+      collectionsTotal: toDecimal('0'),
+      collectionsCash: toDecimal('0'),
+      collectionsMobile: toDecimal('0'),
     }
   );
 
@@ -243,6 +257,8 @@ export async function dailySalesReport(
       mobileSales: toMoneyString(r.mobileSales),
       otherSales: toMoneyString(r.otherSales),
       collectionsTotal: toMoneyString(r.collectionsTotal),
+      collectionsCash: toMoneyString(r.collectionsCash),
+      collectionsMobile: toMoneyString(r.collectionsMobile),
       expectedCash: toMoneyString(r.expectedCash),
       expectedMobile: toMoneyString(r.expectedMobile),
       actualCash: toMoneyString(r.actualCash),
@@ -259,6 +275,9 @@ export async function dailySalesReport(
       cashDifference: toMoneyString(totals.cashDifference),
       mobileDifference: toMoneyString(totals.mobileDifference),
       handoverTotal: toMoneyString(totals.handoverTotal),
+      collectionsTotal: toMoneyString(totals.collectionsTotal),
+      collectionsCash: toMoneyString(totals.collectionsCash),
+      collectionsMobile: toMoneyString(totals.collectionsMobile),
       rowCount: allRows.length,
     },
   };
