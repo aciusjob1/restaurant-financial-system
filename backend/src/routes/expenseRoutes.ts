@@ -33,7 +33,7 @@ expenseCategoryRouter.use(requireAuth);
 
 expenseCategoryRouter.get(
   '/',
-  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  requireRole('OWNER', 'MANAGER', 'AUDITOR', 'WAITER'),
   asyncHandler(expenseController.listCategories)
 );
 expenseCategoryRouter.get(
@@ -68,7 +68,7 @@ expenseRouter.post(
 
 expenseRouter.get(
   '/',
-  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  requireRole('OWNER', 'MANAGER', 'AUDITOR', 'WAITER'),
   asyncHandler(expenseController.listExpenses)
 );
 expenseRouter.get(
@@ -79,13 +79,13 @@ expenseRouter.get(
 
 expenseRouter.post(
   '/',
-  requireRole('OWNER', 'MANAGER'),
+  requireRole('OWNER', 'MANAGER', 'WAITER'),
   validateBody(CreateExpenseSchema),
   asyncHandler(expenseController.createExpense)
 );
 expenseRouter.patch(
   '/:id',
-  requireRole('OWNER', 'MANAGER'),
+  requireRole('OWNER', 'MANAGER', 'WAITER'),
   validateBody(UpdateExpenseSchema),
   asyncHandler(expenseController.updateExpense)
 );

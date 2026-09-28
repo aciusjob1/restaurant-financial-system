@@ -70,6 +70,7 @@ async function nextExpenseNumber(tx: Prisma.TransactionClient): Promise<string> 
 }
 
 export async function listExpenses(opts: {
+  actor: { id: string; role: 'OWNER' | 'MANAGER' | 'WAITER' | 'AUDITOR' };
   businessDate?: string;
   from?: string;
   to?: string;
@@ -80,6 +81,13 @@ export async function listExpenses(opts: {
   includeRejected: boolean;
 }) {
   const where: Prisma.ExpenseWhereInput = {};
+
+  if (opts.actor.role === 'WAITER') {
+    where.OR = [
+      { createdBy: opts.actor.id },
+      { paidByUserId: opts.actor.id },
+    ];
+  }
 
   if (opts.businessDate) {
     where.businessDate = parseBusinessDate(opts.businessDate);
@@ -127,8 +135,16 @@ export async function createExpense(input: {
   attachmentPath?: string | null;
   notes?: string | null;
 }) {
-  if (input.actor.role !== 'OWNER' && input.actor.role !== 'MANAGER') {
-    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER or MANAGER can create expenses.');
+  if (
+    input.actor.role !== 'OWNER' &&
+    input.actor.role !== 'MANAGER' &&
+    input.actor.role !== 'WAITER'
+  ) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER, MANAGER, or WAITER can create expenses.');
+  }
+
+  if (input.actor.role === 'WAITER' && input.paidByUserId && input.paidByUserId !== input.actor.id) {
+    throw new ApiError(403, 'FORBIDDEN', 'A waiter can only attribute an expense to themselves.');
   }
 
   const businessDate = parseBusinessDate(input.businessDate);
@@ -145,6 +161,9 @@ export async function createExpense(input: {
   if (input.shiftId) {
     const shift = await prisma.shift.findUnique({ where: { id: input.shiftId } });
     if (!shift) throw new ApiError(400, 'INVALID_SHIFT', 'Shift does not exist.');
+    if (input.actor.role === 'WAITER' && shift.userId !== input.actor.id) {
+      throw new ApiError(403, 'FORBIDDEN', 'Shift does not belong to you.');
+    }
   }
 
   if (input.paidByUserId) {
@@ -152,12 +171,15 @@ export async function createExpense(input: {
     if (!user) throw new ApiError(400, 'INVALID_PAID_BY', 'Paid-by user does not exist.');
   }
 
+  const isWaiter = input.actor.role === 'WAITER';
   const row = await prisma.$transaction(async (tx) => {
     const expenseNumber = await nextExpenseNumber(tx);
     return tx.expense.create({
       data: {
         expenseNumber,
         businessDate,
+        status: isWaiter ? 'PENDING' : 'DRAFT',
+        submittedAt: isWaiter ? new Date() : null,
         categoryId: input.categoryId,
         shiftId: input.shiftId ?? null,
         paidByUserId: input.paidByUserId ?? null,
@@ -191,11 +213,23 @@ export async function updateExpense(input: {
   const existing = await prisma.expense.findUnique({ where: { id: input.id } });
   if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Expense not found.');
 
-  if (input.actor.role !== 'OWNER' && input.actor.role !== 'MANAGER') {
-    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER or MANAGER can edit expenses.');
-  }
-
-  if (existing.status !== 'DRAFT' && existing.status !== 'REJECTED') {
+  if (input.actor.role === 'WAITER') {
+    if (existing.createdBy !== input.actor.id) {
+      throw new ApiError(403, 'FORBIDDEN', 'You can only edit your own expenses.');
+    }
+    if (existing.status !== 'PENDING') {
+      throw new ApiError(
+        409,
+        'NOT_EDITABLE',
+        'A waiter can only edit an expense in PENDING.'
+      );
+    }
+    if (input.paidByUserId && input.paidByUserId !== input.actor.id) {
+      throw new ApiError(403, 'FORBIDDEN', 'A waiter can only attribute an expense to themselves.');
+    }
+  } else if (input.actor.role !== 'OWNER' && input.actor.role !== 'MANAGER') {
+    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER, MANAGER, or WAITER can edit expenses.');
+  } else if (existing.status !== 'DRAFT' && existing.status !== 'REJECTED') {
     throw new ApiError(
       409,
       'NOT_EDITABLE',

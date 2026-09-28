@@ -13,8 +13,9 @@ const OWNER = { username: 'phase10-owner', password: 'OwnerPassword!234', fullNa
 const MANAGER = { username: 'phase10-manager', password: 'ManagerPassword!234', fullName: 'Phase 10 Manager', role: 'MANAGER' as const };
 const MANAGER2 = { username: 'phase10-manager2', password: 'ManagerPassword!234', fullName: 'Phase 10 Manager 2', role: 'MANAGER' as const };
 const WAITER = { username: 'phase10-waiter', password: 'WaiterPassword!234', fullName: 'Phase 10 Waiter', role: 'WAITER' as const };
+const WAITER2 = { username: 'phase10-waiter2', password: 'WaiterPassword!234', fullName: 'Phase 10 Waiter 2', role: 'WAITER' as const };
 const AUDITOR = { username: 'phase10-auditor', password: 'AuditorPassword!234', fullName: 'Phase 10 Auditor', role: 'AUDITOR' as const };
-const ALL = [OWNER, MANAGER, MANAGER2, WAITER, AUDITOR];
+const ALL = [OWNER, MANAGER, MANAGER2, WAITER, WAITER2, AUDITOR];
 
 // Dedicated business dates. No other test file may use these.
 const D_BASIC = '2099-08-01';
@@ -22,6 +23,9 @@ const D_CLOSED = '2099-08-02';
 const D_LIFECYCLE = '2099-08-03';
 const D_FILTERS = '2099-08-04';
 const D_ATTACH = '2099-08-05';
+const D_WAITER_CREATE = '2099-08-06';
+const D_WAITER_SCOPE  = '2099-08-07';
+const D_WAITER_EDIT   = '2099-08-08';
 
 const TEST_CATEGORY = 'Phase10 Test Category';
 
@@ -40,7 +44,7 @@ async function cleanup() {
   await prisma.expenseCategory.deleteMany({ where: { name: TEST_CATEGORY } });
 
   // Clean closings on the dates we used
-  const dates = [D_BASIC, D_CLOSED, D_LIFECYCLE, D_FILTERS, D_ATTACH].map(
+  const dates = [D_BASIC, D_CLOSED, D_LIFECYCLE, D_FILTERS, D_ATTACH, D_WAITER_CREATE, D_WAITER_SCOPE, D_WAITER_EDIT].map(
     (d) => new Date(`${d}T00:00:00.000Z`)
   );
   await prisma.dailyClosing.deleteMany({ where: { businessDate: { in: dates } } });
@@ -318,16 +322,12 @@ describe('Expenses — filters', () => {
 });
 
 describe('Expenses — permissions', () => {
-  it('WAITER cannot create, edit, submit, or approve (403)', async () => {
+  it('WAITER cannot submit or approve (403)', async () => {
     const w = await loginAs(WAITER);
-    const create = await w.post('/api/v1/expenses').send({
-      businessDate: D_BASIC,
-      categoryId: testCategoryId,
-      amount: '1.00',
-      paymentMethod: 'CASH',
-      description: 'no',
-    });
-    expect(create.status).toBe(403);
+    const submit = await w.post('/api/v1/expenses/some-id/submit').send({});
+    expect(submit.status).toBe(403);
+    const approve = await w.post('/api/v1/expenses/some-id/approve').send({});
+    expect(approve.status).toBe(403);
   });
 
   it('AUDITOR can read but not write', async () => {
@@ -367,5 +367,202 @@ describe('Expenses — attachment upload', () => {
       .attach('file', fakeExe, { filename: 'evil.exe', contentType: 'application/x-msdownload' });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('BAD_FILE_TYPE');
+  });
+});
+
+describe('Expenses - waiter workflow', () => {
+  let waiterCreateExpenseId: string;
+  let waiterScopeOwnId: string;
+  let waiterScopePaidId: string;
+  let waiterScopeUnrelatedId: string;
+  let waiter2EditTargetId: string;
+  let waiterApprovedId: string;
+
+  it('waiter creates an expense; status is PENDING, submittedAt set', async () => {
+    const w = await loginAs(WAITER);
+    const me = await w.get('/api/v1/auth/me');
+    const res = await w.post('/api/v1/expenses').send({
+      businessDate: D_WAITER_CREATE,
+      categoryId: testCategoryId,
+      amount: '15.00',
+      paymentMethod: 'CASH',
+      description: 'waiter-created',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.status).toBe('PENDING');
+    expect(res.body.expense.submittedAt).toBeTruthy();
+    expect(res.body.expense.createdBy).toBe(me.body.user.id);
+    waiterCreateExpenseId = res.body.expense.id;
+  });
+
+  it('waiter cannot set paidByUserId to another user (403)', async () => {
+    const w = await loginAs(WAITER);
+    const m = await loginAs(MANAGER);
+    const mgr = await m.get('/api/v1/auth/me');
+    const res = await w.post('/api/v1/expenses').send({
+      businessDate: D_WAITER_CREATE,
+      categoryId: testCategoryId,
+      amount: '5.00',
+      paymentMethod: 'CASH',
+      description: 'bad attribution',
+      paidByUserId: mgr.body.user.id,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it('waiter cannot attach another user shift (403)', async () => {
+    const mgr = await prisma.user.findUnique({ where: { username: MANAGER.username } });
+    const otherShift = await prisma.shift.create({
+      data: {
+        userId: mgr!.id,
+        businessDate: new Date(D_WAITER_CREATE + 'T00:00:00.000Z'),
+        status: 'OPEN',
+        openingCash: '0.00',
+      },
+    });
+    const w = await loginAs(WAITER);
+    const res = await w.post('/api/v1/expenses').send({
+      businessDate: D_WAITER_CREATE,
+      categoryId: testCategoryId,
+      amount: '5.00',
+      paymentMethod: 'CASH',
+      description: 'bad shift',
+      shiftId: otherShift.id,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it('waiter can attach their own shift (201)', async () => {
+    const w = await loginAs(WAITER);
+    const me = await w.get('/api/v1/auth/me');
+    const ownShift = await prisma.shift.create({
+      data: {
+        userId: me.body.user.id,
+        businessDate: new Date(D_WAITER_CREATE + 'T00:00:00.000Z'),
+        status: 'OPEN',
+        openingCash: '0.00',
+      },
+    });
+    const res = await w.post('/api/v1/expenses').send({
+      businessDate: D_WAITER_CREATE,
+      categoryId: testCategoryId,
+      amount: '7.00',
+      paymentMethod: 'CASH',
+      description: 'own shift',
+      shiftId: ownShift.id,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.shiftId).toBe(ownShift.id);
+  });
+
+  it('waiter list = own-created union own-paid; excludes unrelated', async () => {
+    const w = await loginAs(WAITER);
+    const me = await w.get('/api/v1/auth/me');
+    const m = await loginAs(MANAGER);
+
+    const createdByWaiter = await w.post('/api/v1/expenses').send({
+      businessDate: D_WAITER_SCOPE,
+      categoryId: testCategoryId,
+      amount: '11.00',
+      paymentMethod: 'CASH',
+      description: 'waiter scope own',
+    });
+    expect(createdByWaiter.status).toBe(201);
+    waiterScopeOwnId = createdByWaiter.body.expense.id;
+
+    const paidByWaiter = await m.post('/api/v1/expenses').send({
+      businessDate: D_WAITER_SCOPE,
+      categoryId: testCategoryId,
+      amount: '12.00',
+      paymentMethod: 'CASH',
+      description: 'manager recorded for waiter',
+      paidByUserId: me.body.user.id,
+    });
+    expect(paidByWaiter.status).toBe(201);
+    waiterScopePaidId = paidByWaiter.body.expense.id;
+
+    const unrelated = await m.post('/api/v1/expenses').send({
+      businessDate: D_WAITER_SCOPE,
+      categoryId: testCategoryId,
+      amount: '13.00',
+      paymentMethod: 'CASH',
+      description: 'unrelated',
+    });
+    expect(unrelated.status).toBe(201);
+    waiterScopeUnrelatedId = unrelated.body.expense.id;
+
+    const list = await w.get('/api/v1/expenses?businessDate=' + D_WAITER_SCOPE);
+    expect(list.status).toBe(200);
+    const ids = list.body.expenses.map((e: { id: string }) => e.id);
+    expect(ids).toContain(waiterScopeOwnId);
+    expect(ids).toContain(waiterScopePaidId);
+    expect(ids).not.toContain(waiterScopeUnrelatedId);
+  });
+
+  it('waiter can edit own PENDING expense (200)', async () => {
+    const w = await loginAs(WAITER);
+    const res = await w
+      .patch('/api/v1/expenses/' + waiterScopeOwnId)
+      .send({ amount: '99.00' });
+    expect(res.status).toBe(200);
+    expect(res.body.expense.amount).toBe('99.00');
+  });
+
+  it('waiter cannot edit another waiter expense (403)', async () => {
+    const w2 = await prisma.user.findUnique({ where: { username: WAITER2.username } });
+    const other = await prisma.expense.create({
+      data: {
+        expenseNumber: 'phase10-w2-' + Date.now(),
+        businessDate: new Date(D_WAITER_EDIT + 'T00:00:00.000Z'),
+        categoryId: testCategoryId,
+        createdBy: w2!.id,
+        amount: '5.00',
+        paymentMethod: 'CASH',
+        description: 'waiter2 pending',
+        status: 'PENDING',
+        submittedAt: new Date(),
+      },
+    });
+    waiter2EditTargetId = other.id;
+    const w = await loginAs(WAITER);
+    const res = await w
+      .patch('/api/v1/expenses/' + waiter2EditTargetId)
+      .send({ amount: '6.00' });
+    expect(res.status).toBe(403);
+  });
+
+  it('waiter cannot edit own APPROVED expense (409)', async () => {
+    const w = await loginAs(WAITER);
+    const me = await w.get('/api/v1/auth/me');
+    const approved = await prisma.expense.create({
+      data: {
+        expenseNumber: 'phase10-wa-' + Date.now(),
+        businessDate: new Date(D_WAITER_EDIT + 'T00:00:00.000Z'),
+        categoryId: testCategoryId,
+        createdBy: me.body.user.id,
+        amount: '5.00',
+        paymentMethod: 'CASH',
+        description: 'approved',
+        status: 'APPROVED',
+        submittedAt: new Date(),
+        approvedAt: new Date(),
+      },
+    });
+    waiterApprovedId = approved.id;
+    const res = await w
+      .patch('/api/v1/expenses/' + waiterApprovedId)
+      .send({ amount: '6.00' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('NOT_EDITABLE');
+  });
+
+  it('waiter cannot approve, even their own PENDING (403)', async () => {
+    const w = await loginAs(WAITER);
+    const res = await w
+      .post('/api/v1/expenses/' + waiterCreateExpenseId + '/approve')
+      .send({});
+    expect(res.status).toBe(403);
   });
 });

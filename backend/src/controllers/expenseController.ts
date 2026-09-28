@@ -53,6 +53,7 @@ export async function listExpenses(req: Request, res: Response) {
   }
   const q = parsed.data;
   const expenses = await expenseService.listExpenses({
+    actor: { id: req.user!.id, role: req.user!.role },
     businessDate: q.businessDate,
     from: q.from,
     to: q.to,
