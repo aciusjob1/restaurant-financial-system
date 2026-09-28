@@ -144,12 +144,13 @@ export async function dailySalesReport(
       }),
       prisma.cashHandover.findMany({
         where: {
-          reconciliation: { shift: { businessDate: { gte: from, lte: to } } },
+          shift: { businessDate: { gte: from, lte: to } },
+          voidedAt: null,
         },
         select: {
           amount: true,
-          reconciliation: {
-            select: { shift: { select: { businessDate: true } } },
+          shift: {
+            select: { businessDate: true },
           },
         },
       }),
@@ -207,7 +208,7 @@ export async function dailySalesReport(
     );
   }
   for (const h of handovers) {
-    const r = get(dateKey(h.reconciliation.shift.businessDate));
+    const r = get(dateKey(h.shift.businessDate));
     r.handoverTotal = r.handoverTotal.plus(h.amount);
   }
   for (const e of expenses) {
@@ -355,7 +356,8 @@ export async function cashHandoverLedgerReport(
   offset: number
 ) {
   const where: Prisma.CashHandoverWhereInput = {
-    reconciliation: { shift: { businessDate: { gte: range.from, lte: range.to } } },
+    shift: { businessDate: { gte: range.from, lte: range.to } },
+    voidedAt: null,
   };
   if (fromUserId) where.fromUserId = fromUserId;
   if (toUserId) where.toUserId = toUserId;
@@ -366,12 +368,12 @@ export async function cashHandoverLedgerReport(
     include: {
       fromUser: { select: { username: true, fullName: true } },
       toUser: { select: { username: true, fullName: true } },
-      reconciliation: {
-        select: { shift: { select: { businessDate: true } } },
+      shift: {
+        select: { businessDate: true },
       },
     },
     orderBy: [
-      { reconciliation: { shift: { businessDate: 'desc' } } },
+      { shift: { businessDate: 'desc' } },
       { handedOverAt: 'desc' },
     ],
     take: limit,
@@ -396,7 +398,7 @@ export async function cashHandoverLedgerReport(
   return {
     rows: rows.map((h) => ({
       id: h.id,
-      businessDate: dateKey(h.reconciliation.shift.businessDate),
+      businessDate: dateKey(h.shift.businessDate),
       reconciliationId: h.reconciliationId,
       fromUserId: h.fromUserId,
       fromUsername: h.fromUser.username,

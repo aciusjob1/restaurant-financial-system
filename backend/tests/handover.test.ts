@@ -15,8 +15,15 @@ const ON_BEHALF_WAITER = { username: 'phase19b-waiter-a', password: 'WaiterPassw
 const ON_BEHALF_WAITER2 = { username: 'phase19b-waiter-b', password: 'WaiterPassword!234', fullName: 'Phase 19b Waiter B', role: 'WAITER' as const };
 const ALL = [OWNER, MANAGER, WAITER, WAITER2, AUDITOR, ON_BEHALF_WAITER, ON_BEHALF_WAITER2];
 
-// Dedicated business date for this test file.
 const TEST_DATE = '2099-12-10';
+const ON_BEHALF_DATE = '2099-12-13';
+const NO_RECON_DATE = '2099-12-14';
+
+// Shared shift ids: each waiter may only have one active (non-CLOSED) shift,
+// so later describes must reuse shifts opened by earlier describes instead of
+// opening new ones. Populated by the describes that open them.
+let sharedWaiter2ShiftId: string = '' ;
+let sharedOnBehalfWaiterShiftId: string = '' ;
 
 async function cleanup() {
   const usernames = ALL.map((u) => u.username);
@@ -64,7 +71,17 @@ async function loginAs(u: { username: string; password: string }) {
   return agent;
 }
 
-describe('Cash handover — happy path', () => {
+async function currentUserId(agent: request.SuperAgentTest): Promise<string> {
+  const me = await agent.get('/api/v1/auth/me');
+  expect(me.status).toBe(200);
+  return me.body.user.id;
+}
+
+// ============================================================
+// Happy path
+// ============================================================
+describe('Cash handover - happy path', () => {
+  let shiftId: string;
   let reconId: string;
   let handoverId: string;
 
@@ -72,64 +89,60 @@ describe('Cash handover — happy path', () => {
     const w = await loginAs(WAITER);
     const s = await w.post('/api/v1/shifts').send({ businessDate: TEST_DATE, openingCash: '0.00' });
     expect(s.status).toBe(201);
-    const shiftId = s.body.shift.id;
+    shiftId = s.body.shift.id;
 
     const c = await w.post('/api/v1/collections').send({
       shiftId, paymentMethod: 'CASH', amount: '125000.00',
     });
     expect(c.status).toBe(201);
 
-    const t = await w.post(`/api/v1/shifts/${shiftId}/transition`).send({ to: 'SUBMITTED' });
+    const t = await w.post('/api/v1/shifts/' + shiftId + '/transition').send({ to: 'SUBMITTED' });
     expect(t.status).toBe(200);
 
     const r = await w.post('/api/v1/reconciliations').send({ shiftId });
     expect(r.status).toBe(201);
     reconId = r.body.reconciliation.id;
 
-    const p = await w.patch(`/api/v1/reconciliations/${reconId}`).send({
+    const p = await w.patch('/api/v1/reconciliations/' + reconId).send({
       actualCash: '125000.00',
       actualMobile: '0.00',
     });
     expect(p.status).toBe(200);
 
-    const sub = await w.post(`/api/v1/reconciliations/${reconId}/submit`).send({});
+    const sub = await w.post('/api/v1/reconciliations/' + reconId + '/submit').send({});
     expect(sub.status).toBe(200);
   });
 
-  it('waiter creates handover; amount is server-derived from actualCash', async () => {
+  it('waiter creates handover; amount is client-supplied and echoed', async () => {
     const w = await loginAs(WAITER);
     const m = await loginAs(MANAGER);
-    const meMgr = await m.get('/api/v1/auth/me');
-    const managerId = meMgr.body.user.id;
+    const managerId = await currentUserId(m);
 
     const res = await w.post('/api/v1/handovers').send({
-      reconciliationId: reconId,
+      shiftId,
+      amount: '124500.00',
       toUserId: managerId,
-      notes: 'handing over 125,000 in cash',
+      notes: 'handing over 124,500 in cash',
     });
     expect(res.status).toBe(201);
-    expect(res.body.handover.amount).toBe('125000.00');
+    expect(res.body.handover.amount).toBe('124500.00');
     expect(res.body.handover.status).toBe('PENDING');
+    expect(res.body.handover.shiftId).toBe(shiftId);
     expect(res.body.handover.fromUserId).toBeTruthy();
     expect(res.body.handover.toUserId).toBe(managerId);
     handoverId = res.body.handover.id;
   });
 
-  it('rejects a second handover for the same reconciliation (409)', async () => {
-    const w = await loginAs(WAITER);
-    const m = await loginAs(MANAGER);
-    const meMgr = await m.get('/api/v1/auth/me');
-    const res = await w.post('/api/v1/handovers').send({
-      reconciliationId: reconId,
-      toUserId: meMgr.body.user.id,
-    });
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('HANDOVER_EXISTS');
+  it('handover carries the shift reconciliation as a snapshot', async () => {
+    const row = await prisma.cashHandover.findUnique({ where: { id: handoverId } });
+    expect(row).not.toBeNull();
+    expect(row!.reconciliationId).toBe(reconId);
+    expect(row!.shiftId).toBe(shiftId);
   });
 
   it('manager confirms the handover', async () => {
     const m = await loginAs(MANAGER);
-    const res = await m.post(`/api/v1/handovers/${handoverId}/confirm`).send({
+    const res = await m.post('/api/v1/handovers/' + handoverId + '/confirm').send({
       confirmedNotes: 'received in full',
     });
     expect(res.status).toBe(200);
@@ -140,94 +153,123 @@ describe('Cash handover — happy path', () => {
 
   it('cannot confirm a confirmed handover again (409)', async () => {
     const m = await loginAs(MANAGER);
-    const res = await m.post(`/api/v1/handovers/${handoverId}/confirm`).send({});
+    const res = await m.post('/api/v1/handovers/' + handoverId + '/confirm').send({});
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('INVALID_TRANSITION');
   });
+
+  it('two handovers on the same shift both succeed (no uniqueness)', async () => {
+    const w = await loginAs(WAITER);
+    const m = await loginAs(MANAGER);
+    const managerId = await currentUserId(m);
+
+    const res = await w.post('/api/v1/handovers').send({
+      shiftId,
+      amount: '500.00',
+      toUserId: managerId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.handover.amount).toBe('500.00');
+
+    const count = await prisma.cashHandover.count({ where: { shiftId } });
+    expect(count).toBeGreaterThanOrEqual(2);
+  });
 });
 
-describe('Cash handover — preconditions and permissions', () => {
-  let recon2: string;
+// ============================================================
+// No reconciliation linkage
+// ============================================================
+describe('Cash handover - no reconciliation linkage', () => {
+  let noReconShiftId: string;
 
-  it('waiter2 sets up a reconciliation on the same date', async () => {
-    const w = await loginAs(WAITER2);
-    const s = await w.post('/api/v1/shifts').send({ businessDate: TEST_DATE, openingCash: '0.00' });
+  it('waiter2 opens a shift without creating a reconciliation', async () => {
+    const w2 = await loginAs(WAITER2);
+    const s = await w2.post('/api/v1/shifts').send({
+      businessDate: NO_RECON_DATE, openingCash: '0.00',
+    });
     expect(s.status).toBe(201);
-    const shiftId = s.body.shift.id;
-
-    await w.post('/api/v1/collections').send({
-      shiftId, paymentMethod: 'CASH', amount: '50000.00',
-    });
-    await w.post(`/api/v1/shifts/${shiftId}/transition`).send({ to: 'SUBMITTED' });
-    const r = await w.post('/api/v1/reconciliations').send({ shiftId });
-    expect(r.status).toBe(201);
-    recon2 = r.body.reconciliation.id;
+    noReconShiftId = s.body.shift.id;
+    sharedWaiter2ShiftId = noReconShiftId;
   });
 
-  it('rejects a handover from a DRAFT reconciliation (409)', async () => {
-    const w = await loginAs(WAITER2);
+  it('waiter2 creates a handover without a reconciliation; reconciliationId is null', async () => {
+    const w2 = await loginAs(WAITER2);
     const m = await loginAs(MANAGER);
-    const meMgr = await m.get('/api/v1/auth/me');
-    const res = await w.post('/api/v1/handovers').send({
-      reconciliationId: recon2,
-      toUserId: meMgr.body.user.id,
+    const managerId = await currentUserId(m);
+
+    const res = await w2.post('/api/v1/handovers').send({
+      shiftId: noReconShiftId,
+      amount: '7777.00',
+      toUserId: managerId,
     });
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('RECON_NOT_READY');
+    expect(res.status).toBe(201);
+    expect(res.body.handover.amount).toBe('7777.00');
+    expect(res.body.handover.reconciliationId).toBeNull();
+    expect(res.body.handover.shiftId).toBe(noReconShiftId);
   });
+});
+
+// ============================================================
+// Preconditions and permissions
+// ============================================================
+describe('Cash handover - preconditions and permissions', () => {
+  let otherHandoverId: string;
 
   it('rejects a handover whose receiver is a WAITER (400)', async () => {
-    // First get the reconciliation to SUBMITTED so the precondition passes.
-    const w = await loginAs(WAITER2);
-    await w.patch(`/api/v1/reconciliations/${recon2}`).send({
-      actualCash: '50000.00', actualMobile: '0.00',
-    });
-    await w.post(`/api/v1/reconciliations/${recon2}/submit`).send({});
+    const w2 = await loginAs(WAITER2);
+    const w = await loginAs(WAITER);
+    const waiterId = await currentUserId(w);
 
-    const self = await w.get('/api/v1/auth/me');
-    const res = await w.post('/api/v1/handovers').send({
-      reconciliationId: recon2,
-      toUserId: self.body.user.id,
+    const res = await w2.post('/api/v1/handovers').send({
+      shiftId: sharedWaiter2ShiftId,
+      amount: '100.00',
+      toUserId: waiterId,
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_RECEIVER');
   });
 
-  it('waiter cannot create a handover for another waiter reconciliation (403)', async () => {
+  it('waiter cannot create a handover for another waiter shift (403)', async () => {
     const w1 = await loginAs(WAITER);
     const m = await loginAs(MANAGER);
-    const meMgr = await m.get('/api/v1/auth/me');
+    const managerId = await currentUserId(m);
+
     const res = await w1.post('/api/v1/handovers').send({
-      reconciliationId: recon2,
-      toUserId: meMgr.body.user.id,
+      shiftId: sharedWaiter2ShiftId,
+      amount: '100.00',
+      toUserId: managerId,
     });
     expect(res.status).toBe(403);
   });
 
   it('MANAGER without onBehalfOfUserId is rejected (400)', async () => {
     const m = await loginAs(MANAGER);
-    const meMgr = await m.get('/api/v1/auth/me');
+    const managerId = await currentUserId(m);
+
     const res = await m.post('/api/v1/handovers').send({
-      reconciliationId: recon2,
-      toUserId: meMgr.body.user.id,
+      shiftId: sharedWaiter2ShiftId,
+      amount: '100.00',
+      toUserId: managerId,
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
   it('WAITER cannot confirm a handover (403)', async () => {
-    // Create the handover first (as WAITER2)
     const w2 = await loginAs(WAITER2);
     const m = await loginAs(MANAGER);
-    const meMgr = await m.get('/api/v1/auth/me');
+    const managerId = await currentUserId(m);
+
     const create = await w2.post('/api/v1/handovers').send({
-      reconciliationId: recon2,
-      toUserId: meMgr.body.user.id,
+      shiftId: sharedWaiter2ShiftId,
+      amount: '200.00',
+      toUserId: managerId,
     });
     expect(create.status).toBe(201);
+    otherHandoverId = create.body.handover.id;
 
     const confirm = await w2
-      .post(`/api/v1/handovers/${create.body.handover.id}/confirm`)
+      .post('/api/v1/handovers/' + otherHandoverId + '/confirm')
       .send({});
     expect(confirm.status).toBe(403);
   });
@@ -239,13 +281,13 @@ describe('Cash handover — preconditions and permissions', () => {
     expect(Array.isArray(list.body.handovers)).toBe(true);
 
     const create = await a.post('/api/v1/handovers').send({
-      reconciliationId: 'x', toUserId: 'y',
+      shiftId: 'x', amount: '1.00', toUserId: 'y',
     });
     expect(create.status).toBe(403);
 
     if (list.body.handovers.length > 0) {
       const id = list.body.handovers[0].id;
-      const confirm = await a.post(`/api/v1/handovers/${id}/confirm`).send({});
+      const confirm = await a.post('/api/v1/handovers/' + id + '/confirm').send({});
       expect(confirm.status).toBe(403);
     }
   });
@@ -254,47 +296,41 @@ describe('Cash handover — preconditions and permissions', () => {
     const w = await loginAs(WAITER);
     const list = await w.get('/api/v1/handovers');
     expect(list.status).toBe(200);
-    const me = await w.get('/api/v1/auth/me');
+    const waiterId = await currentUserId(w);
     for (const h of list.body.handovers) {
-      expect(h.fromUserId).toBe(me.body.user.id);
+      expect(h.fromUserId).toBe(waiterId);
     }
   });
 });
-describe('Cash handover — receiver list for the kiosk', () => {
+
+// ============================================================
+// Receiver list
+// ============================================================
+describe('Cash handover - receiver list for the kiosk', () => {
   it('WAITER can fetch the reduced receiver list (active MANAGER/OWNER only)', async () => {
     const w = await loginAs(WAITER);
     const res = await w.get('/api/v1/handovers/receivable-users');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.users)).toBe(true);
-
-    // Every entry must be an active MANAGER or OWNER, and nothing else.
     for (const u of res.body.users) {
       expect(['MANAGER', 'OWNER']).toContain(u.role);
       expect(u).toHaveProperty('id');
       expect(u).toHaveProperty('fullName');
       expect(u).toHaveProperty('role');
-      // Reduced projection — no email, no phone, no isActive, no permissions.
       expect(u).not.toHaveProperty('email');
       expect(u).not.toHaveProperty('phone');
       expect(u).not.toHaveProperty('isActive');
       expect(u).not.toHaveProperty('passwordHash');
     }
-
-    // Our seeded MANAGER and OWNER from this test file appear.
     const names = res.body.users.map((u: { fullName: string }) => u.fullName);
     expect(names).toContain(MANAGER.fullName);
     expect(names).toContain(OWNER.fullName);
-
-    // WAITER and AUDITOR are NOT eligible receivers.
     expect(names).not.toContain(WAITER.fullName);
-    expect(names).not.toContain(WAITER2.fullName);
     expect(names).not.toContain(AUDITOR.fullName);
   });
 
   it('the returned IDs are usable as toUserId when creating a handover', async () => {
-    // Purely a shape/contract assertion — proves the endpoint returns
-    // an id that satisfies the handover validator's min(1).
     const w = await loginAs(WAITER);
     const res = await w.get('/api/v1/handovers/receivable-users');
     expect(res.status).toBe(200);
@@ -304,45 +340,30 @@ describe('Cash handover — receiver list for the kiosk', () => {
   });
 });
 
-describe('Cash handover — on behalf (Phase 19b)', () => {
-  let reconOnBehalf: string;
-  const ON_BEHALF_DATE = '2099-12-13';
+// ============================================================
+// On behalf (Phase 19b, updated for Model 2)
+// ============================================================
+describe('Cash handover - on behalf', () => {
+  let onBehalfShiftId: string;
 
-  it('on-behalf waiter2 sets up a reconciliation', async () => {
+  it('on-behalf waiter2 opens a shift', async () => {
     const w2 = await loginAs(ON_BEHALF_WAITER2);
     const s = await w2.post('/api/v1/shifts').send({
       businessDate: ON_BEHALF_DATE, openingCash: '0.00',
     });
     expect(s.status).toBe(201);
-    const shiftId = s.body.shift.id;
-
-    const c = await w2.post('/api/v1/collections').send({
-      shiftId, paymentMethod: 'CASH', amount: '30000.00',
-    });
-    expect(c.status).toBe(201);
-
-    await w2.post(`/api/v1/shifts/${shiftId}/transition`).send({ to: 'SUBMITTED' });
-    const r = await w2.post('/api/v1/reconciliations').send({ shiftId });
-    expect(r.status).toBe(201);
-    reconOnBehalf = r.body.reconciliation.id;
-
-    await w2.patch(`/api/v1/reconciliations/${reconOnBehalf}`).send({
-      actualCash: '30000.00', actualMobile: '0.00',
-    });
-    await w2.post(`/api/v1/reconciliations/${reconOnBehalf}/submit`).send({});
+    onBehalfShiftId = s.body.shift.id;
   });
 
   it('MANAGER creates a handover on behalf of a waiter; fromUserId = waiter, createdById = manager', async () => {
     const w2 = await loginAs(ON_BEHALF_WAITER2);
-    const meW2 = await w2.get('/api/v1/auth/me');
-    const waiter2Id = meW2.body.user.id;
-
+    const waiter2Id = await currentUserId(w2);
     const m = await loginAs(MANAGER);
-    const meM = await m.get('/api/v1/auth/me');
-    const managerId = meM.body.user.id;
+    const managerId = await currentUserId(m);
 
     const res = await m.post('/api/v1/handovers').send({
-      reconciliationId: reconOnBehalf,
+      shiftId: onBehalfShiftId,
+      amount: '30000.00',
       toUserId: managerId,
       onBehalfOfUserId: waiter2Id,
     });
@@ -351,7 +372,7 @@ describe('Cash handover — on behalf (Phase 19b)', () => {
     expect(res.body.handover.status).toBe('PENDING');
 
     const row = await prisma.cashHandover.findFirst({
-      where: { reconciliationId: reconOnBehalf },
+      where: { shiftId: onBehalfShiftId },
     });
     expect(row).not.toBeNull();
     expect(row!.fromUserId).toBe(waiter2Id);
@@ -361,57 +382,104 @@ describe('Cash handover — on behalf (Phase 19b)', () => {
 
   it('MANAGER who created on behalf confirms the handover (200)', async () => {
     const m = await loginAs(MANAGER);
-    const list = await m.get('/api/v1/handovers?reconciliationId=' + reconOnBehalf);
+    const list = await m.get('/api/v1/handovers?shiftId=' + onBehalfShiftId);
     expect(list.status).toBe(200);
     expect(list.body.handovers.length).toBeGreaterThan(0);
     const handoverId = list.body.handovers[0].id;
 
-    const res = await m.post(`/api/v1/handovers/${handoverId}/confirm`).send({});
+    const res = await m.post('/api/v1/handovers/' + handoverId + '/confirm').send({});
     expect(res.status).toBe(200);
     expect(res.body.handover.status).toBe('CONFIRMED');
   });
 
-  it('OWNER creates a handover on behalf of a waiter (201)', async () => {
-    const ON_BEHALF_DATE_2 = '2099-12-14';
+  it('OWNER creates a handover on behalf of a waiter; stores shift id for later describes', async () => {
     const w = await loginAs(ON_BEHALF_WAITER);
     const s = await w.post('/api/v1/shifts').send({
-      businessDate: ON_BEHALF_DATE_2, openingCash: '0.00',
+      businessDate: '2099-12-15', openingCash: '0.00',
     });
     expect(s.status).toBe(201);
     const shiftId = s.body.shift.id;
+    sharedOnBehalfWaiterShiftId = shiftId;
 
-    await w.post('/api/v1/collections').send({
-      shiftId, paymentMethod: 'CASH', amount: '40000.00',
-    });
-    await w.post(`/api/v1/shifts/${shiftId}/transition`).send({ to: 'SUBMITTED' });
-    const r = await w.post('/api/v1/reconciliations').send({ shiftId });
-    expect(r.status).toBe(201);
-    const reconId = r.body.reconciliation.id;
-
-    await w.patch(`/api/v1/reconciliations/${reconId}`).send({
-      actualCash: '40000.00', actualMobile: '0.00',
-    });
-    await w.post(`/api/v1/reconciliations/${reconId}/submit`).send({});
-
-    const meW = await w.get('/api/v1/auth/me');
-    const waiterId = meW.body.user.id;
-
+    const waiterId = await currentUserId(w);
     const o = await loginAs(OWNER);
-    const meO = await o.get('/api/v1/auth/me');
-    const ownerId = meO.body.user.id;
+    const ownerId = await currentUserId(o);
 
     const res = await o.post('/api/v1/handovers').send({
-      reconciliationId: reconId,
+      shiftId,
+      amount: '40000.00',
       toUserId: ownerId,
       onBehalfOfUserId: waiterId,
     });
     expect(res.status).toBe(201);
 
-    const row = await prisma.cashHandover.findFirst({
-      where: { reconciliationId: reconId },
-    });
+    const row = await prisma.cashHandover.findFirst({ where: { shiftId } });
     expect(row).not.toBeNull();
     expect(row!.fromUserId).toBe(waiterId);
     expect(row!.createdById).toBe(ownerId);
+  });
+});
+
+// ============================================================
+// Voiding
+// ============================================================
+describe('Cash handover - voiding', () => {
+  let voidHandoverId: string;
+
+  it('MANAGER creates a second handover on the on-behalf shift for void testing', async () => {
+    const w = await loginAs(ON_BEHALF_WAITER);
+    const waiterId = await currentUserId(w);
+    const m = await loginAs(MANAGER);
+    const managerId = await currentUserId(m);
+
+    const res = await m.post('/api/v1/handovers').send({
+      shiftId: sharedOnBehalfWaiterShiftId,
+      amount: '1000.00',
+      toUserId: managerId,
+      onBehalfOfUserId: waiterId,
+    });
+    expect(res.status).toBe(201);
+    voidHandoverId = res.body.handover.id;
+  });
+
+  it('WAITER cannot void a handover (403)', async () => {
+    const w = await loginAs(ON_BEHALF_WAITER);
+    const res = await w.post('/api/v1/handovers/' + voidHandoverId + '/void').send({
+      reason: 'try to void as waiter',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('MANAGER voids a PENDING handover; voidedAt/voidedBy/voidReason set', async () => {
+    const m = await loginAs(MANAGER);
+    const managerId = await currentUserId(m);
+
+    const res = await m.post('/api/v1/handovers/' + voidHandoverId + '/void').send({
+      reason: 'entered by mistake',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.handover.voidedAt).toBeTruthy();
+    expect(res.body.handover.voidedBy).toBe(managerId);
+    expect(res.body.handover.voidReason).toBe('entered by mistake');
+  });
+
+  it('cannot confirm a voided handover (409)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/handovers/' + voidHandoverId + '/confirm').send({});
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('HANDOVER_VOIDED');
+  });
+
+  it('voided handover is hidden from default list, visible with includeVoided=true', async () => {
+    const m = await loginAs(MANAGER);
+    const def = await m.get('/api/v1/handovers?shiftId=' + sharedOnBehalfWaiterShiftId);
+    expect(def.status).toBe(200);
+    const defIds = def.body.handovers.map((h: { id: string }) => h.id);
+    expect(defIds).not.toContain(voidHandoverId);
+
+    const withVoided = await m.get('/api/v1/handovers?shiftId=' + sharedOnBehalfWaiterShiftId + '&includeVoided=true');
+    expect(withVoided.status).toBe(200);
+    const allIds = withVoided.body.handovers.map((h: { id: string }) => h.id);
+    expect(allIds).toContain(voidHandoverId);
   });
 });

@@ -5,6 +5,7 @@ import {
   ListCashHandoversQuerySchema,
   type CreateCashHandoverInput,
   type ConfirmCashHandoverInput,
+  type VoidCashHandoverInput,
 } from '../validators/handover.js';
 
 export async function listHandovers(req: Request, res: Response) {
@@ -15,10 +16,12 @@ export async function listHandovers(req: Request, res: Response) {
   const q = parsed.data;
   const handovers = await handoverService.listHandovers({
     actor: { id: req.user!.id, role: req.user!.role },
+    shiftId: q.shiftId,
     reconciliationId: q.reconciliationId,
     fromUserId: q.fromUserId,
     toUserId: q.toUserId,
     status: q.status,
+    includeVoided: q.includeVoided,
   });
   res.json({ success: true, handovers });
 }
@@ -35,7 +38,8 @@ export async function createHandover(req: Request, res: Response) {
   const input = req.body as CreateCashHandoverInput;
   const handover = await handoverService.createHandover({
     actor: { id: req.user!.id, role: req.user!.role },
-    reconciliationId: input.reconciliationId,
+    shiftId: input.shiftId,
+    amount: input.amount,
     toUserId: input.toUserId,
     notes: input.notes ?? null,
     onBehalfOfUserId: input.onBehalfOfUserId ?? null,
@@ -52,6 +56,17 @@ export async function confirmHandover(req: Request, res: Response) {
   });
   res.json({ success: true, handover });
 }
+
+export async function voidHandover(req: Request, res: Response) {
+  const input = req.body as VoidCashHandoverInput;
+  const handover = await handoverService.voidHandover({
+    id: req.params.id!,
+    actor: { id: req.user!.id, role: req.user!.role },
+    reason: input.reason,
+  });
+  res.json({ success: true, handover });
+}
+
 export async function listReceivableUsers(_req: Request, res: Response) {
   const users = await handoverService.listReceivableUsers();
   res.json({ success: true, users });

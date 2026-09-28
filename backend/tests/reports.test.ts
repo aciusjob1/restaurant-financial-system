@@ -271,6 +271,7 @@ beforeAll(async () => {
   // ---- Cash handover for 695, CONFIRMED ----
   await prisma.cashHandover.create({
     data: {
+      shiftId: shift.id,
       reconciliationId: recon.id,
       fromUserId: waiterId,
       createdById: waiterId,
