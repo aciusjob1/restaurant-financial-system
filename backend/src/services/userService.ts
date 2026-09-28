@@ -87,3 +87,16 @@ export async function updateUser(
     return user;
   });
 }
+
+
+export async function resetPassword(id: string, newPassword: string) {
+  const existing = await prisma.user.findUnique({ where: { id } });
+  if (!existing) throw new ApiError(404, 'NOT_FOUND', 'User not found.');
+
+  const passwordHash = await hashPassword(newPassword);
+
+  await prisma.$transaction([
+    prisma.user.update({ where: { id }, data: { passwordHash } }),
+    prisma.session.deleteMany({ where: { userId: id } }),
+  ]);
+}

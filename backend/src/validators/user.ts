@@ -24,3 +24,12 @@ export const UpdateUserSchema = z.object({
 
 export type CreateUserInput = z.infer<typeof CreateUserSchema>;
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
+
+
+export const ResetPasswordSchema = z
+  .object({
+    newPassword: z.string().min(12).max(256),
+  })
+  .strict();
+
+export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;

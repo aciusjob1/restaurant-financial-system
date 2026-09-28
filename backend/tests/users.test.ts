@@ -182,3 +182,155 @@ describe('PATCH /api/v1/users/:id', () => {
     expect(after.status).toBe(401);
   });
 });
+
+describe('MANAGER access to users', () => {
+  const MANAGER = {
+    username: 'phase19f-manager',
+    password: 'ManagerPassword!234',
+    fullName: 'Phase 19f Manager',
+    role: 'MANAGER' as const,
+  };
+  const MANAGER2 = {
+    username: 'phase19f-manager2',
+    password: 'ManagerPassword!234',
+    fullName: 'Phase 19f Manager 2',
+    role: 'MANAGER' as const,
+  };
+  const WAITER2 = {
+    username: 'phase19f-waiter2',
+    password: 'WaiterPassword!234',
+    fullName: 'Phase 19f Waiter 2',
+    role: 'WAITER' as const,
+  };
+  const NEW_PASSWORD = 'RotatedPassword!99';
+
+  let manager2Id: string;
+  let waiter2Id: string;
+
+  const names = [MANAGER.username, MANAGER2.username, WAITER2.username];
+
+  beforeAll(async () => {
+    // idempotent cleanup of any prior run
+    await prisma.session.deleteMany({ where: { user: { username: { in: names } } } });
+    await prisma.user.deleteMany({ where: { username: { in: names } } });
+
+    const hash = (p: string) => argon2.hash(p, { type: argon2.argon2id });
+
+    await prisma.user.create({
+      data: {
+        username: MANAGER.username,
+        fullName: MANAGER.fullName,
+        role: MANAGER.role,
+        passwordHash: await hash(MANAGER.password),
+        isActive: true,
+      },
+    });
+    const m2 = await prisma.user.create({
+      data: {
+        username: MANAGER2.username,
+        fullName: MANAGER2.fullName,
+        role: MANAGER2.role,
+        passwordHash: await hash(MANAGER2.password),
+        isActive: true,
+      },
+    });
+    manager2Id = m2.id;
+    const w2 = await prisma.user.create({
+      data: {
+        username: WAITER2.username,
+        fullName: WAITER2.fullName,
+        role: WAITER2.role,
+        passwordHash: await hash(WAITER2.password),
+        isActive: true,
+      },
+    });
+    waiter2Id = w2.id;
+  });
+
+  afterAll(async () => {
+    await prisma.session.deleteMany({ where: { user: { username: { in: names } } } });
+    await prisma.user.deleteMany({ where: { username: { in: names } } });
+  });
+
+  it('MANAGER can list users (200)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.get('/api/v1/users');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.users)).toBe(true);
+  });
+
+  it('MANAGER can read a single user (200)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.get('/api/v1/users/' + waiter2Id);
+    expect(res.status).toBe(200);
+    expect(res.body.user.username).toBe(WAITER2.username);
+  });
+
+  it('MANAGER cannot create a user (403)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/users').send({
+      username: 'phase19f-mgr-created',
+      fullName: 'x',
+      role: 'WAITER',
+      password: 'PasswordLength!12',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('MANAGER can edit a waiter profile (fullName) (200)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.patch('/api/v1/users/' + waiter2Id).send({ fullName: 'Renamed Waiter 2' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.fullName).toBe('Renamed Waiter 2');
+  });
+
+  it('MANAGER cannot change role (403 MANAGER_CANNOT_CHANGE_ROLE)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.patch('/api/v1/users/' + waiter2Id).send({ role: 'AUDITOR' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('MANAGER_CANNOT_CHANGE_ROLE');
+  });
+
+  it('MANAGER cannot change isActive (403 MANAGER_CANNOT_CHANGE_STATUS)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.patch('/api/v1/users/' + waiter2Id).send({ isActive: false });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('MANAGER_CANNOT_CHANGE_STATUS');
+  });
+
+  it('MANAGER cannot edit another MANAGER (403 MANAGER_CAN_ONLY_EDIT_WAITERS)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.patch('/api/v1/users/' + manager2Id).send({ fullName: 'Nope' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('MANAGER_CAN_ONLY_EDIT_WAITERS');
+  });
+
+  it('MANAGER cannot reset an OWNER password (403)', async () => {
+    const m = await loginAs(MANAGER);
+    const ownerRow = await prisma.user.findUnique({ where: { username: OWNER.username } });
+    const res = await m.post('/api/v1/users/' + ownerRow!.id + '/reset-password').send({
+      newPassword: NEW_PASSWORD,
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('MANAGER can reset a waiter password; waiter signs in with the new one', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/users/' + waiter2Id + '/reset-password').send({
+      newPassword: NEW_PASSWORD,
+    });
+    expect(res.status).toBe(200);
+
+    const oldLogin = await request(app).post('/api/v1/auth/login').send({
+      username: WAITER2.username,
+      password: WAITER2.password,
+    });
+    expect(oldLogin.status).toBe(401);
+
+    const newLogin = await request(app).post('/api/v1/auth/login').send({
+      username: WAITER2.username,
+      password: NEW_PASSWORD,
+    });
+    expect(newLogin.status).toBe(200);
+  });
+});
