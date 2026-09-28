@@ -23,11 +23,11 @@ function Label({ text, children }: { text: string; children: ReactNode }) {
 const INPUT_CLS =
   'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none disabled:bg-slate-50 disabled:text-slate-500';
 
-export function TextField(p: FieldBase & { autoComplete?: string }) {
+export function TextField(p: FieldBase & { autoComplete?: string; type?: 'text' | 'password' | 'email' | 'tel' }) {
   return (
     <Label text={p.label}>
       <input
-        type="text"
+        type={p.type ?? 'text'}
         className={INPUT_CLS}
         value={p.value}
         onChange={(e) => p.onChange(e.target.value)}

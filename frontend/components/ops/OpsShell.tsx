@@ -22,6 +22,7 @@ import {
   UserRound,
   Warehouse,
   Coins,
+  UserCog,
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -55,6 +56,7 @@ const LINKS: NavLink[] = [
   { href: '/ops/expenses',             label: 'Expenses',           icon: Receipt },
   { href: '/ops/salaries',             label: 'Salaries',           icon: Banknote },
   { href: '/ops/daily-closing',        label: 'Closing',            icon: Lock },
+  { href: '/ops/account',              label: 'Account',            icon: UserCog },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {
