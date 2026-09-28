@@ -107,6 +107,7 @@ model User {
   reconciliations         Reconciliation[]
   handoversSent           CashHandover[]     @relation("HandoverFrom")
   handoversCreated        CashHandover[]     @relation("HandoverCreatedBy")
+  handoversVoided         CashHandover[]     @relation("HandoverVoidedBy")
   handoversRecv           CashHandover[]     @relation("HandoverTo")
   closingsClosed          DailyClosing[]     @relation("ClosingClosedBy")
   closingsReopen          DailyClosing[]     @relation("ClosingReopenedBy")
@@ -218,6 +219,7 @@ model Shift {
   openingCashSetByUser User?           @relation("ShiftOpeningCashSetBy", fields: [openingCashSetByUserId], references: [id], onDelete: Restrict)
   collections     Collection[]
   reconciliation  Reconciliation?
+  cashHandovers   CashHandover[]
   expenses        Expense[]
 
   @@index([userId])
@@ -324,15 +326,15 @@ model Reconciliation {
 
   shift             Shift                 @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   user              User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
-  handover          CashHandover?
-
+  handovers         CashHandover[]
   @@index([userId])
   @@index([status])
 }
 
 model CashHandover {
   id                String              @id @default(cuid())
-  reconciliationId  String              @unique
+  shiftId           String
+  reconciliationId  String?
   fromUserId        String
   toUserId          String
   createdById       String
@@ -347,18 +349,27 @@ model CashHandover {
   notes             String?
   confirmedNotes    String?
 
+  voidedAt          DateTime?
+  voidedBy          String?
+  voidReason        String?
+
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
 
-  reconciliation    Reconciliation      @relation(fields: [reconciliationId], references: [id], onDelete: Restrict)
+  shift             Shift               @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  reconciliation    Reconciliation?     @relation(fields: [reconciliationId], references: [id], onDelete: Restrict)
   fromUser          User                @relation("HandoverFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
   toUser            User                @relation("HandoverTo", fields: [toUserId], references: [id], onDelete: Restrict)
   createdBy         User                @relation("HandoverCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  voidedByUser      User?               @relation("HandoverVoidedBy", fields: [voidedBy], references: [id], onDelete: Restrict)
 
+  @@index([shiftId])
+  @@index([reconciliationId])
   @@index([fromUserId])
   @@index([toUserId])
   @@index([status])
   @@index([createdById])
+  @@index([voidedBy])
 }
 
 model DailyClosing {
