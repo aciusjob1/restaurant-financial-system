@@ -32,6 +32,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       fullName: session.user.fullName,
       role: session.user.role,
       isActive: session.user.isActive,
+      phone: session.user.phone,
     };
     req.sessionToken = token;
     next();

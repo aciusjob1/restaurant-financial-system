@@ -9,6 +9,7 @@ declare global {
         fullName: string;
         role: Role;
         isActive: boolean;
+        phone: string | null;
       };
       sessionToken?: string;
     }

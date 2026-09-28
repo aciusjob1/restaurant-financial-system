@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { authenticateUser, changePassword } from '../services/authService.js';
+import { authenticateUser, changePassword, updateMyProfile } from '../services/authService.js';
 import {
   createSession,
   setSessionCookie,
@@ -7,7 +7,7 @@ import {
   clearSessionCookie,
 } from '../lib/session.js';
 import { env } from '../config/env.js';
-import type { LoginInput, ChangePasswordInput } from '../validators/auth.js';
+import type { LoginInput, ChangePasswordInput, UpdateMyProfileInput } from '../validators/auth.js';
 
 export async function login(req: Request, res: Response) {
   const { username, password } = req.body as LoginInput;
@@ -45,4 +45,10 @@ export async function changeMyPassword(req: Request, res: Response) {
   await changePassword({ userId: req.user!.id, currentPassword, newPassword });
   clearSessionCookie(res);
   res.json({ success: true, message: 'Password changed. Please sign in again.' });
+}
+
+export async function updateMe(req: Request, res: Response) {
+  const input = req.body as UpdateMyProfileInput;
+  const user = await updateMyProfile(req.user!.id, input);
+  res.json({ success: true, user });
 }

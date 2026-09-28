@@ -1,4 +1,4 @@
-﻿import { prisma } from '../lib/prisma.js';
+import { prisma } from '../lib/prisma.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { ApiError } from '../errors/ApiError.js';
 
@@ -51,4 +51,27 @@ export async function changePassword(params: {
   ]);
 
   return true;
+}
+
+export async function updateMyProfile(
+  userId: string,
+  input: { fullName?: string; phone?: string | null }
+) {
+  const data: { fullName?: string; phone?: string | null } = {};
+  if (input.fullName !== undefined) data.fullName = input.fullName;
+  if (input.phone !== undefined) data.phone = input.phone;
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data,
+    select: {
+      id: true,
+      username: true,
+      fullName: true,
+      phone: true,
+      role: true,
+      isActive: true,
+    },
+  });
+  return user;
 }

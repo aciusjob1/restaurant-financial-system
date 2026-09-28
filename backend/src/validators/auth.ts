@@ -12,3 +12,12 @@ export const ChangePasswordSchema = z.object({
 
 export type LoginInput = z.infer<typeof LoginSchema>;
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
+
+export const UpdateMyProfileSchema = z
+  .object({
+    fullName: z.string().trim().min(1).max(128).optional(),
+    phone: z.string().trim().max(32).nullable().optional(),
+  })
+  .strict();
+
+export type UpdateMyProfileInput = z.infer<typeof UpdateMyProfileSchema>;
