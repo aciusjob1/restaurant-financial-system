@@ -21,6 +21,7 @@ import {
   Truck,
   UserRound,
   Warehouse,
+  Coins,
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -49,6 +50,7 @@ const LINKS: NavLink[] = [
   { href: '/ops/sales',                label: 'Sales',              icon: ShoppingCart },
   { href: '/ops/shifts',               label: 'Shifts',             icon: Clock },
   { href: '/ops/reconciliations',      label: 'Reconciliations',    icon: Scale },
+  { href: '/ops/collections',          label: 'Collections',        icon: Coins },
   { href: '/ops/handovers',            label: 'Handovers',          icon: HandCoins },
   { href: '/ops/expenses',             label: 'Expenses',           icon: Receipt },
   { href: '/ops/salaries',             label: 'Salaries',           icon: Banknote },
