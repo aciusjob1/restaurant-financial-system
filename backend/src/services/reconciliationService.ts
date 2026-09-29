@@ -19,6 +19,32 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
+async function handoverSumsForShifts(
+  shiftIds: string[]
+): Promise<Map<string, Prisma.Decimal>> {
+  if (!shiftIds.length) return new Map();
+  const rows = await prisma.cashHandover.findMany({
+    where: { shiftId: { in: shiftIds }, voidedAt: null },
+    select: { shiftId: true, amount: true },
+  });
+  const map = new Map<string, Prisma.Decimal>();
+  for (const r of rows) {
+    const cur = map.get(r.shiftId) ?? toDecimal('0');
+    map.set(r.shiftId, cur.plus(r.amount));
+  }
+  return map;
+}
+
+async function handoverSumForShift(shiftId: string): Promise<Prisma.Decimal> {
+  const rows = await prisma.cashHandover.findMany({
+    where: { shiftId, voidedAt: null },
+    select: { amount: true },
+  });
+  let sum = toDecimal('0');
+  for (const r of rows) sum = sum.plus(r.amount);
+  return sum;
+}
+
 function serialize(r: {
   id: string;
   shiftId: string;
@@ -39,7 +65,7 @@ function serialize(r: {
   updatedAt: Date;
   user?: { id: string; fullName: string };
   shift?: { businessDate: Date };
-}) {
+}, handoverSum: Prisma.Decimal) {
   return {
     id: r.id,
     user: r.user ? { id: r.user.id, fullName: r.user.fullName } : null,
@@ -53,6 +79,8 @@ function serialize(r: {
     cashDifference: r.cashDifference === null ? null : toMoneyString(r.cashDifference),
     mobileDifference:
       r.mobileDifference === null ? null : toMoneyString(r.mobileDifference),
+    receiptVariance:
+      r.actualCash === null ? null : toMoneyString(handoverSum.minus(r.actualCash)),
     status: r.status,
     notes: r.notes,
     submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
@@ -104,7 +132,8 @@ export async function listReconciliations(opts: {
     take: 200,
     include: { user: { select: { id: true, fullName: true } }, shift: { select: { businessDate: true } } },
   });
-  return rows.map(serialize);
+  const sums = await handoverSumsForShifts(rows.map((r) => r.shiftId));
+  return rows.map((r) => serialize(r, sums.get(r.shiftId) ?? toDecimal('0')));
 }
 
 export async function getReconciliationById(
@@ -116,7 +145,8 @@ export async function getReconciliationById(
   if (actor.role === 'WAITER' && row.userId !== actor.id) {
     throw new ApiError(403, 'FORBIDDEN', 'You do not have permission.');
   }
-  return serialize(row);
+  const handoverSum = await handoverSumForShift(row.shiftId);
+  return serialize(row, handoverSum);
 }
 
 export async function createReconciliation(input: {
@@ -172,7 +202,8 @@ export async function createReconciliation(input: {
         notes: input.notes,
       },
     });
-    return serialize(row);
+    const handoverSum = await handoverSumForShift(row.shiftId);
+    return serialize(row, handoverSum);
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw new ApiError(
@@ -228,7 +259,8 @@ export async function updateReconciliation(input: {
       mobileDifference,
     },
   });
-  return serialize(row);
+  const handoverSum = await handoverSumForShift(row.shiftId);
+  return serialize(row, handoverSum);
 }
 
 export async function submitReconciliation(input: {
@@ -260,7 +292,8 @@ export async function submitReconciliation(input: {
     where: { id: input.id },
     data: { status: 'SUBMITTED', submittedAt: new Date() },
   });
-  return serialize(row);
+  const handoverSum = await handoverSumForShift(row.shiftId);
+  return serialize(row, handoverSum);
 }
 
 export async function reviewReconciliation(input: {
@@ -301,5 +334,6 @@ export async function reviewReconciliation(input: {
     where: { id: input.id },
     data,
   });
-  return serialize(row);
+  const handoverSum = await handoverSumForShift(row.shiftId);
+  return serialize(row, handoverSum);
 }

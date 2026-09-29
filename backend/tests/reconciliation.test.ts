@@ -15,14 +15,18 @@ const AUDITOR = { username: 'phase7-auditor', password: 'AuditorPassword!234', f
 const WAITER4 = {
   username: 'phase7-waiter4', password: 'WaiterPassword!234',
   fullName: 'Phase 7 Waiter 4', role: 'WAITER' as const };
+const WAITER_VAR = {
+  username: 'phase7-waiter-var', password: 'WaiterPassword!234',
+  fullName: 'Phase 7 Waiter Var', role: 'WAITER' as const };
 
-const ALL = [OWNER, MANAGER, WAITER, WAITER2, WAITER3, WAITER4, AUDITOR];
+const ALL = [OWNER, MANAGER, WAITER, WAITER2, WAITER3, WAITER4, WAITER_VAR, AUDITOR];
 
 // Dedicated date for this test file. No other file may use it.
 const TEST_DATE = '2099-12-15';
 
 async function cleanup() {
   const usernames = ALL.map((u) => u.username);
+  await prisma.cashHandover.deleteMany({ where: { fromUser: { username: { in: usernames } } } });
   await prisma.reconciliation.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.collection.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.shift.deleteMany({ where: { user: { username: { in: usernames } } } });
@@ -308,3 +312,87 @@ describe('Enrichment - reconciliation list rows expose user + shift', () => {
   });
 });
 
+describe('Reconciliation - receiptVariance', () => {
+  const RV_DATE = '2099-12-20';
+  let rvShiftId: string;
+  let rvReconId: string;
+  let rvHandoverId: string;
+
+  it('setup: waiter opens a fresh shift, declares cash, submits, drafts a recon', async () => {
+    const w = await loginAs(WAITER_VAR);
+    const s = await w.post('/api/v1/shifts').send({
+      businessDate: RV_DATE, openingCash: '0.00',
+    });
+    expect(s.status).toBe(201);
+    rvShiftId = s.body.shift.id;
+
+    const c = await w.post('/api/v1/collections').send({
+      shiftId: rvShiftId, paymentMethod: 'CASH', amount: '100.00',
+    });
+    expect(c.status).toBe(201);
+
+    const t = await w.post('/api/v1/shifts/' + rvShiftId + '/transition').send({ to: 'SUBMITTED' });
+    expect(t.status).toBe(200);
+
+    const r = await w.post('/api/v1/reconciliations').send({ shiftId: rvShiftId });
+    expect(r.status).toBe(201);
+    rvReconId = r.body.reconciliation.id;
+  });
+
+  it('DRAFT recon with actualCash null has receiptVariance null', async () => {
+    const w = await loginAs(WAITER_VAR);
+    const res = await w.get('/api/v1/reconciliations/' + rvReconId);
+    expect(res.status).toBe(200);
+    expect(res.body.reconciliation.receiptVariance).toBeNull();
+  });
+
+  it('PATCH actualCash 100 with no handovers yields receiptVariance -100.00', async () => {
+    const w = await loginAs(WAITER_VAR);
+    const patch = await w
+      .patch('/api/v1/reconciliations/' + rvReconId)
+      .send({ actualCash: '100.00', actualMobile: '0.00' });
+    expect(patch.status).toBe(200);
+    expect(patch.body.reconciliation.receiptVariance).toBe('-100.00');
+
+    const get = await w.get('/api/v1/reconciliations/' + rvReconId);
+    expect(get.body.reconciliation.receiptVariance).toBe('-100.00');
+  });
+
+  it('PENDING handover of 150 shifts variance to +50', async () => {
+    const w = await loginAs(WAITER_VAR);
+    const m = await loginAs(MANAGER);
+    const mgrRow = await m.get('/api/v1/auth/me');
+    const managerId = mgrRow.body.user.id;
+
+    const h = await w.post('/api/v1/handovers').send({
+      shiftId: rvShiftId,
+      amount: '150.00',
+      toUserId: managerId,
+    });
+    expect(h.status).toBe(201);
+    rvHandoverId = h.body.handover.id;
+
+    const get = await w.get('/api/v1/reconciliations/' + rvReconId);
+    expect(get.body.reconciliation.receiptVariance).toBe('50.00');
+  });
+
+  it('voided handover drops back out of receiptVariance', async () => {
+    const m = await loginAs(MANAGER);
+    const v = await m
+      .post('/api/v1/handovers/' + rvHandoverId + '/void')
+      .send({ reason: 'receiptVariance test void' });
+    expect(v.status).toBe(200);
+
+    const w = await loginAs(WAITER_VAR);
+    const get = await w.get('/api/v1/reconciliations/' + rvReconId);
+    expect(get.body.reconciliation.receiptVariance).toBe('-100.00');
+  });
+
+  it('list response exposes receiptVariance on each row', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.get('/api/v1/reconciliations?shiftId=' + rvShiftId);
+    expect(res.status).toBe(200);
+    expect(res.body.reconciliations.length).toBeGreaterThan(0);
+    expect(res.body.reconciliations[0]).toHaveProperty('receiptVariance');
+  });
+});

@@ -214,11 +214,10 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
     if (r.status === 'SUBMITTED') pendingReviewCount += 1;
   }
 
-  // 5. Handovers for these reconciliations.
-  const reconIds = reconciliations.map((r) => r.id);
-  const handovers = reconIds.length
+  // 5. Handovers for these shifts (Model 2: shift-anchored, voided excluded).
+  const handovers = shiftIds.length
     ? await prisma.cashHandover.findMany({
-        where: { reconciliationId: { in: reconIds } },
+        where: { shiftId: { in: shiftIds }, voidedAt: null },
         select: { id: true, amount: true, status: true },
       })
     : [];

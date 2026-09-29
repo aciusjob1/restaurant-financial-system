@@ -21,10 +21,12 @@ const D_HAPPY = '2099-10-01';
 const D_NOT_READY = '2099-10-02';
 const D_SNAPSHOT = '2099-10-03';
 const D_VERSION = '2099-10-04';
+const D_ANCHOR  = '2099-10-05';
+const D_VOIDED  = '2099-10-06';
 
 async function cleanup() {
   const usernames = ALL.map((u) => u.username);
-  const dates = [D_HAPPY, D_NOT_READY, D_SNAPSHOT, D_VERSION];
+  const dates = [D_HAPPY, D_NOT_READY, D_SNAPSHOT, D_VERSION, D_ANCHOR, D_VOIDED];
 
   await prisma.dailyClosing.deleteMany({
     where: {
@@ -318,5 +320,73 @@ describe('Daily Closing — permissions', () => {
     const w = await loginAs(WAITER);
     const res = await w.get('/api/v1/daily-closings');
     expect(res.status).toBe(403);
+  });
+});
+
+describe('Daily Closing - shift-anchored handovers', () => {
+  it('handover with reconciliationId null still counts toward the closing', async () => {
+    const { shiftId } = await setupClosedShift({
+      businessDate: D_ANCHOR,
+      waiter: WAITER,
+      cashCollection: '100.00',
+      actualCash: '0.00',
+      actualMobile: '0.00',
+    });
+
+    const w = await prisma.user.findUnique({ where: { username: WAITER.username } });
+    const m = await prisma.user.findUnique({ where: { username: MANAGER.username } });
+
+    // Direct Prisma create: bypasses the API snapshot logic so
+    // reconciliationId is genuinely null - this is the row shape
+    // Model 2 supports but Model 1 could not aggregate.
+    await prisma.cashHandover.create({
+      data: {
+        shiftId,
+        fromUserId: w!.id,
+        toUserId: m!.id,
+        createdById: m!.id,
+        amount: '5000.00',
+        status: 'CONFIRMED',
+      },
+    });
+
+    const mgr = await loginAs(MANAGER);
+    const res = await mgr.post('/api/v1/daily-closings').send({ businessDate: D_ANCHOR });
+    expect(res.status).toBe(201);
+    expect(res.body.closing.totalHandovers).toBe(1);
+    expect(res.body.closing.totalHandoverAmount).toBe('5000.00');
+  });
+
+  it('voided handover does not count toward the closing', async () => {
+    const { shiftId } = await setupClosedShift({
+      businessDate: D_VOIDED,
+      waiter: WAITER,
+      cashCollection: '100.00',
+      actualCash: '0.00',
+      actualMobile: '0.00',
+    });
+
+    const w = await prisma.user.findUnique({ where: { username: WAITER.username } });
+    const m = await prisma.user.findUnique({ where: { username: MANAGER.username } });
+
+    await prisma.cashHandover.create({
+      data: {
+        shiftId,
+        fromUserId: w!.id,
+        toUserId: m!.id,
+        createdById: m!.id,
+        amount: '7000.00',
+        status: 'CONFIRMED',
+        voidedAt: new Date(),
+        voidedBy: m!.id,
+        voidReason: 'phase19c test void',
+      },
+    });
+
+    const mgr = await loginAs(MANAGER);
+    const res = await mgr.post('/api/v1/daily-closings').send({ businessDate: D_VOIDED });
+    expect(res.status).toBe(201);
+    expect(res.body.closing.totalHandovers).toBe(0);
+    expect(res.body.closing.totalHandoverAmount).toBe('0.00');
   });
 });
