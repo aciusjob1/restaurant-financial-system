@@ -20,20 +20,25 @@ import {
   type StockMovementsResponse,
   type StockMovementRow,
 } from '@/lib/reports';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
-const columns: Array<Column<StockMovementRow>> = [
-  { key: 'date',     header: 'Date',      render: (r) => r.businessDate },
-  { key: 'number',   header: 'Movement #', render: (r) => r.movementNumber },
-  { key: 'material', header: 'Material',  render: (r) => r.materialName ?? r.materialId },
-  { key: 'type',     header: 'Type',      render: (r) => r.type },
-  { key: 'dir',      header: 'Direction', render: (r) => r.direction },
-  { key: 'qty',      header: 'Quantity',  align: 'right', render: (r) => r.quantity },
-  { key: 'ucost',    header: 'Unit Cost', align: 'right', render: (r) => r.unitCost ?? '—' },
-  { key: 'tcost',    header: 'Total',     align: 'right', render: (r) => r.totalCost ?? '—' },
-  { key: 'ref',      header: 'Reference', render: (r) => r.reference ?? '—' },
-];
+function buildColumns(t: (k: keyof Dict) => string): Array<Column<StockMovementRow>> {
+  return [
+    { key: 'date',     header: t('table.date'),           render: (r) => r.businessDate },
+    { key: 'number',   header: t('table.movementNumber'), render: (r) => r.movementNumber },
+    { key: 'material', header: t('form.material'),        render: (r) => r.materialName ?? r.materialId },
+    { key: 'type',     header: t('form.type'),            render: (r) => r.type },
+    { key: 'dir',      header: t('form.direction'),       render: (r) => r.direction },
+    { key: 'qty',      header: t('form.quantity'),        align: 'right', render: (r) => r.quantity },
+    { key: 'ucost',    header: t('table.unitCost'),       align: 'right', render: (r) => r.unitCost ?? '\u2014' },
+    { key: 'tcost',    header: t('table.total'),          align: 'right', render: (r) => r.totalCost ?? '\u2014' },
+    { key: 'ref',      header: t('table.reference'),      render: (r) => r.reference ?? '\u2014' },
+  ];
+}
 
 function StockMovementsContent() {
+  const { t } = useT();
   const searchParams = useSearchParams();
   const def = defaultRange();
   const from = searchParams.get('from') ?? def.from;
@@ -51,36 +56,37 @@ function StockMovementsContent() {
   }, [from, to, type, direction]);
 
   const state = useReport<StockMovementsResponse>(REPORT_PATHS.stockMovements, query);
+  const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
     <ReportShell>
       <ReportHeader
-        title="Stock Movements"
-        subtitle="Append-only ledger of every stock movement across the selected range."
+        title={t('reports.cards.stockMovements.title')}
+        subtitle={t('reports.stockMovements.subtitle')}
       />
 
       <FilterBar>
         <SelectFilter
-          paramName="type"
-          label="Type"
-          defaultValue=""
+          paramName='type'
+          label={t('form.type')}
+          defaultValue=''
           options={[
-            { value: '', label: 'All types' },
-            { value: 'PURCHASE', label: 'Purchase' },
-            { value: 'OPENING', label: 'Opening' },
-            { value: 'CONSUMPTION', label: 'Consumption' },
-            { value: 'WASTE', label: 'Waste' },
-            { value: 'ADJUSTMENT', label: 'Adjustment' },
+            { value: '', label: t('reports.filter.allTypes') },
+            { value: 'PURCHASE', label: t('reports.filter.type.purchase') },
+            { value: 'OPENING', label: t('reports.filter.type.opening') },
+            { value: 'CONSUMPTION', label: t('reports.filter.type.consumption') },
+            { value: 'WASTE', label: t('reports.filter.type.waste') },
+            { value: 'ADJUSTMENT', label: t('reports.filter.type.adjustment') },
           ]}
         />
         <SelectFilter
-          paramName="direction"
-          label="Direction"
-          defaultValue=""
+          paramName='direction'
+          label={t('form.direction')}
+          defaultValue=''
           options={[
-            { value: '', label: 'Both' },
-            { value: 'IN', label: 'In' },
-            { value: 'OUT', label: 'Out' },
+            { value: '', label: t('reports.filter.both') },
+            { value: 'IN', label: t('reports.filter.dir.in') },
+            { value: 'OUT', label: t('reports.filter.dir.out') },
           ]}
         />
       </FilterBar>
@@ -95,24 +101,24 @@ function StockMovementsContent() {
         <>
           <TotalsRow
             items={[
-              { label: 'Total In',    value: state.data.totals.totalIn, emphasis: true },
-              { label: 'Total Out',   value: state.data.totals.totalOut, emphasis: true },
-              { label: 'Net Change',  value: state.data.totals.netChange },
-              { label: 'Movements',   value: String(state.data.totals.movementCount) },
+              { label: t('totals.totalIn'),   value: state.data.totals.totalIn, emphasis: true },
+              { label: t('totals.totalOut'),  value: state.data.totals.totalOut, emphasis: true },
+              { label: t('totals.netChange'), value: state.data.totals.netChange },
+              { label: t('totals.movements'), value: String(state.data.totals.movementCount) },
             ]}
           />
 
           {state.data.totals.byType.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-medium text-slate-700">By Type</h2>
-              <ul className="mt-2 divide-y divide-slate-100">
-                {state.data.totals.byType.map((t) => (
-                  <li key={t.type} className="flex items-center justify-between py-1.5 text-sm">
-                    <span className="text-slate-600">
-                      {t.type} <span className="text-slate-400">({t.count})</span>
+            <div className='rounded-2xl border border-slate-200 bg-white p-4'>
+              <h2 className='text-sm font-medium text-slate-700'>{t('reports.stockMovements.byType')}</h2>
+              <ul className='mt-2 divide-y divide-slate-100'>
+                {state.data.totals.byType.map((row) => (
+                  <li key={row.type} className='flex items-center justify-between py-1.5 text-sm'>
+                    <span className='text-slate-600'>
+                      {row.type} <span className='text-slate-400'>({row.count})</span>
                     </span>
-                    <span className="font-mono text-slate-800">
-                      in {t.totalIn} / out {t.totalOut}
+                    <span className='font-mono text-slate-800'>
+                      {t('reports.stockMovements.inPrefix')}{row.totalIn}{t('reports.stockMovements.outPrefix')}{row.totalOut}
                     </span>
                   </li>
                 ))}

@@ -19,29 +19,33 @@ import {
   type DailySalesResponse,
   type DailySalesRow,
 } from '@/lib/reports';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 function diffClass(v: string): string {
-  // Sign detection only — no arithmetic. Rendering concern, not a total.
   return v.startsWith('-') ? 'text-red-600' : 'text-slate-700';
 }
 
-const columns: Array<Column<DailySalesRow>> = [
-  { key: 'date',   header: 'Date',          render: (r) => r.businessDate },
-  { key: 'sales',  header: 'Sales',         align: 'right', render: (r) => r.salesTotal },
-  { key: 'cash',   header: 'Cash Sales',    align: 'right', render: (r) => r.cashSales },
-  { key: 'mob',    header: 'Mobile Sales',  align: 'right', render: (r) => r.mobileSales },
-  { key: 'coll',   header: 'Collections',   align: 'right', render: (r) => r.collectionsTotal },
-  { key: 'acash',  header: 'Actual Cash',   align: 'right', render: (r) => r.actualCash },
-  { key: 'cdiff',  header: 'Cash Diff',     align: 'right',
-    render: (r) => <span className={diffClass(r.cashDifference)}>{r.cashDifference}</span> },
-  { key: 'mdiff',  header: 'Mobile Diff',   align: 'right',
-    render: (r) => <span className={diffClass(r.mobileDifference)}>{r.mobileDifference}</span> },
-  { key: 'ho',     header: 'Handover',      align: 'right', render: (r) => r.handoverTotal },
-  { key: 'exp',    header: 'Expenses',      align: 'right', render: (r) => r.expenseTotal },
-  { key: 'status', header: 'Closing',       render: (r) => r.closingStatus ?? '—' },
-];
+function buildColumns(t: (k: keyof Dict) => string): Array<Column<DailySalesRow>> {
+  return [
+    { key: 'date',   header: t('table.date'),         render: (r) => r.businessDate },
+    { key: 'sales',  header: t('table.sales'),        align: 'right', render: (r) => r.salesTotal },
+    { key: 'cash',   header: t('table.cashSales'),    align: 'right', render: (r) => r.cashSales },
+    { key: 'mob',    header: t('table.mobileSales'),  align: 'right', render: (r) => r.mobileSales },
+    { key: 'coll',   header: t('table.collections'),  align: 'right', render: (r) => r.collectionsTotal },
+    { key: 'acash',  header: t('table.actualCash'),   align: 'right', render: (r) => r.actualCash },
+    { key: 'cdiff',  header: t('totals.cashDiff'),    align: 'right',
+      render: (r) => <span className={diffClass(r.cashDifference)}>{r.cashDifference}</span> },
+    { key: 'mdiff',  header: t('totals.mobileDiff'),  align: 'right',
+      render: (r) => <span className={diffClass(r.mobileDifference)}>{r.mobileDifference}</span> },
+    { key: 'ho',     header: t('table.handover'),     align: 'right', render: (r) => r.handoverTotal },
+    { key: 'exp',    header: t('table.expenses'),     align: 'right', render: (r) => r.expenseTotal },
+    { key: 'status', header: t('table.closing'),      render: (r) => r.closingStatus ?? '\u2014' },
+  ];
+}
 
 function DailySalesContent() {
+  const { t } = useT();
   const searchParams = useSearchParams();
   const def = defaultRange();
 
@@ -56,12 +60,13 @@ function DailySalesContent() {
   }, [from, to]);
 
   const state = useReport<DailySalesResponse>(REPORT_PATHS.dailySales, query);
+  const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
     <ReportShell>
       <ReportHeader
-        title="Daily Sales & Cash Position"
-        subtitle="Per business date: sales, collections, reconciliation, handover, and expenses."
+        title={t('reports.cards.dailySales.title')}
+        subtitle={t('reports.dailySales.subtitle')}
       />
 
       <FilterBar />
@@ -76,12 +81,12 @@ function DailySalesContent() {
         <>
           <TotalsRow
             items={[
-              { label: 'Sales Total',    value: state.data.totals.salesTotal,     emphasis: true },
-              { label: 'Expense Total',  value: state.data.totals.expenseTotal },
-              { label: 'Handover Total', value: state.data.totals.handoverTotal },
-              { label: 'Cash Diff',      value: state.data.totals.cashDifference },
-              { label: 'Mobile Diff',    value: state.data.totals.mobileDifference },
-              { label: 'Days',           value: String(state.data.totals.rowCount) },
+              { label: t('totals.salesTotal'),    value: state.data.totals.salesTotal,     emphasis: true },
+              { label: t('totals.expenseTotal'),  value: state.data.totals.expenseTotal },
+              { label: t('totals.handoverTotal'), value: state.data.totals.handoverTotal },
+              { label: t('totals.cashDiff'),      value: state.data.totals.cashDifference },
+              { label: t('totals.mobileDiff'),    value: state.data.totals.mobileDifference },
+              { label: t('totals.days'),          value: String(state.data.totals.rowCount) },
             ]}
           />
 

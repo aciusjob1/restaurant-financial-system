@@ -19,27 +19,32 @@ import {
   type ReconciliationsResponse,
   type ReconciliationRow,
 } from '@/lib/reports';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 function diffClass(v: string | null): string {
   if (v === null) return 'text-slate-400';
   return v.startsWith('-') ? 'text-red-600' : 'text-slate-700';
 }
 
-const columns: Array<Column<ReconciliationRow>> = [
-  { key: 'date',    header: 'Date',           render: (r) => r.businessDate },
-  { key: 'user',    header: 'Waiter',         render: (r) => r.fullName },
-  { key: 'expc',    header: 'Expected Cash',  align: 'right', render: (r) => r.expectedCash },
-  { key: 'expm',    header: 'Expected Mobile',align: 'right', render: (r) => r.expectedMobile },
-  { key: 'actc',    header: 'Actual Cash',    align: 'right', render: (r) => r.actualCash ?? '—' },
-  { key: 'actm',    header: 'Actual Mobile',  align: 'right', render: (r) => r.actualMobile ?? '—' },
-  { key: 'cdiff',   header: 'Cash Diff',      align: 'right',
-    render: (r) => <span className={diffClass(r.cashDifference)}>{r.cashDifference ?? '—'}</span> },
-  { key: 'mdiff',   header: 'Mobile Diff',    align: 'right',
-    render: (r) => <span className={diffClass(r.mobileDifference)}>{r.mobileDifference ?? '—'}</span> },
-  { key: 'status',  header: 'Status',         render: (r) => r.status },
-];
+function buildColumns(t: (k: keyof Dict) => string): Array<Column<ReconciliationRow>> {
+  return [
+    { key: 'date',   header: t('table.date'),             render: (r) => r.businessDate },
+    { key: 'user',   header: t('table.waiter'),           render: (r) => r.fullName },
+    { key: 'expc',   header: t('table.expectedCash'),     align: 'right', render: (r) => r.expectedCash },
+    { key: 'expm',   header: t('table.expectedMobile'),   align: 'right', render: (r) => r.expectedMobile },
+    { key: 'actc',   header: t('table.actualCash'),       align: 'right', render: (r) => r.actualCash ?? '\u2014' },
+    { key: 'actm',   header: t('table.actualMobile'),     align: 'right', render: (r) => r.actualMobile ?? '\u2014' },
+    { key: 'cdiff',  header: t('totals.cashDiff'),        align: 'right',
+      render: (r) => <span className={diffClass(r.cashDifference)}>{r.cashDifference ?? '\u2014'}</span> },
+    { key: 'mdiff',  header: t('totals.mobileDiff'),      align: 'right',
+      render: (r) => <span className={diffClass(r.mobileDifference)}>{r.mobileDifference ?? '\u2014'}</span> },
+    { key: 'status', header: t('table.status'),           render: (r) => r.status },
+  ];
+}
 
 function ReconciliationsContent() {
+  const { t } = useT();
   const searchParams = useSearchParams();
   const def = defaultRange();
   const from = searchParams.get('from') ?? def.from;
@@ -53,12 +58,13 @@ function ReconciliationsContent() {
   }, [from, to]);
 
   const state = useReport<ReconciliationsResponse>(REPORT_PATHS.reconciliations, query);
+  const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
     <ReportShell>
       <ReportHeader
-        title="Reconciliation Summary"
-        subtitle="Per-shift expected vs actual cash and mobile, with differences."
+        title={t('reports.cards.reconciliations.title')}
+        subtitle={t('reports.reconciliations.subtitle')}
       />
 
       <FilterBar />
@@ -73,9 +79,9 @@ function ReconciliationsContent() {
         <>
           <TotalsRow
             items={[
-              { label: 'Cash Diff',   value: state.data.totals.cashDifference, emphasis: true },
-              { label: 'Mobile Diff', value: state.data.totals.mobileDifference },
-              { label: 'Rows',        value: String(state.data.totals.count) },
+              { label: t('totals.cashDiff'),   value: state.data.totals.cashDifference, emphasis: true },
+              { label: t('totals.mobileDiff'), value: state.data.totals.mobileDifference },
+              { label: t('totals.rows'),       value: String(state.data.totals.count) },
             ]}
           />
 
