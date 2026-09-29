@@ -6,6 +6,7 @@ import {
   DateField, DecimalField, TextField, FormError, SubmitButton,
 } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
 
 const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA',
@@ -35,6 +36,7 @@ function errOf(e: unknown): { code: string; message: string } {
 }
 
 export default function SalesPage() {
+  const { t, tError } = useT();
   const [summaries, setSummaries] = useState<SalesSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -87,77 +89,79 @@ export default function SalesPage() {
   return (
     <OpsShell>
       <OpsHeader
-        title="Sales"
-        subtitle="Record a manual daily sales summary. One line per payment method."
+        title={t('ops.sales.title')}
+        subtitle={t('ops.sales.subtitle')}
       />
 
-      <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <form onSubmit={submit} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
           <DateField
-            label="Business date"
+            label={t('form.businessDate')}
             value={businessDate}
             onChange={setBusinessDate}
             required
           />
           <TextField
-            label="Source reference (optional)"
+            label={t('form.sourceReferenceOptional')}
             value={sourceReference}
             onChange={setSourceReference}
-            placeholder="e.g. POS slip #"
+            placeholder={t('ops.sales.sourceReferencePlaceholder')}
           />
         </div>
 
         <div>
-          <div className="text-sm font-medium text-slate-700 mb-2">Amounts by payment method</div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className='text-sm font-medium text-slate-700 mb-2'>{t('ops.sales.amountsHeading')}</div>
+          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3'>
             {PAYMENT_METHODS.map((m) => (
               <DecimalField
                 key={m}
                 label={m.replace(/_/g, ' ')}
                 value={amounts[m] ?? ''}
                 onChange={(v) => setAmounts((prev) => ({ ...prev, [m]: v }))}
-                placeholder="0.00"
+                placeholder='0.00'
               />
             ))}
           </div>
         </div>
 
-        {err && <FormError code={err.code} message={err.message} />}
-        <SubmitButton busy={busy}>Record sales summary</SubmitButton>
+        {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+        <SubmitButton busy={busy}>{t('action.recordSalesSummary')}</SubmitButton>
       </form>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50">
+      <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
+        <table className='w-full text-sm'>
+          <thead className='bg-slate-50'>
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Date</th>
-              <th className="text-left px-3 py-2 font-medium">Source</th>
-              <th className="text-right px-3 py-2 font-medium">Total</th>
-              <th className="text-right px-3 py-2 font-medium">Cash</th>
-              <th className="text-right px-3 py-2 font-medium">Mobile</th>
-              <th className="text-right px-3 py-2 font-medium">Other</th>
-              <th className="text-left px-3 py-2 font-medium">Status</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.date')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.source')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.total')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.cash')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.mobile')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.other')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
             )}
             {!loading && summaries.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">No summaries yet.</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('ops.sales.empty')}</td></tr>
             )}
             {summaries.map((s) => (
-              <tr key={s.id} className="border-t border-slate-100">
-                <td className="px-3 py-2">{s.businessDate}</td>
-                <td className="px-3 py-2 text-slate-600">
-                  {s.source}{s.sourceReference ? ' — ' + s.sourceReference : ''}
+              <tr key={s.id} className='border-t border-slate-100'>
+                <td className='px-3 py-2'>{s.businessDate}</td>
+                <td className='px-3 py-2 text-slate-600'>
+                  {s.source}{s.sourceReference ? ' \u2014 ' + s.sourceReference : ''}
                 </td>
-                <td className="px-3 py-2 text-right font-mono">{s.totalSales}</td>
-                <td className="px-3 py-2 text-right font-mono">{s.cashSales}</td>
-                <td className="px-3 py-2 text-right font-mono">{s.mobileSales}</td>
-                <td className="px-3 py-2 text-right font-mono">{s.otherSales}</td>
-                <td className="px-3 py-2">
-                  <span className="text-xs rounded bg-slate-100 px-2 py-0.5">{s.status}</span>
+                <td className='px-3 py-2 text-right font-mono'>{s.totalSales}</td>
+                <td className='px-3 py-2 text-right font-mono'>{s.cashSales}</td>
+                <td className='px-3 py-2 text-right font-mono'>{s.mobileSales}</td>
+                <td className='px-3 py-2 text-right font-mono'>{s.otherSales}</td>
+                <td className='px-3 py-2'>
+                  <span className='text-xs rounded bg-slate-100 px-2 py-0.5'>
+                    {s.status === 'VERIFIED' ? t('status.verified') : t('status.draft')}
+                  </span>
                 </td>
               </tr>
             ))}

@@ -7,6 +7,7 @@ import {
   DateField, DecimalField, SelectField, TextField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
 
 const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA',
@@ -40,6 +41,7 @@ function errOf(e: unknown): { code: string; message: string } {
 }
 
 export default function SupplierPaymentsPage() {
+  const { t, tError } = useT();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export default function SupplierPaymentsPage() {
     if (filterSupplierId) params.set('supplierId', filterSupplierId);
     if (includeVoided) params.set('includeVoided', 'true');
     const qs = params.toString();
-    apiFetch<{ success: true; payments: Payment[] }>(`/api/v1/supplier-payments${qs ? '?' + qs : ''}`)
+    apiFetch<{ success: true; payments: Payment[] }>('/api/v1/supplier-payments' + (qs ? '?' + qs : ''))
       .then((r) => setPayments(r.payments))
       .catch((e) => setErr(errOf(e)))
       .finally(() => setLoading(false));
@@ -112,99 +114,99 @@ export default function SupplierPaymentsPage() {
   return (
     <OpsShell>
       <OpsHeader
-        title="Supplier Payments"
-        subtitle="Record money paid to a supplier, then allocate it against one or more POSTED invoices."
+        title={t('ops.supplierPayments.title')}
+        subtitle={t('ops.supplierPayments.subtitle')}
       />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="w-64">
+      <div className='flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4'>
+        <div className='w-64'>
           <SelectField
-            label="Filter by supplier"
+            label={t('form.filterBySupplier')}
             value={filterSupplierId}
             onChange={setFilterSupplierId}
             options={[
-              { value: '', label: '— all suppliers —' },
+              { value: '', label: t('common.allSuppliers') },
               ...suppliers.map((s) => ({ value: s.id, label: s.name })),
             ]}
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-700 pb-2">
+        <label className='flex items-center gap-2 text-sm text-slate-700 pb-2'>
           <input
-            type="checkbox"
+            type='checkbox'
             checked={includeVoided}
             onChange={(e) => setIncludeVoided(e.target.checked)}
           />
-          Include voided
+          {t('common.includeVoided')}
         </label>
       </div>
 
-      <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-        <h2 className="text-sm font-medium text-slate-700">Record payment</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <form onSubmit={submit} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+        <h2 className='text-sm font-medium text-slate-700'>{t('ops.supplierPayments.recordHeading')}</h2>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
           <SelectField
-            label="Supplier"
+            label={t('table.supplier')}
             value={supplierId}
             onChange={setSupplierId}
             required
             options={[
-              { value: '', label: '— select —' },
+              { value: '', label: t('form.selectPrompt') },
               ...suppliers.map((s) => ({ value: s.id, label: s.name })),
             ]}
           />
-          <DateField label="Business date" value={businessDate} onChange={setBusinessDate} required />
-          <DecimalField label="Amount" value={amount} onChange={setAmount} required placeholder="0.00" />
+          <DateField label={t('form.businessDate')} value={businessDate} onChange={setBusinessDate} required />
+          <DecimalField label={t('form.amount')} value={amount} onChange={setAmount} required placeholder='0.00' />
           <SelectField
-            label="Payment method"
+            label={t('form.paymentMethod')}
             value={paymentMethod}
             onChange={setPaymentMethod}
             required
             options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
           />
-          <TextField label="Reference (optional)" value={reference} onChange={setReference} placeholder="e.g. cheque #" />
+          <TextField label={t('form.referenceOptional')} value={reference} onChange={setReference} placeholder={t('ops.supplierPayments.referencePlaceholder')} />
         </div>
-        <TextArea label="Notes (optional)" value={notes} onChange={setNotes} rows={2} />
-        {err && <FormError code={err.code} message={err.message} />}
-        <SubmitButton busy={busy}>Record payment</SubmitButton>
+        <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
+        {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+        <SubmitButton busy={busy}>{t('action.recordPayment')}</SubmitButton>
       </form>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50">
+      <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
+        <table className='w-full text-sm'>
+          <thead className='bg-slate-50'>
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Payment #</th>
-              <th className="text-left px-3 py-2 font-medium">Supplier</th>
-              <th className="text-left px-3 py-2 font-medium">Date</th>
-              <th className="text-right px-3 py-2 font-medium">Amount</th>
-              <th className="text-left px-3 py-2 font-medium">Method</th>
-              <th className="text-left px-3 py-2 font-medium">Status</th>
-              <th className="text-left px-3 py-2 font-medium">Action</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.paymentNumber')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.supplier')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.date')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.amount')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.method')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.action')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
             )}
             {!loading && payments.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">No payments.</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('ops.supplierPayments.empty')}</td></tr>
             )}
             {payments.map((p) => (
-              <tr key={p.id} className="border-t border-slate-100">
-                <td className="px-3 py-2 font-mono">{p.paymentNumber}</td>
-                <td className="px-3 py-2">{supplierName(p.supplierId)}</td>
-                <td className="px-3 py-2">{p.businessDate}</td>
-                <td className="px-3 py-2 text-right font-mono">{p.amount}</td>
-                <td className="px-3 py-2">{p.paymentMethod}</td>
-                <td className="px-3 py-2">
+              <tr key={p.id} className='border-t border-slate-100'>
+                <td className='px-3 py-2 font-mono'>{p.paymentNumber}</td>
+                <td className='px-3 py-2'>{supplierName(p.supplierId)}</td>
+                <td className='px-3 py-2'>{p.businessDate}</td>
+                <td className='px-3 py-2 text-right font-mono'>{p.amount}</td>
+                <td className='px-3 py-2'>{p.paymentMethod}</td>
+                <td className='px-3 py-2'>
                   {p.voidedAt
-                    ? <span className="text-xs rounded bg-red-100 text-red-700 px-2 py-0.5">VOIDED</span>
-                    : <span className="text-xs rounded bg-slate-100 px-2 py-0.5">ACTIVE</span>}
+                    ? <span className='text-xs rounded bg-red-100 text-red-700 px-2 py-0.5'>{t('status.voided')}</span>
+                    : <span className='text-xs rounded bg-slate-100 px-2 py-0.5'>{t('status.active')}</span>}
                 </td>
-                <td className="px-3 py-2">
+                <td className='px-3 py-2'>
                   <Link
-                    href={`/ops/supplier-payments/${p.id}`}
-                    className="text-xs text-slate-700 underline hover:text-slate-900"
+                    href={'/ops/supplier-payments/' + p.id}
+                    className='text-xs text-slate-700 underline hover:text-slate-900'
                   >
-                    Open
+                    {t('action.open')}
                   </Link>
                 </td>
               </tr>
