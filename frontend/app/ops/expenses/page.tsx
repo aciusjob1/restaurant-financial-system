@@ -1,17 +1,5 @@
 'use client';
 
-// Verified against backend/src/routes/expenseRoutes.ts and
-// backend/src/validators/expense.ts.
-//
-// State machine: DRAFT -> (submit) -> PENDING -> (approve|reject) -> terminal
-// Endpoints used:
-//   GET  /api/v1/expenses                list with filters
-//   POST /api/v1/expenses                create (status DRAFT)
-//   POST /api/v1/expenses/:id/submit     DRAFT -> PENDING
-//   POST /api/v1/expenses/:id/approve    PENDING -> APPROVED
-//   POST /api/v1/expenses/:id/reject     PENDING -> REJECTED (requires reason)
-//   GET  /api/v1/expense-categories      dropdown source
-
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import {
@@ -26,6 +14,8 @@ import {
 import { ConfirmDialog } from '@/components/ops/ConfirmDialog';
 import { apiFetch, ApiError } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA', 'HALOPESA', 'BANK', 'CARD', 'OTHER',
@@ -68,7 +58,15 @@ function statusPill(status: string): string {
   }
 }
 
+function statusLabelKey(status: string): keyof Dict {
+  if (status === 'PENDING') return 'status.pending';
+  if (status === 'APPROVED') return 'status.approved';
+  if (status === 'REJECTED') return 'status.rejected';
+  return 'status.draft';
+}
+
 function ExpensesContent() {
+  const { t, tError } = useT();
   const [rows, setRows] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [users, setUsers] = useState<Array<{ id: string; fullName: string; username: string }>>([]);
@@ -165,7 +163,7 @@ function ExpensesContent() {
   async function act(id: string, action: 'submit' | 'approve') {
     setError(null);
     try {
-      await apiFetch<OneExpenseResponse>(`${OPS_PATHS.expenses}/${id}/${action}`, {
+      await apiFetch<OneExpenseResponse>(OPS_PATHS.expenses + '/' + id + '/' + action, {
         method: 'POST',
       });
       await reload(statusFilter, includeRejected);
@@ -179,7 +177,7 @@ function ExpensesContent() {
     setRejectBusy(true);
     setError(null);
     try {
-      await apiFetch<OneExpenseResponse>(`${OPS_PATHS.expenses}/${rejectTarget.id}/reject`, {
+      await apiFetch<OneExpenseResponse>(OPS_PATHS.expenses + '/' + rejectTarget.id + '/reject', {
         method: 'POST',
         body: JSON.stringify({ reason: rejectReason.trim() }),
       });
@@ -196,134 +194,135 @@ function ExpensesContent() {
   return (
     <OpsShell>
       <OpsHeader
-        title="Expenses"
-        subtitle="Create, submit, approve, or reject operational expenses."
+        title={t('ops.expenses.title')}
+        subtitle={t('ops.expenses.subtitle')}
       />
 
-      {error && <FormError code={error.code} message={error.message} />}
+      {error && <FormError code={error.code} message={tError(error.code, error.message)} />}
 
       {categories.length === 0 && !loading && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          No expense categories yet. Create one first at{' '}
-          <a href="/ops/expense-categories" className="underline">/ops/expense-categories</a>.
+        <div className='rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800'>
+          {t('ops.expenses.noCategories.before')}
+          <a href='/ops/expense-categories' className='underline'>/ops/expense-categories</a>
+          {t('ops.expenses.noCategories.after')}
         </div>
       )}
 
-      <form onSubmit={onCreate} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <DateField label="Business date" value={businessDate} onChange={setBusinessDate} required />
+      <form onSubmit={onCreate} className='rounded-2xl border border-slate-200 bg-white p-4 space-y-3'>
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+          <DateField label={t('form.businessDate')} value={businessDate} onChange={setBusinessDate} required />
           <SelectField
-            label="Category"
+            label={t('form.category')}
             value={categoryId}
             onChange={setCategoryId}
             required
             options={categories.map((c) => ({ value: c.id, label: c.name }))}
           />
-          <DecimalField label="Amount" value={amount} onChange={setAmount} placeholder="0.00" required />
+          <DecimalField label={t('form.amount')} value={amount} onChange={setAmount} placeholder='0.00' required />
           <SelectField
-            label="Payment method"
+            label={t('form.paymentMethod')}
             value={paymentMethod}
             onChange={setPaymentMethod}
             required
             options={PAYMENT_METHODS.map((m) => ({ value: m, label: m }))}
           />
           <SelectField
-            label="Paid by"
+            label={t('form.paidBy')}
             value={paidByUserId}
             onChange={setPaidByUserId}
-            options={[{ value: '', label: '— not specified —' }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
+            options={[{ value: '', label: t('common.notSpecified') }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
           />
         </div>
-        <TextField label="Description" value={description} onChange={setDescription} required />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <TextField label="Receipt number" value={receiptNumber} onChange={setReceiptNumber} placeholder="Optional" />
+        <TextField label={t('form.description')} value={description} onChange={setDescription} required />
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+          <TextField label={t('form.receiptNumber')} value={receiptNumber} onChange={setReceiptNumber} placeholder={t('common.optional')} />
         </div>
-        <TextArea label="Notes" value={notes} onChange={setNotes} placeholder="Optional" />
-        <SubmitButton busy={busy}>Create expense</SubmitButton>
+        <TextArea label={t('form.notes')} value={notes} onChange={setNotes} placeholder={t('common.optional')} />
+        <SubmitButton busy={busy}>{t('action.createExpense')}</SubmitButton>
       </form>
 
-      <div className="flex flex-wrap items-center gap-4 justify-between">
-        <div className="flex items-center gap-4">
+      <div className='flex flex-wrap items-center gap-4 justify-between'>
+        <div className='flex items-center gap-4'>
           <SelectField
-            label="Status"
+            label={t('table.status')}
             value={statusFilter}
             onChange={setStatusFilter}
             options={[
-              { value: '', label: 'All' },
-              { value: 'DRAFT', label: 'Draft' },
-              { value: 'PENDING', label: 'Pending' },
-              { value: 'APPROVED', label: 'Approved' },
-              { value: 'REJECTED', label: 'Rejected' },
+              { value: '', label: t('status.all') },
+              { value: 'DRAFT', label: t('status.draft') },
+              { value: 'PENDING', label: t('status.pending') },
+              { value: 'APPROVED', label: t('status.approved') },
+              { value: 'REJECTED', label: t('status.rejected') },
             ]}
           />
-          <label className="text-sm text-slate-600 flex items-center gap-2 self-end pb-2">
+          <label className='text-sm text-slate-600 flex items-center gap-2 self-end pb-2'>
             <input
-              type="checkbox"
+              type='checkbox'
               checked={includeRejected}
               onChange={(e) => setIncludeRejected(e.target.checked)}
             />
-            Include rejected
+            {t('common.includeRejected')}
           </label>
         </div>
-        {loading && <span className="text-xs text-slate-400">Loading…</span>}
+        {loading && <span className='text-xs text-slate-400'>{t('common.loading')}</span>}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+      <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
+        <table className='w-full text-sm'>
+          <thead className='bg-slate-50 text-slate-600'>
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Date</th>
-              <th className="text-left px-3 py-2 font-medium">#</th>
-              <th className="text-left px-3 py-2 font-medium">Description</th>
-              <th className="text-right px-3 py-2 font-medium">Amount</th>
-              <th className="text-left px-3 py-2 font-medium">Method</th>
-              <th className="text-left px-3 py-2 font-medium">Paid by</th>
-              <th className="text-left px-3 py-2 font-medium">Status</th>
-              <th className="text-right px-3 py-2 font-medium">Action</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.date')}</th>
+              <th className='text-left px-3 py-2 font-medium'>#</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.description')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.amount')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.method')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('form.paidBy')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.action')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className='divide-y divide-slate-100'>
             {rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-slate-500">No expenses yet.</td>
+                <td colSpan={8} className='px-3 py-6 text-center text-slate-500'>{t('ops.expenses.empty')}</td>
               </tr>
             )}
             {rows.map((x) => (
-              <tr key={x.id} className="hover:bg-slate-50">
-                <td className="px-3 py-2 text-slate-700">{x.businessDate}</td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-500">{x.expenseNumber}</td>
-                <td className="px-3 py-2 text-slate-800">{x.description}</td>
-                <td className="px-3 py-2 text-right font-mono text-slate-700">{x.amount}</td>
-                <td className="px-3 py-2 text-slate-600">{x.paymentMethod}</td>
-                <td className="px-3 py-2 text-slate-600">{users.find((u) => u.id === x.paidByUserId)?.fullName ?? '—'}</td>
-                <td className="px-3 py-2">
+              <tr key={x.id} className='hover:bg-slate-50'>
+                <td className='px-3 py-2 text-slate-700'>{x.businessDate}</td>
+                <td className='px-3 py-2 font-mono text-xs text-slate-500'>{x.expenseNumber}</td>
+                <td className='px-3 py-2 text-slate-800'>{x.description}</td>
+                <td className='px-3 py-2 text-right font-mono text-slate-700'>{x.amount}</td>
+                <td className='px-3 py-2 text-slate-600'>{x.paymentMethod}</td>
+                <td className='px-3 py-2 text-slate-600'>{users.find((u) => u.id === x.paidByUserId)?.fullName ?? '\u2014'}</td>
+                <td className='px-3 py-2'>
                   <span className={'text-xs px-2 py-0.5 rounded-full ' + statusPill(x.status)}>
-                    {x.status}
+                    {t(statusLabelKey(x.status))}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right space-x-3 whitespace-nowrap">
+                <td className='px-3 py-2 text-right space-x-3 whitespace-nowrap'>
                   {x.status === 'DRAFT' && (
-                    <button type="button" onClick={() => act(x.id, 'submit')} className="text-xs text-blue-700 hover:underline">
-                      Submit
+                    <button type='button' onClick={() => act(x.id, 'submit')} className='text-xs text-blue-700 hover:underline'>
+                      {t('action.submit')}
                     </button>
                   )}
                   {x.status === 'PENDING' && myId && x.createdBy !== myId && (
                     <>
-                      <button type="button" onClick={() => act(x.id, 'approve')} className="text-xs text-emerald-700 hover:underline">
-                        Approve
+                      <button type='button' onClick={() => act(x.id, 'approve')} className='text-xs text-emerald-700 hover:underline'>
+                        {t('action.approve')}
                       </button>
-                      <button type="button" onClick={() => { setRejectTarget(x); setRejectReason(''); }} className="text-xs text-red-700 hover:underline">
-                        Reject
+                      <button type='button' onClick={() => { setRejectTarget(x); setRejectReason(''); }} className='text-xs text-red-700 hover:underline'>
+                        {t('action.reject')}
                       </button>
                     </>
                   )}
                   {x.status === 'PENDING' && myId && x.createdBy === myId && myRole === 'OWNER' && (
-                    <button type="button" onClick={() => act(x.id, 'approve')} className="text-xs text-amber-700 hover:underline">
-                      Approve (self)
+                    <button type='button' onClick={() => act(x.id, 'approve')} className='text-xs text-amber-700 hover:underline'>
+                      {t('action.approveSelf')}
                     </button>
                   )}
                   {x.status === 'PENDING' && myId && x.createdBy === myId && myRole !== 'OWNER' && (
-                    <span className="text-xs text-slate-400">Awaiting another approver</span>
+                    <span className='text-xs text-slate-400'>{t('common.awaitingApprover')}</span>
                   )}
                 </td>
               </tr>
@@ -334,21 +333,25 @@ function ExpensesContent() {
 
       <ConfirmDialog
         open={rejectTarget !== null}
-        title="Reject expense"
+        title={t('ops.expenses.rejectDialogTitle')}
         danger
         busy={rejectBusy}
-        confirmLabel="Reject"
+        confirmLabel={t('action.reject')}
         body={
           <div>
-            <p className="mb-2">
-              Reject <span className="font-mono">{rejectTarget?.expenseNumber}</span> ({rejectTarget?.amount})?
+            <p className='mb-2'>
+              {t('ops.expenses.rejectPrompt.before')}
+              <span className='font-mono'>{rejectTarget?.expenseNumber}</span>
+              {t('ops.expenses.rejectPrompt.mid')}
+              {rejectTarget?.amount}
+              {t('ops.expenses.rejectPrompt.after')}
             </p>
             <textarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               rows={3}
-              placeholder="Reason (min 3 characters)"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder={t('ops.expenses.rejectReasonPlaceholder')}
+              className='w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
             />
           </div>
         }

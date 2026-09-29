@@ -7,6 +7,8 @@ import {
   DateField, DecimalField, SelectField, TextField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 const STATUS_OPTIONS = ['ALL', 'DRAFT', 'APPROVED', 'PAID'] as const;
 
@@ -45,13 +47,27 @@ function errOf(e: unknown): { code: string; message: string } {
 }
 
 function employeeName(e: Employee | undefined): string {
-  if (!e) return '—';
+  if (!e) return '\u2014';
   if (e.fullName) return e.fullName;
-  if (e.firstName || e.lastName) return `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim();
+  if (e.firstName || e.lastName) return ((e.firstName ?? '') + ' ' + (e.lastName ?? '')).trim();
   return e.employeeNumber ?? e.id.slice(0, 8);
 }
 
+function salaryStatusKey(s: string): keyof Dict {
+  if (s === 'APPROVED') return 'status.approved';
+  if (s === 'PAID') return 'status.paid';
+  return 'status.draft';
+}
+
+function salaryStatusFilterKey(s: string): keyof Dict {
+  if (s === 'ALL') return 'status.all';
+  if (s === 'APPROVED') return 'status.approved';
+  if (s === 'PAID') return 'status.paid';
+  return 'status.draft';
+}
+
 export default function SalariesPage() {
+  const { t, tError } = useT();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +93,7 @@ export default function SalariesPage() {
     if (filterStatus !== 'ALL') params.set('status', filterStatus);
     if (filterEmployeeId) params.set('employeeId', filterEmployeeId);
     const qs = params.toString();
-    apiFetch<{ success: true; salaries: Salary[] }>(`/api/v1/salaries${qs ? '?' + qs : ''}`)
+    apiFetch<{ success: true; salaries: Salary[] }>('/api/v1/salaries' + (qs ? '?' + qs : ''))
       .then((r) => setSalaries(r.salaries))
       .catch((e) => setErr(errOf(e)))
       .finally(() => setLoading(false));
@@ -129,103 +145,102 @@ export default function SalariesPage() {
   return (
     <OpsShell>
       <OpsHeader
-        title="Salaries"
-        subtitle="Per-employee salary records. DRAFT → APPROVED → PAID. Payments are partial; last payment flips to PAID."
+        title={t('ops.salaries.title')}
+        subtitle={t('ops.salaries.subtitle')}
       />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="w-44">
+      <div className='flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4'>
+        <div className='w-44'>
           <SelectField
-            label="Status"
+            label={t('table.status')}
             value={filterStatus}
             onChange={setFilterStatus}
-            options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+            options={STATUS_OPTIONS.map((s) => ({ value: s, label: t(salaryStatusFilterKey(s)) }))}
           />
         </div>
-        <div className="w-72">
+        <div className='w-72'>
           <SelectField
-            label="Employee"
+            label={t('table.employee')}
             value={filterEmployeeId}
             onChange={setFilterEmployeeId}
             options={[
-              { value: '', label: '— all employees —' },
+              { value: '', label: t('common.allEmployees') },
               ...employees.map((e) => ({ value: e.id, label: employeeName(e) })),
             ]}
           />
         </div>
       </div>
 
-      <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-        <h2 className="text-sm font-medium text-slate-700">New salary record</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <form onSubmit={submit} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+        <h2 className='text-sm font-medium text-slate-700'>{t('ops.salaries.newHeading')}</h2>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
           <SelectField
-            label="Employee"
+            label={t('table.employee')}
             value={employeeId}
             onChange={setEmployeeId}
             required
             options={[
-              { value: '', label: '— select —' },
+              { value: '', label: t('form.selectPrompt') },
               ...employees.map((e) => ({ value: e.id, label: employeeName(e) })),
             ]}
           />
           <TextField
-            label="Label"
+            label={t('form.label')}
             value={label}
             onChange={setLabel}
             required
-            placeholder="e.g. Sept 2026 salary"
+            placeholder={t('ops.salaries.labelPlaceholder')}
           />
-          <DateField label="Period start" value={periodStart} onChange={setPeriodStart} required />
-          <DateField label="Period end" value={periodEnd} onChange={setPeriodEnd} required />
-          <DecimalField label="Base salary" value={baseSalary} onChange={setBaseSalary} required placeholder="0.00" />
-          <DecimalField label="Adjustments" value={adjustments} onChange={setAdjustments} placeholder="0.00" />
-          <DecimalField label="Deductions" value={deductions} onChange={setDeductions} placeholder="0.00" />
+          <DateField label={t('form.periodStart')} value={periodStart} onChange={setPeriodStart} required />
+          <DateField label={t('form.periodEnd')} value={periodEnd} onChange={setPeriodEnd} required />
+          <DecimalField label={t('form.baseSalary')} value={baseSalary} onChange={setBaseSalary} required placeholder='0.00' />
+          <DecimalField label={t('form.adjustments')} value={adjustments} onChange={setAdjustments} placeholder='0.00' />
+          <DecimalField label={t('form.deductions')} value={deductions} onChange={setDeductions} placeholder='0.00' />
         </div>
-        <TextArea label="Notes (optional)" value={notes} onChange={setNotes} rows={2} />
-        <div className="text-xs text-slate-500">
-          Net salary = base + adjustments − deductions, computed server-side.
-          Periods may not overlap for the same employee.
+        <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
+        <div className='text-xs text-slate-500'>
+          {t('ops.salaries.note')}
         </div>
-        {err && <FormError code={err.code} message={err.message} />}
-        <SubmitButton busy={busy}>Create salary record</SubmitButton>
+        {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+        <SubmitButton busy={busy}>{t('action.createSalary')}</SubmitButton>
       </form>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50">
+      <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
+        <table className='w-full text-sm'>
+          <thead className='bg-slate-50'>
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Salary #</th>
-              <th className="text-left px-3 py-2 font-medium">Employee</th>
-              <th className="text-left px-3 py-2 font-medium">Period</th>
-              <th className="text-left px-3 py-2 font-medium">Label</th>
-              <th className="text-right px-3 py-2 font-medium">Net</th>
-              <th className="text-left px-3 py-2 font-medium">Status</th>
-              <th className="text-left px-3 py-2 font-medium">Action</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.salaryNumber')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.employee')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.period')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.label')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.net')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.action')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
             )}
             {!loading && salaries.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">No salary records.</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('ops.salaries.empty')}</td></tr>
             )}
             {salaries.map((s) => (
-              <tr key={s.id} className="border-t border-slate-100">
-                <td className="px-3 py-2 font-mono">{s.salaryNumber}</td>
-                <td className="px-3 py-2">{employeeName(employeeOf(s.employeeId))}</td>
-                <td className="px-3 py-2 text-slate-600">{s.periodStart} → {s.periodEnd}</td>
-                <td className="px-3 py-2 text-slate-600">{s.label}</td>
-                <td className="px-3 py-2 text-right font-mono">{s.netSalary}</td>
-                <td className="px-3 py-2">
-                  <span className="text-xs rounded bg-slate-100 px-2 py-0.5">{s.status}</span>
+              <tr key={s.id} className='border-t border-slate-100'>
+                <td className='px-3 py-2 font-mono'>{s.salaryNumber}</td>
+                <td className='px-3 py-2'>{employeeName(employeeOf(s.employeeId))}</td>
+                <td className='px-3 py-2 text-slate-600'>{s.periodStart} \u2192 {s.periodEnd}</td>
+                <td className='px-3 py-2 text-slate-600'>{s.label}</td>
+                <td className='px-3 py-2 text-right font-mono'>{s.netSalary}</td>
+                <td className='px-3 py-2'>
+                  <span className='text-xs rounded bg-slate-100 px-2 py-0.5'>{t(salaryStatusKey(s.status))}</span>
                 </td>
-                <td className="px-3 py-2">
+                <td className='px-3 py-2'>
                   <Link
-                    href={`/ops/salaries/${s.id}`}
-                    className="text-xs text-slate-700 underline hover:text-slate-900"
+                    href={'/ops/salaries/' + s.id}
+                    className='text-xs text-slate-700 underline hover:text-slate-900'
                   >
-                    Open
+                    {t('action.open')}
                   </Link>
                 </td>
               </tr>
