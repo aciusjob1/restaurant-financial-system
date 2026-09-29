@@ -37,29 +37,43 @@ type MeResponse = {
 
 const ALLOWED_ROLES = new Set(['OWNER', 'MANAGER']);
 
-type LinkSpec = { href: string; labelKey: keyof Dict; icon: NavLink['icon'] };
+type LinkSpec = { href: string; labelKey: keyof Dict; sectionKey?: keyof Dict; icon: NavLink['icon'] };
 
 const LINKS: LinkSpec[] = [
-  { href: '/dashboard',                labelKey: 'nav.dashboard',                icon: LayoutDashboard },
-  { href: '/ops/materials',            labelKey: 'nav.ops.materials',            icon: Package },
-  { href: '/ops/material-categories',  labelKey: 'nav.ops.materialCategories',   icon: FolderTree },
-  { href: '/ops/expense-categories',   labelKey: 'nav.ops.expenseCategories',    icon: Tags },
-  { href: '/ops/suppliers',            labelKey: 'nav.ops.suppliers',            icon: Truck },
-  { href: '/ops/employees',            labelKey: 'nav.ops.employees',            icon: UserRound },
-  { href: '/ops/positions',            labelKey: 'nav.ops.positions',            icon: Briefcase },
-  { href: '/ops/purchase-invoices',    labelKey: 'nav.ops.purchaseInvoices',     icon: FileText },
-  { href: '/ops/supplier-payments',    labelKey: 'nav.ops.supplierPayments',     icon: CreditCard },
-  { href: '/ops/stock-movements',      labelKey: 'nav.ops.stockMovements',       icon: Warehouse },
-  { href: '/ops/sales',                labelKey: 'nav.ops.sales',                icon: ShoppingCart },
-  { href: '/ops/shifts',               labelKey: 'nav.ops.shifts',               icon: Clock },
-  { href: '/ops/reconciliations',      labelKey: 'nav.ops.reconciliations',      icon: Scale },
-  { href: '/ops/collections',          labelKey: 'nav.ops.collections',          icon: Coins },
-  { href: '/ops/handovers',            labelKey: 'nav.ops.handovers',            icon: HandCoins },
-  { href: '/ops/expenses',             labelKey: 'nav.ops.expenses',             icon: Receipt },
-  { href: '/ops/salaries',             labelKey: 'nav.ops.salaries',             icon: Banknote },
-  { href: '/ops/daily-closing',        labelKey: 'nav.ops.dailyClosing',         icon: Lock },
-  { href: '/ops/users',                labelKey: 'nav.ops.users',                icon: Users },
-  { href: '/ops/account',              labelKey: 'nav.ops.account',              icon: UserCog },
+  { href: '/dashboard',                labelKey: 'nav.dashboard',              icon: LayoutDashboard },
+
+  // Cash & Shift
+  { href: '/ops/shifts',               labelKey: 'nav.ops.shifts',             sectionKey: 'nav.section.cash',           icon: Clock },
+  { href: '/ops/collections',          labelKey: 'nav.ops.collections',        icon: Coins },
+  { href: '/ops/reconciliations',      labelKey: 'nav.ops.reconciliations',    icon: Scale },
+  { href: '/ops/handovers',            labelKey: 'nav.ops.handovers',          icon: HandCoins },
+  { href: '/ops/daily-closing',        labelKey: 'nav.ops.dailyClosing',       icon: Lock },
+
+  // Sales
+  { href: '/ops/sales',                labelKey: 'nav.ops.sales',              sectionKey: 'nav.section.sales',          icon: ShoppingCart },
+
+  // Purchasing & Inventory
+  { href: '/ops/suppliers',            labelKey: 'nav.ops.suppliers',          sectionKey: 'nav.section.purchasing',     icon: Truck },
+  { href: '/ops/purchase-invoices',    labelKey: 'nav.ops.purchaseInvoices',   icon: FileText },
+  { href: '/ops/supplier-payments',    labelKey: 'nav.ops.supplierPayments',   icon: CreditCard },
+  { href: '/ops/materials',            labelKey: 'nav.ops.materials',          icon: Package },
+  { href: '/ops/material-categories',  labelKey: 'nav.ops.materialCategories', icon: FolderTree },
+  { href: '/ops/stock-movements',      labelKey: 'nav.ops.stockMovements',     icon: Warehouse },
+
+  // Expenses
+  { href: '/ops/expenses',             labelKey: 'nav.ops.expenses',           sectionKey: 'nav.section.expenses',       icon: Receipt },
+  { href: '/ops/expense-categories',   labelKey: 'nav.ops.expenseCategories',  icon: Tags },
+
+  // Salaries
+  { href: '/ops/salaries',             labelKey: 'nav.ops.salaries',           sectionKey: 'nav.section.salaries',       icon: Banknote },
+
+  // Staff
+  { href: '/ops/employees',            labelKey: 'nav.ops.employees',          sectionKey: 'nav.section.staff',          icon: UserRound },
+  { href: '/ops/positions',            labelKey: 'nav.ops.positions',          icon: Briefcase },
+  { href: '/ops/users',                labelKey: 'nav.ops.users',              icon: Users },
+
+  // Account (bottom, ungrouped)
+  { href: '/ops/account',              labelKey: 'nav.ops.account',            icon: UserCog },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {
@@ -69,7 +83,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
   const [denied, setDenied] = useState(false);
 
   const links = useMemo<NavLink[]>(
-    () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), icon: l.icon })),
+    () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), section: l.sectionKey ? t(l.sectionKey) : undefined, icon: l.icon })),
     [t]
   );
 

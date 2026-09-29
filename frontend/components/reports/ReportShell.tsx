@@ -25,16 +25,22 @@ type MeResponse = {
 
 const ALLOWED_ROLES = new Set(['OWNER', 'MANAGER', 'AUDITOR']);
 
-type LinkSpec = { href: string; labelKey: keyof Dict; icon: NavLink['icon'] };
+type LinkSpec = { href: string; labelKey: keyof Dict; sectionKey?: keyof Dict; icon: NavLink['icon'] };
 
 const LINKS: LinkSpec[] = [
   { href: '/dashboard',                   labelKey: 'nav.dashboard',                  icon: LayoutDashboard },
-  { href: '/reports/daily-sales',         labelKey: 'nav.reports.dailySales',         icon: TrendingUp },
+
+  // Cash
+  { href: '/reports/daily-sales',         labelKey: 'nav.reports.dailySales',         sectionKey: 'nav.section.reports.cash',       icon: TrendingUp },
   { href: '/reports/reconciliations',     labelKey: 'nav.reports.reconciliations',    icon: Scale },
   { href: '/reports/handovers',           labelKey: 'nav.reports.handovers',          icon: HandCoins },
-  { href: '/reports/expenses',            labelKey: 'nav.reports.expenses',           icon: Receipt },
+
+  // Financial
+  { href: '/reports/expenses',            labelKey: 'nav.reports.expenses',           sectionKey: 'nav.section.financial',          icon: Receipt },
   { href: '/reports/supplier-balances',   labelKey: 'nav.reports.supplierBalances',   icon: Truck },
-  { href: '/reports/sales-vs-pos',        labelKey: 'nav.reports.salesVsPos',         icon: GitCompare },
+
+  // Inventory
+  { href: '/reports/sales-vs-pos',        labelKey: 'nav.reports.salesVsPos',         sectionKey: 'nav.section.reports.inventory',  icon: GitCompare },
   { href: '/reports/stock-movements',     labelKey: 'nav.reports.stockMovements',     icon: Warehouse },
 ];
 
@@ -45,7 +51,7 @@ export function ReportShell({ children }: { children: ReactNode }) {
   const [denied, setDenied] = useState(false);
 
   const links = useMemo<NavLink[]>(
-    () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), icon: l.icon })),
+    () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), section: l.sectionKey ? t(l.sectionKey) : undefined, icon: l.icon })),
     [t]
   );
 

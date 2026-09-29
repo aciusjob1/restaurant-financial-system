@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import {
   LogOut,
   Menu,
@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
-export type NavLink = { href: string; label: string; icon: LucideIcon };
+export type NavLink = { href: string; label: string; icon: LucideIcon; section?: string };
 
 type AppSidebarProps = {
   title: string;
@@ -258,26 +258,34 @@ export function AppSidebar({
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2">
-          {links.map((l) => {
+          {links.map((l, idx) => {
             const Icon = l.icon;
             const active = pathname === l.href || (pathname?.startsWith(l.href + '/') ?? false);
+            const prevSection = idx > 0 ? links[idx - 1].section : undefined;
+            const showSection = l.section && l.section !== prevSection;
             return (
-              <Link
-                key={l.href}
-                href={l.href}
-                title={effectiveCollapsed ? l.label : undefined}
-                aria-current={active ? 'page' : undefined}
-                className={[
-                  'flex items-center gap-3 mx-2 my-0.5 px-2 py-2 rounded-lg text-sm',
-                  active
-                    ? 'bg-slate-900 text-white hover:bg-slate-900'
-                    : 'text-slate-700 hover:bg-slate-100',
-                  effectiveCollapsed ? 'lg:justify-center lg:px-0' : '',
-                ].join(' ')}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className={effectiveCollapsed ? 'lg:hidden' : ''}>{l.label}</span>
-              </Link>
+              <Fragment key={l.href}>
+                {showSection && !effectiveCollapsed && (
+                  <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wide text-slate-400">
+                    {l.section}
+                  </div>
+                )}
+                <Link
+                  href={l.href}
+                  title={effectiveCollapsed ? l.label : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className={[
+                    'flex items-center gap-3 mx-2 my-0.5 px-2 py-2 rounded-lg text-sm',
+                    active
+                      ? 'bg-slate-900 text-white hover:bg-slate-900'
+                      : 'text-slate-700 hover:bg-slate-100',
+                    effectiveCollapsed ? 'lg:justify-center lg:px-0' : '',
+                  ].join(' ')}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className={effectiveCollapsed ? 'lg:hidden' : ''}>{l.label}</span>
+                </Link>
+              </Fragment>
             );
           })}
         </nav>
