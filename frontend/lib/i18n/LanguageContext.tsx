@@ -17,6 +17,7 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 type Ctx = {
   lang: Lang;
   t: (key: keyof Dict) => string;
+  tError: (code: string, fallback: string) => string;
   setLang: (l: Lang) => void;
 };
 
@@ -74,8 +75,18 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     [lang]
   );
 
+  const tError = useCallback(
+    (code: string, fallback: string): string => {
+      const key = 'errors.' + code;
+      const d = dictionaries[lang] as Record<string, string>;
+      const fallbackDict = dictionaries.en as Record<string, string>;
+      return d[key] ?? fallbackDict[key] ?? fallback;
+    },
+    [lang]
+  );
+
   return (
-    <LanguageCtx.Provider value={{ lang, t, setLang }}>
+    <LanguageCtx.Provider value={{ lang, t, tError, setLang }}>
       {children}
     </LanguageCtx.Provider>
   );

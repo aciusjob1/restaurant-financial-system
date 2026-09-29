@@ -23,4 +23,108 @@ export const en = {
   'errors.NOT_FOUND': 'Not found.',
   'errors.INVALID_CREDENTIALS': 'Invalid username or password.',
   'errors.ACCOUNT_DISABLED': 'Account is disabled.',
+  'errors.ERR': 'Request failed.',
+
+  'common.loading': 'Loading...',
+
+  'form.businessDate': 'Business date',
+  'form.category': 'Category',
+  'form.selectCategory': 'Select category...',
+  'form.amount': 'Amount',
+  'form.paymentMethod': 'Payment method',
+  'form.description': 'Description',
+  'form.descriptionPlaceholder': 'What was it for?',
+  'form.receiptOptional': 'Receipt # (optional)',
+  'form.notesOptional': 'Notes (optional)',
+
+  'table.date': 'Date',
+  'table.category': 'Category',
+  'table.description': 'Description',
+  'table.amount': 'Amount',
+  'table.status': 'Status',
+
+  'kiosk.expenses.title': 'Expenses',
+  'kiosk.expenses.subtitle': 'Record money you spent for the restaurant.',
+  'kiosk.expenses.recordHeading': 'Record an expense',
+  'kiosk.expenses.recordButton': 'Record expense',
+  'kiosk.expenses.listHeading': 'My expenses',
+  'kiosk.expenses.empty': 'No expenses yet.',
+
+  'form.openingCash': 'Opening cash',
+  'form.method': 'Method',
+  'form.mobileRef': 'Mobile ref (optional)',
+  'form.mobileRefPlaceholder': 'e.g. MPESA code',
+  'form.receiver': 'Receiver',
+  'form.selectPlaceholder': '- select -',
+  'form.actualCash': 'Actual cash',
+  'form.actualMobile': 'Actual mobile',
+
+  'table.reference': 'Reference',
+
+  'kiosk.home.brandTitle': 'Kiosk',
+  'kiosk.home.greetingPrefix': 'Hello, ',
+  'kiosk.home.loadingSubtitle': 'Loading your shift...',
+  'kiosk.home.subtitle': 'Follow the steps below. The system will show the next action.',
+
+  'kiosk.noShift.heading': 'Start your shift',
+  'kiosk.noShift.startButton': 'Start shift',
+
+  'kiosk.dayDone.heading': 'Day complete.',
+  'kiosk.dayDone.body': 'Your shift for today is closed. Sign out when ready for the next person.',
+
+  'kiosk.shiftOpen.heading': 'Shift open',
+  'kiosk.shiftOpen.startedPrefix': 'Started ',
+  'kiosk.shiftOpen.dateLabel': 'Date: ',
+  'kiosk.shiftOpen.openingCashLabel': 'Opening cash: ',
+  'kiosk.shiftOpen.collectionsTotalLabel': 'Collections total: ',
+
+  'kiosk.collections.heading': 'Collections',
+  'kiosk.collections.empty': 'No collections yet.',
+  'kiosk.collections.voided': 'VOIDED',
+  'kiosk.collections.addHeading': 'Add collection',
+  'kiosk.collections.addButton': 'Add collection',
+  'kiosk.collections.addingButton': 'Adding...',
+
+  'kiosk.readyToFinish.heading': 'Ready to finish?',
+  'kiosk.readyToFinish.body': 'Submit the shift when you have recorded all collections. A manager will move it to reconciliation.',
+  'kiosk.readyToFinish.openingCashWarning': 'Opening cash was not declared when the shift started. It may be needed before submission.',
+  'kiosk.readyToFinish.submitButton': 'Submit shift',
+  'kiosk.readyToFinish.submittingButton': 'Submitting...',
+
+  'kiosk.shiftSubmitted.heading': 'Shift submitted',
+  'kiosk.shiftSubmitted.body': 'Next: create a reconciliation. The system will show expected cash and mobile based on your collections.',
+  'kiosk.shiftSubmitted.createButton': 'Create reconciliation',
+  'kiosk.shiftSubmitted.creatingButton': 'Creating...',
+
+  'kiosk.reconDraft.heading': 'Enter actual cash and mobile',
+  'kiosk.reconDraft.expectedCash': 'Expected cash',
+  'kiosk.reconDraft.expectedMobile': 'Expected mobile',
+  'kiosk.reconDraft.saveButton': 'Save actuals',
+  'kiosk.reconDraft.savingButton': 'Saving...',
+  'kiosk.reconDraft.submitButton': 'Submit for review',
+  'kiosk.reconDraft.submittingButton': 'Submitting...',
+  'kiosk.reconDraft.note': 'Both actual cash and actual mobile must be set before submitting.',
+
+  'kiosk.handover.heading': 'Hand over the cash',
+  'kiosk.handover.body': 'The amount is derived from your reconciliation - you cannot set it. Choose a manager or owner to receive it.',
+  'kiosk.handover.createButton': 'Create handover',
+  'kiosk.handover.creatingButton': 'Creating...',
+  'kiosk.handover.noReceivers': 'No eligible receivers found. Ask a manager to check their account is active.',
+
+  'kiosk.handoverPending.heading': 'Waiting for manager',
+  'kiosk.handoverPending.bodyPrefix': 'Handover of ',
+  'kiosk.handoverPending.bodyMid': ' to ',
+  'kiosk.handoverPending.bodySuffix': ' is pending confirmation.',
+  'kiosk.handoverPending.hint': 'Refresh this page to check again.',
+
+  'kiosk.handoverConfirmed.heading': 'Handover confirmed',
+  'kiosk.handoverConfirmed.bodyPrefix': ' received by ',
+  'kiosk.handoverConfirmed.bodySuffix': '.',
+  'kiosk.handoverConfirmed.hint': 'Waiting for a manager to close the shift. Refresh to check.',
+
+  'kiosk.waitingManager.heading': 'Waiting for manager',
+  'kiosk.waitingManager.message': 'Waiting for manager to move the shift forward.',
+
+  'kiosk.refreshButton': 'Refresh',
+  'kiosk.refreshingButton': 'Refreshing...',
 };

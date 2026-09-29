@@ -114,6 +114,22 @@ record('kiosk nav shows Zamu (Shift)', kioskBodySw.includes('Zamu'), '');
 record('kiosk nav shows Matumizi (Expenses)', kioskBodySw.includes('Matumizi'), '');
 record('kiosk sign-out is Toka', kioskBodySw.includes('Toka'), '');
 
+// ---- kiosk home body in Swahili ----
+const kioskHomeBodySw = await page.evaluate(() => document.body.innerText);
+record('kiosk home (SW) shows Anza zamu yako', kioskHomeBodySw.includes('Anza zamu yako'), '');
+record('kiosk home (SW) shows Tarehe ya biashara', kioskHomeBodySw.includes('Tarehe ya biashara'), '');
+
+// ---- navigate to /kiosk/expenses ----
+await page.getByRole('link', { name: 'Matumizi' }).click();
+await page.waitForFunction(() => document.body.innerText.includes('Rekodi matumizi'), { timeout: 8000 }).catch(() => {});
+const expBodySw = await page.evaluate(() => document.body.innerText);
+record('expenses page (SW) shows Rekodi matumizi', expBodySw.includes('Rekodi matumizi'), '');
+record('expenses page (SW) shows Matumizi yangu', expBodySw.includes('Matumizi yangu'), '');
+
+// ---- back to /kiosk ----
+await page.getByRole('link', { name: 'Zamu' }).click();
+await page.waitForFunction(() => document.body.innerText.includes('Anza zamu yako'), { timeout: 8000 }).catch(() => {});
+
 // ---- switch to English from kiosk ----
 await page.getByRole('button', { name: 'Switch to English' }).first().click();
 await page.waitForTimeout(600);
@@ -121,6 +137,7 @@ await page.waitForTimeout(600);
 const kioskBodyEn = await page.evaluate(() => document.body.innerText);
 record('after EN click, nav shows Shift', kioskBodyEn.includes('Shift'), '');
 record('after EN click, nav shows Expenses', kioskBodyEn.includes('Expenses'), '');
+record('after EN click, kiosk home shows Start your shift', kioskBodyEn.includes('Start your shift'), '');
 
 const cookiesAfter = await ctx.cookies();
 const langCookieAfter = cookiesAfter.find(c => c.name === 'rfs_lang');
@@ -135,6 +152,7 @@ await page.waitForFunction(() => {
 await page.waitForTimeout(500);
 const kioskBodyReload = await page.evaluate(() => document.body.innerText);
 record('after reload, nav still shows Shift', kioskBodyReload.includes('Shift'), '');
+record('after reload, kiosk home shows Start your shift', kioskBodyReload.includes('Start your shift'), '');
 
 // ---- error checks ----
 record('no js errors', pageErrors.length === 0, 'pageErr=' + pageErrors.length);

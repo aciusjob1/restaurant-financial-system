@@ -25,4 +25,108 @@ export const sw: Dict = {
   'errors.NOT_FOUND': 'Haipatikani.',
   'errors.INVALID_CREDENTIALS': 'Jina la mtumiaji au nenosiri si sahihi.',
   'errors.ACCOUNT_DISABLED': 'Akaunti imezimwa.',
+  'errors.ERR': 'Ombi limeshindwa.',
+
+  'common.loading': 'Inapakia...',
+
+  'form.businessDate': 'Tarehe ya biashara',
+  'form.category': 'Aina',
+  'form.selectCategory': 'Chagua aina...',
+  'form.amount': 'Kiasi',
+  'form.paymentMethod': 'Njia ya malipo',
+  'form.description': 'Maelezo',
+  'form.descriptionPlaceholder': 'Ilikuwa ya nini?',
+  'form.receiptOptional': 'Namba ya risiti (si lazima)',
+  'form.notesOptional': 'Maelezo ya ziada (si lazima)',
+
+  'table.date': 'Tarehe',
+  'table.category': 'Aina',
+  'table.description': 'Maelezo',
+  'table.amount': 'Kiasi',
+  'table.status': 'Hali',
+
+  'kiosk.expenses.title': 'Matumizi',
+  'kiosk.expenses.subtitle': 'Rekodi pesa uliyotumia kwa ajili ya mgahawa.',
+  'kiosk.expenses.recordHeading': 'Rekodi matumizi',
+  'kiosk.expenses.recordButton': 'Rekodi matumizi',
+  'kiosk.expenses.listHeading': 'Matumizi yangu',
+  'kiosk.expenses.empty': 'Hakuna matumizi bado.',
+
+  'form.openingCash': 'Fedha ya kuanzia',
+  'form.method': 'Njia',
+  'form.mobileRef': 'Kumbukumbu ya simu (si lazima)',
+  'form.mobileRefPlaceholder': 'mfano: namba ya MPESA',
+  'form.receiver': 'Mpokeaji',
+  'form.selectPlaceholder': '- chagua -',
+  'form.actualCash': 'Fedha halisi',
+  'form.actualMobile': 'Simu halisi',
+
+  'table.reference': 'Kumbukumbu',
+
+  'kiosk.home.brandTitle': 'Kioski',
+  'kiosk.home.greetingPrefix': 'Habari, ',
+  'kiosk.home.loadingSubtitle': 'Inapakia zamu yako...',
+  'kiosk.home.subtitle': 'Fuata hatua zilizo hapa chini. Mfumo utaonyesha hatua inayofuata.',
+
+  'kiosk.noShift.heading': 'Anza zamu yako',
+  'kiosk.noShift.startButton': 'Anza zamu',
+
+  'kiosk.dayDone.heading': 'Siku imekamilika.',
+  'kiosk.dayDone.body': 'Zamu yako ya leo imefungwa. Toka ukiwa tayari kwa mtu anayefuata.',
+
+  'kiosk.shiftOpen.heading': 'Zamu imefunguliwa',
+  'kiosk.shiftOpen.startedPrefix': 'Ilianza ',
+  'kiosk.shiftOpen.dateLabel': 'Tarehe: ',
+  'kiosk.shiftOpen.openingCashLabel': 'Fedha ya kuanzia: ',
+  'kiosk.shiftOpen.collectionsTotalLabel': 'Jumla ya makusanyo: ',
+
+  'kiosk.collections.heading': 'Makusanyo',
+  'kiosk.collections.empty': 'Hakuna makusanyo bado.',
+  'kiosk.collections.voided': 'IMEBATILISHWA',
+  'kiosk.collections.addHeading': 'Ongeza mkusanyiko',
+  'kiosk.collections.addButton': 'Ongeza mkusanyiko',
+  'kiosk.collections.addingButton': 'Inaongeza...',
+
+  'kiosk.readyToFinish.heading': 'Tayari kumaliza?',
+  'kiosk.readyToFinish.body': 'Tuma zamu baada ya kurekodi makusanyo yote. Meneja atasogeza kwenye upatanisho.',
+  'kiosk.readyToFinish.openingCashWarning': 'Fedha ya kuanzia haikutangazwa wakati zamu ilianza. Inaweza kuhitajika kabla ya kutuma.',
+  'kiosk.readyToFinish.submitButton': 'Tuma zamu',
+  'kiosk.readyToFinish.submittingButton': 'Inatuma...',
+
+  'kiosk.shiftSubmitted.heading': 'Zamu imetumwa',
+  'kiosk.shiftSubmitted.body': 'Ifuatayo: tengeneza upatanisho. Mfumo utaonyesha fedha na simu inayotarajiwa kulingana na makusanyo yako.',
+  'kiosk.shiftSubmitted.createButton': 'Tengeneza upatanisho',
+  'kiosk.shiftSubmitted.creatingButton': 'Inatengeneza...',
+
+  'kiosk.reconDraft.heading': 'Weka fedha na simu halisi',
+  'kiosk.reconDraft.expectedCash': 'Fedha inayotarajiwa',
+  'kiosk.reconDraft.expectedMobile': 'Simu inayotarajiwa',
+  'kiosk.reconDraft.saveButton': 'Hifadhi halisi',
+  'kiosk.reconDraft.savingButton': 'Inahifadhi...',
+  'kiosk.reconDraft.submitButton': 'Tuma kwa ukaguzi',
+  'kiosk.reconDraft.submittingButton': 'Inatuma...',
+  'kiosk.reconDraft.note': 'Fedha na simu halisi zote mbili lazima ziwekwe kabla ya kutuma.',
+
+  'kiosk.handover.heading': 'Wasilisha fedha',
+  'kiosk.handover.body': 'Kiasi kinatokana na upatanisho wako - hauwezi kukiweka. Chagua meneja au mmiliki wa kupokea.',
+  'kiosk.handover.createButton': 'Tengeneza uwasilishaji',
+  'kiosk.handover.creatingButton': 'Inatengeneza...',
+  'kiosk.handover.noReceivers': 'Hakuna wapokeaji wanaostahiki. Omba meneja kuangalia kama akaunti yao iko hai.',
+
+  'kiosk.handoverPending.heading': 'Inasubiri meneja',
+  'kiosk.handoverPending.bodyPrefix': 'Uwasilishaji wa ',
+  'kiosk.handoverPending.bodyMid': ' kwa ',
+  'kiosk.handoverPending.bodySuffix': ' unasubiri uthibitisho.',
+  'kiosk.handoverPending.hint': 'Sasisha ukurasa huu kuangalia tena.',
+
+  'kiosk.handoverConfirmed.heading': 'Uwasilishaji umethibitishwa',
+  'kiosk.handoverConfirmed.bodyPrefix': ' imepokelewa na ',
+  'kiosk.handoverConfirmed.bodySuffix': '.',
+  'kiosk.handoverConfirmed.hint': 'Inasubiri meneja kufunga zamu. Sasisha kuangalia.',
+
+  'kiosk.waitingManager.heading': 'Inasubiri meneja',
+  'kiosk.waitingManager.message': 'Inasubiri meneja kusogeza zamu mbele.',
+
+  'kiosk.refreshButton': 'Sasisha',
+  'kiosk.refreshingButton': 'Inasasisha...',
 };
