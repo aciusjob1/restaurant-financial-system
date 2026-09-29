@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Banknote,
   Briefcase,
@@ -27,44 +27,51 @@ import {
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 type MeResponse = {
   success: true;
   user: { id: string; username: string; fullName: string; role: string; isActive: boolean };
 };
 
-// Roles allowed to see the Operations UI at all. WAITERs and AUDITORs use
-// /reports and /dashboard instead. This is a UX gate, not a security gate:
-// the backend's requireRole on every /ops endpoint remains authoritative.
 const ALLOWED_ROLES = new Set(['OWNER', 'MANAGER']);
 
-const LINKS: NavLink[] = [
-  { href: '/dashboard',                label: 'Dashboard',          icon: LayoutDashboard },
-  { href: '/ops/materials',            label: 'Materials',          icon: Package },
-  { href: '/ops/material-categories',  label: 'Categories',         icon: FolderTree },
-  { href: '/ops/expense-categories',   label: 'Expense Categories', icon: Tags },
-  { href: '/ops/suppliers',            label: 'Suppliers',          icon: Truck },
-  { href: '/ops/employees',            label: 'Employees',          icon: UserRound },
-  { href: '/ops/positions',            label: 'Positions',          icon: Briefcase },
-  { href: '/ops/purchase-invoices',    label: 'Invoices',           icon: FileText },
-  { href: '/ops/supplier-payments',    label: 'Payments',           icon: CreditCard },
-  { href: '/ops/stock-movements',      label: 'Stock',              icon: Warehouse },
-  { href: '/ops/sales',                label: 'Sales',              icon: ShoppingCart },
-  { href: '/ops/shifts',               label: 'Shifts',             icon: Clock },
-  { href: '/ops/reconciliations',      label: 'Reconciliations',    icon: Scale },
-  { href: '/ops/collections',          label: 'Collections',        icon: Coins },
-  { href: '/ops/handovers',            label: 'Handovers',          icon: HandCoins },
-  { href: '/ops/expenses',             label: 'Expenses',           icon: Receipt },
-  { href: '/ops/salaries',             label: 'Salaries',           icon: Banknote },
-  { href: '/ops/daily-closing',        label: 'Closing',            icon: Lock },
-  { href: '/ops/users',                label: 'Users',              icon: Users },
-  { href: '/ops/account',              label: 'Account',            icon: UserCog },
+type LinkSpec = { href: string; labelKey: keyof Dict; icon: NavLink['icon'] };
+
+const LINKS: LinkSpec[] = [
+  { href: '/dashboard',                labelKey: 'nav.dashboard',                icon: LayoutDashboard },
+  { href: '/ops/materials',            labelKey: 'nav.ops.materials',            icon: Package },
+  { href: '/ops/material-categories',  labelKey: 'nav.ops.materialCategories',   icon: FolderTree },
+  { href: '/ops/expense-categories',   labelKey: 'nav.ops.expenseCategories',    icon: Tags },
+  { href: '/ops/suppliers',            labelKey: 'nav.ops.suppliers',            icon: Truck },
+  { href: '/ops/employees',            labelKey: 'nav.ops.employees',            icon: UserRound },
+  { href: '/ops/positions',            labelKey: 'nav.ops.positions',            icon: Briefcase },
+  { href: '/ops/purchase-invoices',    labelKey: 'nav.ops.purchaseInvoices',     icon: FileText },
+  { href: '/ops/supplier-payments',    labelKey: 'nav.ops.supplierPayments',     icon: CreditCard },
+  { href: '/ops/stock-movements',      labelKey: 'nav.ops.stockMovements',       icon: Warehouse },
+  { href: '/ops/sales',                labelKey: 'nav.ops.sales',                icon: ShoppingCart },
+  { href: '/ops/shifts',               labelKey: 'nav.ops.shifts',               icon: Clock },
+  { href: '/ops/reconciliations',      labelKey: 'nav.ops.reconciliations',      icon: Scale },
+  { href: '/ops/collections',          labelKey: 'nav.ops.collections',          icon: Coins },
+  { href: '/ops/handovers',            labelKey: 'nav.ops.handovers',            icon: HandCoins },
+  { href: '/ops/expenses',             labelKey: 'nav.ops.expenses',             icon: Receipt },
+  { href: '/ops/salaries',             labelKey: 'nav.ops.salaries',             icon: Banknote },
+  { href: '/ops/daily-closing',        labelKey: 'nav.ops.dailyClosing',         icon: Lock },
+  { href: '/ops/users',                labelKey: 'nav.ops.users',                icon: Users },
+  { href: '/ops/account',              labelKey: 'nav.ops.account',              icon: UserCog },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const { t } = useT();
   const [me, setMe] = useState<MeResponse['user'] | null>(null);
   const [denied, setDenied] = useState(false);
+
+  const links = useMemo<NavLink[]>(
+    () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), icon: l.icon })),
+    [t]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -84,17 +91,15 @@ export function OpsShell({ children }: { children: ReactNode }) {
 
   if (denied) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="max-w-md rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
-          <p className="font-medium">You do not have permission to access Operations.</p>
-          <p className="text-sm mt-2">
-            This area is available to OWNER and MANAGER roles.
-          </p>
+      <div className='min-h-screen flex items-center justify-center p-6 bg-slate-50'>
+        <div className='max-w-md rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700'>
+          <p className='font-medium'>{t('shell.deniedOps.title')}</p>
+          <p className='text-sm mt-2'>{t('shell.deniedOps.body')}</p>
           <Link
-            href="/dashboard"
-            className="mt-4 inline-block rounded-lg bg-slate-900 text-white px-4 py-2 text-sm"
+            href='/dashboard'
+            className='mt-4 inline-block rounded-lg bg-slate-900 text-white px-4 py-2 text-sm'
           >
-            Return to dashboard
+            {t('shell.returnToDashboard')}
           </Link>
         </div>
       </div>
@@ -103,18 +108,18 @@ export function OpsShell({ children }: { children: ReactNode }) {
 
   if (!me) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="text-slate-500">Checking access…</div>
+      <div className='min-h-screen flex items-center justify-center p-6 bg-slate-50'>
+        <div className='text-slate-500'>{t('shell.checkingAccess')}</div>
       </div>
     );
   }
 
   return (
     <AppSidebar
-      title="Operations"
-      homeHref="/ops"
-      links={LINKS}
-      storageKey="ops-shell-collapsed"
+      title={t('shell.ops.title')}
+      homeHref='/ops'
+      links={links}
+      storageKey='ops-shell-collapsed'
       me={me}
     >
       {children}
@@ -125,8 +130,8 @@ export function OpsShell({ children }: { children: ReactNode }) {
 export function OpsHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header>
-      <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-      {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
+      <h1 className='text-2xl font-semibold text-slate-900'>{title}</h1>
+      {subtitle && <p className='text-sm text-slate-500 mt-1'>{subtitle}</p>}
     </header>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
 import {
   REPORT_PATHS,
   type DailySalesResponse,
@@ -117,15 +118,18 @@ function StatCard({
   );
 }
 
-const PERIODS: Array<{ key: Period; label: string }> = [
-  { key: 'daily', label: 'Daily' },
-  { key: 'weekly', label: 'Weekly' },
-  { key: 'monthly', label: 'Monthly' },
-  { key: 'annual', label: 'Annual' },
+type PeriodKey = 'dashboard.period.daily' | 'dashboard.period.weekly' | 'dashboard.period.monthly' | 'dashboard.period.annual';
+
+const PERIODS: Array<{ key: Period; labelKey: PeriodKey }> = [
+  { key: 'daily',   labelKey: 'dashboard.period.daily' },
+  { key: 'weekly',  labelKey: 'dashboard.period.weekly' },
+  { key: 'monthly', labelKey: 'dashboard.period.monthly' },
+  { key: 'annual',  labelKey: 'dashboard.period.annual' },
 ];
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { t } = useT();
   const [stats, setStats] = useState<StatsState>({ kind: 'loading' });
   const [fetching, setFetching] = useState(false);
   const [anchorDate, setAnchorDate] = useState<string>(() => localISO(new Date()));
@@ -185,14 +189,14 @@ export default function DashboardPage() {
   return (
     <>
       <header>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1 className="text-2xl font-semibold">{t('dashboard.title')}</h1>
       </header>
 
       <section className="space-y-3">
         {/* Filter bar */}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wide text-slate-500">Date</span>
+            <span className="text-xs uppercase tracking-wide text-slate-500">{t('dashboard.date.label')}</span>
             <input
               type="date"
               value={anchorDate}
@@ -206,7 +210,7 @@ export default function DashboardPage() {
             onClick={resetToToday}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
-            Today
+            {t('dashboard.today')}
           </button>
 
           <div className="flex items-center rounded-lg border border-slate-300 overflow-hidden">
@@ -225,7 +229,7 @@ export default function DashboardPage() {
                       : 'text-slate-700 hover:bg-slate-50',
                   ].join(' ')}
                 >
-                  {p.label}
+                  {t(p.labelKey)}
                 </button>
               );
             })}
@@ -233,7 +237,7 @@ export default function DashboardPage() {
 
           <div className="ml-auto flex items-center gap-3">
             {fetching && (
-              <span className="text-xs text-slate-400">Refreshing…</span>
+              <span className="text-xs text-slate-400">{t('dashboard.refreshing')}</span>
             )}
             <span className="text-xs text-slate-500 font-mono">
               {range.from} → {range.to}
@@ -243,19 +247,19 @@ export default function DashboardPage() {
 
         {stats.kind === 'loading' && (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500">
-            Loading statistics…
+            {t('dashboard.loading')}
           </div>
         )}
 
         {stats.kind === 'forbidden' && (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-            Statistics require a MANAGER, OWNER, or AUDITOR role.
+            {t('dashboard.forbidden')}
           </div>
         )}
 
         {stats.kind === 'error' && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-            Unable to load dashboard statistics.
+            {t('dashboard.error')}
           </div>
         )}
 
@@ -263,30 +267,31 @@ export default function DashboardPage() {
           <>
             {stats.data.rowCount === 0 && (
               <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-500">
-                No business-day records in this range. The figures below are the
-                backend&apos;s totals for {stats.data.rangeFrom} → {stats.data.rangeTo}.
+                {t('dashboard.noRecords.before')}
+                {stats.data.rangeFrom} → {stats.data.rangeTo}
+                {t('dashboard.noRecords.after')}
               </div>
             )}
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <StatCard label="Sales" value={stats.data.salesTotal} />
+              <StatCard label={t('dashboard.stat.sales')} value={stats.data.salesTotal} />
               <StatCard
-                label="Collected"
+                label={t('dashboard.stat.collected')}
                 value={stats.data.collectionsTotal}
-                hint={`Cash ${stats.data.collectionsCash} - Mobile ${stats.data.collectionsMobile}`}
+                hint={t('dashboard.collected.hintPrefix') + stats.data.collectionsCash + t('dashboard.collected.hintMid') + stats.data.collectionsMobile}
                 hintMuted
               />
-              <StatCard label="Expenses" value={stats.data.expenseTotal} />
+              <StatCard label={t('dashboard.stat.expenses')} value={stats.data.expenseTotal} />
               <StatCard
-                label="Cash Difference"
+                label={t('dashboard.stat.cashDifference')}
                 value={stats.data.cashDifference}
                 valueClassName={diffColor(stats.data.cashDifference)}
               />
-              <StatCard label="Handovers" value={stats.data.handoverTotal} />
+              <StatCard label={t('dashboard.stat.handovers')} value={stats.data.handoverTotal} />
               <StatCard
-                label="Supplier Balance"
+                label={t('dashboard.stat.supplierBalance')}
                 value={stats.data.supplierBalance}
-                hint="Current balance • As of today"
+                hint={t('dashboard.supplierBalance.hint')}
                 hintMuted
               />
             </div>
@@ -295,15 +300,15 @@ export default function DashboardPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-medium text-slate-900">Reports</h2>
+        <h2 className="text-lg font-medium text-slate-900">{t('dashboard.reports.heading')}</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Operational and financial reports. All calculations are performed server-side.
+          {t('dashboard.reports.body')}
         </p>
         <a
           href="/reports"
           className="mt-3 inline-block rounded-lg bg-slate-900 text-white px-4 py-2 text-sm"
         >
-          Open reports
+          {t('dashboard.reports.openButton')}
         </a>
       </section>
     </>

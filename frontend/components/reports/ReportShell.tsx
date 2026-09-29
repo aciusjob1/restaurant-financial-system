@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   GitCompare,
   HandCoins,
@@ -15,31 +15,39 @@ import {
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 type MeResponse = {
   success: true;
   user: { id: string; username: string; fullName: string; role: string; isActive: boolean };
 };
 
-// Reports are readable by OWNER, MANAGER, and AUDITOR. WAITERs use the kiosk.
-// This is a UX gate; the backend's requireRole remains authoritative.
 const ALLOWED_ROLES = new Set(['OWNER', 'MANAGER', 'AUDITOR']);
 
-const LINKS: NavLink[] = [
-  { href: '/dashboard',                   label: 'Dashboard',       icon: LayoutDashboard },
-  { href: '/reports/daily-sales',         label: 'Daily Sales',     icon: TrendingUp },
-  { href: '/reports/reconciliations',     label: 'Reconciliations', icon: Scale },
-  { href: '/reports/handovers',           label: 'Handovers',       icon: HandCoins },
-  { href: '/reports/expenses',            label: 'Expenses',        icon: Receipt },
-  { href: '/reports/supplier-balances',   label: 'Suppliers',       icon: Truck },
-  { href: '/reports/sales-vs-pos',        label: 'Sales vs POS',    icon: GitCompare },
-  { href: '/reports/stock-movements',     label: 'Stock Movements', icon: Warehouse },
+type LinkSpec = { href: string; labelKey: keyof Dict; icon: NavLink['icon'] };
+
+const LINKS: LinkSpec[] = [
+  { href: '/dashboard',                   labelKey: 'nav.dashboard',                  icon: LayoutDashboard },
+  { href: '/reports/daily-sales',         labelKey: 'nav.reports.dailySales',         icon: TrendingUp },
+  { href: '/reports/reconciliations',     labelKey: 'nav.reports.reconciliations',    icon: Scale },
+  { href: '/reports/handovers',           labelKey: 'nav.reports.handovers',          icon: HandCoins },
+  { href: '/reports/expenses',            labelKey: 'nav.reports.expenses',           icon: Receipt },
+  { href: '/reports/supplier-balances',   labelKey: 'nav.reports.supplierBalances',   icon: Truck },
+  { href: '/reports/sales-vs-pos',        labelKey: 'nav.reports.salesVsPos',         icon: GitCompare },
+  { href: '/reports/stock-movements',     labelKey: 'nav.reports.stockMovements',     icon: Warehouse },
 ];
 
 export function ReportShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const { t } = useT();
   const [me, setMe] = useState<MeResponse['user'] | null>(null);
   const [denied, setDenied] = useState(false);
+
+  const links = useMemo<NavLink[]>(
+    () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), icon: l.icon })),
+    [t]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -59,17 +67,15 @@ export function ReportShell({ children }: { children: ReactNode }) {
 
   if (denied) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="max-w-md rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
-          <p className="font-medium">You do not have permission to view reports.</p>
-          <p className="text-sm mt-2">
-            Reports are available to OWNER, MANAGER, and AUDITOR roles.
-          </p>
+      <div className='min-h-screen flex items-center justify-center p-6 bg-slate-50'>
+        <div className='max-w-md rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700'>
+          <p className='font-medium'>{t('shell.deniedReports.title')}</p>
+          <p className='text-sm mt-2'>{t('shell.deniedReports.body')}</p>
           <Link
-            href="/dashboard"
-            className="mt-4 inline-block rounded-lg bg-slate-900 text-white px-4 py-2 text-sm"
+            href='/dashboard'
+            className='mt-4 inline-block rounded-lg bg-slate-900 text-white px-4 py-2 text-sm'
           >
-            Return to dashboard
+            {t('shell.returnToDashboard')}
           </Link>
         </div>
       </div>
@@ -78,18 +84,18 @@ export function ReportShell({ children }: { children: ReactNode }) {
 
   if (!me) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="text-slate-500">Checking access…</div>
+      <div className='min-h-screen flex items-center justify-center p-6 bg-slate-50'>
+        <div className='text-slate-500'>{t('shell.checkingAccess')}</div>
       </div>
     );
   }
 
   return (
     <AppSidebar
-      title="Reports"
-      homeHref="/reports"
-      links={LINKS}
-      storageKey="reports-shell-collapsed"
+      title={t('shell.reports.title')}
+      homeHref='/reports'
+      links={links}
+      storageKey='reports-shell-collapsed'
       me={me}
     >
       {children}
