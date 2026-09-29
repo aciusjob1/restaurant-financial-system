@@ -641,5 +641,30 @@ export const sw: Dict = {
   'totals.totalIn': 'Jumla Ndani',
   'totals.totalOut': 'Jumla Nje',
   'totals.netChange': 'Mabadiliko Halisi',
-  'totals.movements': 'Mwenendo'
+  'totals.movements': 'Mwenendo',
+
+  'ops.cash.op.shiftFlow': 'Kazi ya Fedha na Zamu',
+
+  'ops.cashFlow.title': 'Kazi ya Fedha na Zamu ya Leo',
+  'ops.cashFlow.subtitle': 'Mwonekano mmoja wa siku katika zamu, makusanyo, upatanisho, na uwasilishaji.',
+  'ops.cashFlow.summary.shifts': 'Zamu za leo',
+  'ops.cashFlow.summary.open': 'Zinaendelea',
+  'ops.cashFlow.summary.awaitingReview': 'Zinasubiri ukaguzi wako',
+  'ops.cashFlow.summary.awaitingConfirm': 'Zinasubiri uthibitisho',
+  'ops.cashFlow.summary.readyToClose': 'Tayari kufungwa',
+  'ops.cashFlow.empty': 'Hakuna zamu bado leo. Wahudumu huanza zamu kwenye kioski.',
+  'ops.cashFlow.row.collected': 'Zilizokusanywa',
+  'ops.cashFlow.row.open': 'Mhudumu anaendesha zamu hii',
+  'ops.cashFlow.row.awaitingRecon': 'Mhudumu anaandaa upatanisho',
+  'ops.cashFlow.row.awaitingReview': 'Tayari kwa ukaguzi wako',
+  'ops.cashFlow.row.awaitingHandover': 'Inasubiri mhudumu kuwasilisha fedha',
+  'ops.cashFlow.row.awaitingConfirm': 'Uwasilishaji unasubiri uthibitisho',
+  'ops.cashFlow.row.readyToClose': 'Tayari kufungwa',
+  'ops.cashFlow.row.closed': 'Imefungwa',
+  'ops.cashFlow.row.action.open': 'Fungua',
+  'ops.cashFlow.row.action.review': 'Kagua',
+  'ops.cashFlow.row.action.confirm': 'Thibitisha uwasilishaji',
+  'ops.cashFlow.row.action.close': 'Funga zamu',
+
+  'action.recordAndApprove': 'Rekodi na idhinisha',
 };

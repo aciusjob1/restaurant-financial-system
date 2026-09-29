@@ -47,6 +47,7 @@ export const CreateExpenseSchema = z.object({
   receiptNumber: z.string().trim().max(64).nullable().optional(),
   attachmentPath: z.string().trim().max(300).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
+  autoApprove: z.boolean().optional(),
 });
 
 export const UpdateExpenseSchema = z.object({

@@ -26,6 +26,7 @@ const D_ATTACH = '2099-08-05';
 const D_WAITER_CREATE = '2099-08-06';
 const D_WAITER_SCOPE  = '2099-08-07';
 const D_WAITER_EDIT   = '2099-08-08';
+const D_AUTOAPPROVE   = '2099-08-09';
 
 const TEST_CATEGORY = 'Phase10 Test Category';
 
@@ -44,7 +45,7 @@ async function cleanup() {
   await prisma.expenseCategory.deleteMany({ where: { name: TEST_CATEGORY } });
 
   // Clean closings on the dates we used
-  const dates = [D_BASIC, D_CLOSED, D_LIFECYCLE, D_FILTERS, D_ATTACH, D_WAITER_CREATE, D_WAITER_SCOPE, D_WAITER_EDIT].map(
+  const dates = [D_BASIC, D_CLOSED, D_LIFECYCLE, D_FILTERS, D_ATTACH, D_WAITER_CREATE, D_WAITER_SCOPE, D_WAITER_EDIT, D_AUTOAPPROVE].map(
     (d) => new Date(`${d}T00:00:00.000Z`)
   );
   await prisma.dailyClosing.deleteMany({ where: { businessDate: { in: dates } } });
@@ -564,5 +565,83 @@ describe('Expenses - waiter workflow', () => {
       .post('/api/v1/expenses/' + waiterCreateExpenseId + '/approve')
       .send({});
     expect(res.status).toBe(403);
+  });
+});
+
+describe('Expenses - auto-approve (OWNER Record & Approve)', () => {
+  it('OWNER + autoApprove=true creates APPROVED in one request', async () => {
+    const o = await loginAs(OWNER);
+    const res = await o.post('/api/v1/expenses').send({
+      businessDate: D_AUTOAPPROVE,
+      categoryId: testCategoryId,
+      amount: '9999.00',
+      paymentMethod: 'CASH',
+      description: 'owner record & approve',
+      autoApprove: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.status).toBe('APPROVED');
+    expect(res.body.expense.selfApproved).toBe(true);
+    expect(res.body.expense.approvedBy).toBeTruthy();
+    expect(res.body.expense.approvedAt).toBeTruthy();
+    expect(res.body.expense.submittedAt).toBeTruthy();
+  });
+
+  it('OWNER without autoApprove still creates DRAFT (default unchanged)', async () => {
+    const o = await loginAs(OWNER);
+    const res = await o.post('/api/v1/expenses').send({
+      businessDate: D_AUTOAPPROVE,
+      categoryId: testCategoryId,
+      amount: '100.00',
+      paymentMethod: 'CASH',
+      description: 'owner draft',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.status).toBe('DRAFT');
+    expect(res.body.expense.approvedBy).toBeNull();
+    expect(res.body.expense.approvedAt).toBeNull();
+  });
+
+  it('MANAGER + autoApprove=true is rejected (403 AUTO_APPROVE_FORBIDDEN)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/expenses').send({
+      businessDate: D_AUTOAPPROVE,
+      categoryId: testCategoryId,
+      amount: '50.00',
+      paymentMethod: 'CASH',
+      description: 'manager auto-approve attempt',
+      autoApprove: true,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('AUTO_APPROVE_FORBIDDEN');
+  });
+
+  it('WAITER + autoApprove=true is rejected (403 AUTO_APPROVE_FORBIDDEN)', async () => {
+    const w = await loginAs(WAITER);
+    const res = await w.post('/api/v1/expenses').send({
+      businessDate: D_AUTOAPPROVE,
+      categoryId: testCategoryId,
+      amount: '50.00',
+      paymentMethod: 'CASH',
+      description: 'waiter auto-approve attempt',
+      autoApprove: true,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('AUTO_APPROVE_FORBIDDEN');
+  });
+
+  it('OWNER + autoApprove=true on a CLOSED day still succeeds (OWNER bypass preserved)', async () => {
+    const o = await loginAs(OWNER);
+    const res = await o.post('/api/v1/expenses').send({
+      businessDate: D_CLOSED,
+      categoryId: testCategoryId,
+      amount: '300.00',
+      paymentMethod: 'CASH',
+      description: 'owner auto-approve on closed day',
+      autoApprove: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.status).toBe('APPROVED');
+    expect(res.body.expense.selfApproved).toBe(true);
   });
 });

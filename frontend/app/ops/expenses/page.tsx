@@ -128,8 +128,12 @@ function ExpensesContent() {
 
   useEffect(() => { void reload(statusFilter, includeRejected); }, [reload, statusFilter, includeRejected]);
 
-  async function onCreate(ev: FormEvent) {
+  function onCreate(ev: FormEvent) {
     ev.preventDefault();
+    void submit(false);
+  }
+
+  async function submit(autoApprove: boolean) {
     setBusy(true);
     setError(null);
     try {
@@ -143,6 +147,7 @@ function ExpensesContent() {
       if (paidByUserId) body.paidByUserId = paidByUserId;
       if (receiptNumber.trim()) body.receiptNumber = receiptNumber.trim();
       if (notes.trim()) body.notes = notes.trim();
+      if (autoApprove) body.autoApprove = true;
       await apiFetch<OneExpenseResponse>(OPS_PATHS.expenses, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -238,7 +243,19 @@ function ExpensesContent() {
           <TextField label={t('form.receiptNumber')} value={receiptNumber} onChange={setReceiptNumber} placeholder={t('common.optional')} />
         </div>
         <TextArea label={t('form.notes')} value={notes} onChange={setNotes} placeholder={t('common.optional')} />
-        <SubmitButton busy={busy}>{t('action.createExpense')}</SubmitButton>
+        <div className='flex flex-wrap gap-2'>
+          <SubmitButton busy={busy}>{t('action.createExpense')}</SubmitButton>
+          {myRole === 'OWNER' && (
+            <button
+              type='button'
+              disabled={busy}
+              onClick={() => void submit(true)}
+              className='rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
+            >
+              {t('action.recordAndApprove')}
+            </button>
+          )}
+        </div>
       </form>
 
       <div className='flex flex-wrap items-center gap-4 justify-between'>

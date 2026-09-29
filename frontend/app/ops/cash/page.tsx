@@ -63,6 +63,7 @@ export default function CashHubPage() {
   }, []);
 
   const ops = [
+    { href: '/ops/cash/shift-flow', label: t('ops.cash.op.shiftFlow') },
     { href: '/ops/shifts',          label: t('ops.cash.op.shifts') },
     { href: '/ops/collections',     label: t('ops.cash.op.collections') },
     { href: '/ops/handovers',       label: t('ops.cash.op.handovers') },

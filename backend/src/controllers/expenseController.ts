@@ -85,6 +85,7 @@ export async function createExpense(req: Request, res: Response) {
     receiptNumber: input.receiptNumber ?? null,
     attachmentPath: input.attachmentPath ?? null,
     notes: input.notes ?? null,
+    autoApprove: input.autoApprove ?? false,
   });
   res.status(201).json({ success: true, expense });
 }

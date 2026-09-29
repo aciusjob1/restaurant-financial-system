@@ -134,6 +134,7 @@ export async function createExpense(input: {
   receiptNumber?: string | null;
   attachmentPath?: string | null;
   notes?: string | null;
+  autoApprove?: boolean;
 }) {
   if (
     input.actor.role !== 'OWNER' &&
@@ -172,14 +173,37 @@ export async function createExpense(input: {
   }
 
   const isWaiter = input.actor.role === 'WAITER';
+
+  if (input.autoApprove === true && input.actor.role !== 'OWNER') {
+    throw new ApiError(
+      403,
+      'AUTO_APPROVE_FORBIDDEN',
+      'Only OWNER can auto-approve an expense on creation.'
+    );
+  }
+
+  const isAutoApprove =
+    input.autoApprove === true && input.actor.role === 'OWNER';
+  const now = new Date();
+  const initialStatus = isAutoApprove
+    ? 'APPROVED'
+    : isWaiter
+      ? 'PENDING'
+      : 'DRAFT';
+  const initialSubmittedAt = isAutoApprove || isWaiter ? now : null;
+  const initialApprovedBy = isAutoApprove ? input.actor.id : null;
+  const initialApprovedAt = isAutoApprove ? now : null;
+
   const row = await prisma.$transaction(async (tx) => {
     const expenseNumber = await nextExpenseNumber(tx);
     return tx.expense.create({
       data: {
         expenseNumber,
         businessDate,
-        status: isWaiter ? 'PENDING' : 'DRAFT',
-        submittedAt: isWaiter ? new Date() : null,
+        status: initialStatus,
+        submittedAt: initialSubmittedAt,
+        approvedBy: initialApprovedBy,
+        approvedAt: initialApprovedAt,
         categoryId: input.categoryId,
         shiftId: input.shiftId ?? null,
         paidByUserId: input.paidByUserId ?? null,
@@ -209,6 +233,7 @@ export async function updateExpense(input: {
   receiptNumber?: string | null;
   attachmentPath?: string | null;
   notes?: string | null;
+  autoApprove?: boolean;
 }) {
   const existing = await prisma.expense.findUnique({ where: { id: input.id } });
   if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Expense not found.');

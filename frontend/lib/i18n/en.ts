@@ -639,5 +639,30 @@ export const en = {
   'totals.totalIn': 'Total In',
   'totals.totalOut': 'Total Out',
   'totals.netChange': 'Net Change',
-  'totals.movements': 'Movements'
+  'totals.movements': 'Movements',
+
+  'ops.cash.op.shiftFlow': 'Cash & Shift Work',
+
+  'ops.cashFlow.title': 'Cash & Shift Work for Today',
+  'ops.cashFlow.subtitle': 'One view of the day across shifts, collections, reconciliations, and handovers.',
+  'ops.cashFlow.summary.shifts': 'Shifts today',
+  'ops.cashFlow.summary.open': 'Still running',
+  'ops.cashFlow.summary.awaitingReview': 'Awaiting your review',
+  'ops.cashFlow.summary.awaitingConfirm': 'Awaiting confirmation',
+  'ops.cashFlow.summary.readyToClose': 'Ready to close',
+  'ops.cashFlow.empty': 'No shifts yet today. Waiters start shifts from the kiosk.',
+  'ops.cashFlow.row.collected': 'Collected',
+  'ops.cashFlow.row.open': 'Waiter is running this shift',
+  'ops.cashFlow.row.awaitingRecon': 'Waiter is preparing the reconciliation',
+  'ops.cashFlow.row.awaitingReview': 'Ready for your review',
+  'ops.cashFlow.row.awaitingHandover': 'Waiting for the waiter to hand over cash',
+  'ops.cashFlow.row.awaitingConfirm': 'Handover awaiting confirmation',
+  'ops.cashFlow.row.readyToClose': 'Ready to close',
+  'ops.cashFlow.row.closed': 'Closed',
+  'ops.cashFlow.row.action.open': 'Open',
+  'ops.cashFlow.row.action.review': 'Review',
+  'ops.cashFlow.row.action.confirm': 'Confirm handover',
+  'ops.cashFlow.row.action.close': 'Close shift',
+
+  'action.recordAndApprove': 'Record & approve',
 };
