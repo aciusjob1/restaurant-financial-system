@@ -161,3 +161,50 @@ describe('POST /api/v1/auth/change-password', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('PATCH /api/v1/auth/me - language', () => {
+  afterAll(async () => {
+    await prisma.user.update({
+      where: { username: MANAGER.username },
+      data: { language: null },
+    });
+  });
+
+  it('GET /me exposes language (null by default)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.get('/api/v1/auth/me');
+    expect(res.status).toBe(200);
+    expect(res.body.user).toHaveProperty('language');
+    expect(res.body.user.language).toBeNull();
+  });
+
+  it('PATCH /me with language sw returns 200; GET /me reflects', async () => {
+    const m = await loginAs(MANAGER);
+    const patch = await m.patch('/api/v1/auth/me').send({ language: 'sw' });
+    expect(patch.status).toBe(200);
+    expect(patch.body.user.language).toBe('sw');
+
+    const get = await m.get('/api/v1/auth/me');
+    expect(get.body.user.language).toBe('sw');
+  });
+
+  it('PATCH /me with language en returns 200', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.patch('/api/v1/auth/me').send({ language: 'en' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.language).toBe('en');
+  });
+
+  it('PATCH /me with language null clears the preference', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.patch('/api/v1/auth/me').send({ language: null });
+    expect(res.status).toBe(200);
+    expect(res.body.user.language).toBeNull();
+  });
+
+  it('PATCH /me rejects an unknown language code (400)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.patch('/api/v1/auth/me').send({ language: 'fr' });
+    expect(res.status).toBe(400);
+  });
+});

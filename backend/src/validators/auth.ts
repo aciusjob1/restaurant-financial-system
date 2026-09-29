@@ -17,6 +17,7 @@ export const UpdateMyProfileSchema = z
   .object({
     fullName: z.string().trim().min(1).max(128).optional(),
     phone: z.string().trim().max(32).nullable().optional(),
+    language: z.enum(['en', 'sw']).nullable().optional(),
   })
   .strict();
 

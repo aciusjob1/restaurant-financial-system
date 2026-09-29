@@ -91,6 +91,7 @@ model User {
   username                String             @unique
   fullName                String
   phone                   String?
+  language                String?
   passwordHash            String
   role                    Role               @default(WAITER)
   isActive                Boolean            @default(true)

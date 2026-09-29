@@ -10,6 +10,7 @@ declare global {
         role: Role;
         isActive: boolean;
         phone: string | null;
+        language: string | null;
       };
       sessionToken?: string;
     }

@@ -1,0 +1,26 @@
+export const en = {
+  'login.heading': 'Sign in',
+  'login.subtitle': 'Restaurant Financial System',
+  'login.username': 'Username',
+  'login.password': 'Password',
+  'login.submit': 'Sign in',
+  'login.submitting': 'Signing in...',
+  'login.errorFallback': 'Unable to sign in.',
+
+  'kiosk.nav.shift': 'Shift',
+  'kiosk.nav.expenses': 'Expenses',
+  'kiosk.signOut': 'Sign out',
+  'kiosk.checkingAccess': 'Checking access...',
+  'kiosk.denied.title': 'This is the waiter kiosk.',
+  'kiosk.denied.body': 'Your role does not use this interface. Ask a manager for access to Operations.',
+  'kiosk.denied.back': 'Return to dashboard',
+
+  'errors.DAY_IS_CLOSED': 'The business day is closed.',
+  'errors.INVALID_PASSWORD': 'Current password is incorrect.',
+  'errors.FORBIDDEN': 'You do not have permission.',
+  'errors.UNAUTHENTICATED': 'Please sign in.',
+  'errors.VALIDATION_ERROR': 'Please check your input.',
+  'errors.NOT_FOUND': 'Not found.',
+  'errors.INVALID_CREDENTIALS': 'Invalid username or password.',
+  'errors.ACCOUNT_DISABLED': 'Account is disabled.',
+};

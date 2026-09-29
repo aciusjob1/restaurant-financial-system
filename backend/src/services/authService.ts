@@ -55,11 +55,12 @@ export async function changePassword(params: {
 
 export async function updateMyProfile(
   userId: string,
-  input: { fullName?: string; phone?: string | null }
+  input: { fullName?: string; phone?: string | null; language?: string | null }
 ) {
-  const data: { fullName?: string; phone?: string | null } = {};
+  const data: { fullName?: string; phone?: string | null; language?: string | null } = {};
   if (input.fullName !== undefined) data.fullName = input.fullName;
   if (input.phone !== undefined) data.phone = input.phone;
+  if (input.language !== undefined) data.language = input.language;
 
   const user = await prisma.user.update({
     where: { id: userId },
@@ -69,6 +70,7 @@ export async function updateMyProfile(
       username: true,
       fullName: true,
       phone: true,
+      language: true,
       role: true,
       isActive: true,
     },
