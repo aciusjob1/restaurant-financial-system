@@ -6,6 +6,7 @@ import {
   SelectField, DecimalField, TextField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
 
 const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA', 'HALOPESA', 'BANK', 'CARD', 'OTHER',
@@ -40,10 +41,11 @@ function errOf(e: unknown): { code: string; message: string } {
 }
 
 function shortId(id: string): string {
-  return id.slice(0, 8) + '…';
+  return id.slice(0, 8) + '\u2026';
 }
 
 export default function CollectionsPage() {
+  const { t, tError } = useT();
   const [openShifts, setOpenShifts] = useState<Shift[]>([]);
   const [allShifts, setAllShifts] = useState<Record<string, Shift>>({});
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -80,9 +82,7 @@ export default function CollectionsPage() {
     const params = new URLSearchParams();
     if (filterShiftId) params.set('shiftId', filterShiftId);
     const qs = params.toString();
-    apiFetch<{ success: true; collections: Collection[] }>(
-      `/api/v1/collections${qs ? '?' + qs : ''}`
-    )
+    apiFetch<{ success: true; collections: Collection[] }>('/api/v1/collections' + (qs ? '?' + qs : ''))
       .then((r) => setCollections(r.collections))
       .catch((e) => setErr(errOf(e)))
       .finally(() => setLoading(false));
@@ -96,7 +96,7 @@ export default function CollectionsPage() {
 
   function shiftLabel(s: Shift): string {
     const who = s.user?.fullName ?? shortId(s.userId);
-    return `${s.businessDate} — ${who}`;
+    return s.businessDate + ' \\u2014 ' + who;
   }
 
   function rowDate(c: Collection): string {
@@ -141,116 +141,116 @@ export default function CollectionsPage() {
   return (
     <OpsShell>
       <OpsHeader
-        title="Collections"
-        subtitle="Customer payments recorded against an open shift. Managers record on behalf of the shift's waiter."
+        title={t('ops.collections.title')}
+        subtitle={t('ops.collections.subtitle')}
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-wrap items-end gap-3">
-        <div className="w-72">
+      <div className='rounded-2xl border border-slate-200 bg-white p-4 flex flex-wrap items-end gap-3'>
+        <div className='w-72'>
           <SelectField
-            label="Filter by shift"
+            label={t('ops.collections.filterByShift')}
             value={filterShiftId}
             onChange={setFilterShiftId}
             options={[
-              { value: '', label: 'All shifts' },
+              { value: '', label: t('ops.collections.allShifts') },
               ...Object.values(allShifts).map((s) => ({ value: s.id, label: shiftLabel(s) })),
             ]}
           />
         </div>
       </div>
 
-      <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-        <h2 className="text-sm font-medium text-slate-700">Record a collection</h2>
+      <form onSubmit={submit} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+        <h2 className='text-sm font-medium text-slate-700'>{t('ops.collections.recordHeading')}</h2>
 
         {openShifts.length === 0 ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            No OPEN shifts available. A shift must be OPEN to record a collection.
+          <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800'>
+            {t('ops.collections.noOpenShifts')}
           </div>
         ) : (
           <SelectField
-            label="Shift (owner is the attributed waiter)"
+            label={t('ops.collections.shiftFieldLabel')}
             value={shiftId}
             onChange={setShiftId}
             required
             options={[
-              { value: '', label: 'Select an open shift…' },
+              { value: '', label: t('ops.collections.selectOpenShift') },
               ...openShifts.map((s) => ({ value: s.id, label: shiftLabel(s) })),
             ]}
           />
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
           <SelectField
-            label="Payment method"
+            label={t('form.paymentMethod')}
             value={paymentMethod}
             onChange={setPaymentMethod}
             options={PAYMENT_METHODS.map((m) => ({ value: m, label: m }))}
           />
           <DecimalField
-            label="Amount"
+            label={t('form.amount')}
             value={amount}
             onChange={setAmount}
-            placeholder="0.00"
+            placeholder='0.00'
             required
           />
           <TextField
-            label="Mobile reference (optional)"
+            label={t('ops.collections.mobileReferenceOptional')}
             value={mobileReference}
             onChange={setMobileReference}
           />
         </div>
 
-        <TextArea label="Notes (optional)" value={notes} onChange={setNotes} rows={2} />
+        <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
 
-        {err && <FormError code={err.code} message={err.message} />}
+        {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
 
-        <div className="flex items-center gap-3">
-          <SubmitButton busy={busy}>Record collection</SubmitButton>
+        <div className='flex items-center gap-3'>
+          <SubmitButton busy={busy}>{t('action.recordCollection')}</SubmitButton>
           {!canSubmit && selectedShift && (
-            <span className="text-xs text-slate-500">Enter an amount to enable submit.</span>
+            <span className='text-xs text-slate-500'>{t('ops.collections.enterAmountNote')}</span>
           )}
         </div>
 
         {selectedShift && (
-          <div className="text-xs text-slate-500">
-            Attributed to {selectedShift.user?.fullName ?? shortId(selectedShift.userId)} · {selectedShift.businessDate}
+          <div className='text-xs text-slate-500'>
+            {t('ops.collections.attributedTo')} {selectedShift.user?.fullName ?? shortId(selectedShift.userId)} \\u00b7 {selectedShift.businessDate}
           </div>
         )}
       </form>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50">
+      <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
+        <table className='w-full text-sm'>
+          <thead className='bg-slate-50'>
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Business date</th>
-              <th className="text-left px-3 py-2 font-medium">Waiter</th>
-              <th className="text-left px-3 py-2 font-medium">Method</th>
-              <th className="text-right px-3 py-2 font-medium">Amount</th>
-              <th className="text-left px-3 py-2 font-medium">Reference</th>
-              <th className="text-left px-3 py-2 font-medium">Status</th>
-              <th className="text-left px-3 py-2 font-medium">Recorded</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('form.businessDate')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.waiter')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.method')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.amount')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.reference')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.recorded')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
             )}
             {!loading && collections.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">No collections.</td></tr>
+              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('ops.collections.empty')}</td></tr>
             )}
             {collections.map((c) => (
-              <tr key={c.id} className="border-t border-slate-100">
-                <td className="px-3 py-2">{rowDate(c)}</td>
-                <td className="px-3 py-2">{rowOwner(c)}</td>
-                <td className="px-3 py-2">{c.paymentMethod}</td>
-                <td className="px-3 py-2 text-right font-mono">{c.amount}</td>
-                <td className="px-3 py-2 text-slate-500 text-xs">{c.mobileReference ?? '—'}</td>
-                <td className="px-3 py-2">
+              <tr key={c.id} className='border-t border-slate-100'>
+                <td className='px-3 py-2'>{rowDate(c)}</td>
+                <td className='px-3 py-2'>{rowOwner(c)}</td>
+                <td className='px-3 py-2'>{c.paymentMethod}</td>
+                <td className='px-3 py-2 text-right font-mono'>{c.amount}</td>
+                <td className='px-3 py-2 text-slate-500 text-xs'>{c.mobileReference ?? '\\u2014'}</td>
+                <td className='px-3 py-2'>
                   {c.voidedAt
-                    ? <span className="text-xs rounded bg-red-100 text-red-700 px-2 py-0.5">VOIDED</span>
-                    : <span className="text-xs rounded bg-emerald-100 text-emerald-700 px-2 py-0.5">ACTIVE</span>}
+                    ? <span className='text-xs rounded bg-red-100 text-red-700 px-2 py-0.5'>{t('status.voided')}</span>
+                    : <span className='text-xs rounded bg-emerald-100 text-emerald-700 px-2 py-0.5'>{t('status.active')}</span>}
                 </td>
-                <td className="px-3 py-2 text-slate-500 text-xs">{c.createdAt}</td>
+                <td className='px-3 py-2 text-slate-500 text-xs'>{c.createdAt}</td>
               </tr>
             ))}
           </tbody>

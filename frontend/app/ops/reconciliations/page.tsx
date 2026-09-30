@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { SelectField, FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 const STATUS_OPTIONS = ['ALL', 'DRAFT', 'SUBMITTED', 'REVIEWED'] as const;
 
@@ -32,7 +34,14 @@ function errOf(e: unknown): { code: string; message: string } {
   return { code: 'ERR', message: 'Request failed' };
 }
 
+function reconStatusKey(s: string): keyof Dict {
+  if (s === 'SUBMITTED') return 'reconStatus.submitted';
+  if (s === 'REVIEWED') return 'reconStatus.reviewed';
+  return 'reconStatus.draft';
+}
+
 export default function ReconciliationsPage() {
+  const { t, tError } = useT();
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [shifts, setShifts] = useState<Record<string, Shift>>({});
   const [users, setUsers] = useState<User[]>([]);
@@ -45,9 +54,7 @@ export default function ReconciliationsPage() {
     const params = new URLSearchParams();
     if (filterStatus !== 'ALL') params.set('status', filterStatus);
     const qs = params.toString();
-    apiFetch<{ success: true; reconciliations: Reconciliation[] }>(
-      `/api/v1/reconciliations${qs ? '?' + qs : ''}`
-    )
+    apiFetch<{ success: true; reconciliations: Reconciliation[] }>('/api/v1/reconciliations' + (qs ? '?' + qs : ''))
       .then((r) => setReconciliations(r.reconciliations))
       .catch((e) => setErr(errOf(e)))
       .finally(() => setLoading(false));
@@ -76,43 +83,46 @@ export default function ReconciliationsPage() {
   return (
     <OpsShell>
       <OpsHeader
-        title="Reconciliations"
-        subtitle="Waiters declare expected vs actual cash/mobile; managers review and approve or send back."
+        title={t('ops.reconciliations.title')}
+        subtitle={t('ops.reconciliations.subtitle')}
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-wrap items-end gap-3">
-        <div className="w-48">
+      <div className='rounded-2xl border border-slate-200 bg-white p-4 flex flex-wrap items-end gap-3'>
+        <div className='w-48'>
           <SelectField
-            label="Status"
+            label={t('table.status')}
             value={filterStatus}
             onChange={setFilterStatus}
-            options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+            options={STATUS_OPTIONS.map((s) => ({
+              value: s,
+              label: s === 'ALL' ? t('status.all') : t(reconStatusKey(s)),
+            }))}
           />
         </div>
       </div>
 
-      {err && <FormError code={err.code} message={err.message} />}
+      {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50">
+      <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
+        <table className='w-full text-sm'>
+          <thead className='bg-slate-50'>
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Business date</th>
-              <th className="text-left px-3 py-2 font-medium">Waiter</th>
-              <th className="text-left px-3 py-2 font-medium">Status</th>
-              <th className="text-right px-3 py-2 font-medium">Expected cash</th>
-              <th className="text-right px-3 py-2 font-medium">Actual cash</th>
-              <th className="text-right px-3 py-2 font-medium">Cash diff</th>
-              <th className="text-right px-3 py-2 font-medium">Mobile diff</th>
-              <th className="text-left px-3 py-2 font-medium">Action</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('form.businessDate')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.waiter')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.expectedCash')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('table.actualCash')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('totals.cashDiff')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('totals.mobileDiff')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.action')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={8} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
             )}
             {!loading && reconciliations.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-400">No reconciliations.</td></tr>
+              <tr><td colSpan={8} className='px-3 py-6 text-center text-slate-400'>{t('ops.reconciliations.empty')}</td></tr>
             )}
             {reconciliations.map((r) => {
               const sh = shifts[r.shiftId];
@@ -129,22 +139,22 @@ export default function ReconciliationsPage() {
                 : parseFloat(mobileDiff) > 0 ? 'text-emerald-700'
                 : 'text-red-700';
               return (
-                <tr key={r.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2">{sh ? sh.businessDate : r.shiftId.slice(0, 8) + '…'}</td>
-                  <td className="px-3 py-2">{userName(r.userId)}</td>
-                  <td className="px-3 py-2">
-                    <span className="text-xs rounded bg-slate-100 px-2 py-0.5">{r.status}</span>
+                <tr key={r.id} className='border-t border-slate-100'>
+                  <td className='px-3 py-2'>{sh ? sh.businessDate : r.shiftId.slice(0, 8) + '\u2026'}</td>
+                  <td className='px-3 py-2'>{userName(r.userId)}</td>
+                  <td className='px-3 py-2'>
+                    <span className='text-xs rounded bg-slate-100 px-2 py-0.5'>{t(reconStatusKey(r.status))}</span>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono">{r.expectedCash}</td>
-                  <td className="px-3 py-2 text-right font-mono">{r.actualCash ?? '—'}</td>
-                  <td className={'px-3 py-2 text-right font-mono ' + cashDiffClass}>{cashDiff ?? '—'}</td>
-                  <td className={'px-3 py-2 text-right font-mono ' + mobileDiffClass}>{mobileDiff ?? '—'}</td>
-                  <td className="px-3 py-2">
+                  <td className='px-3 py-2 text-right font-mono'>{r.expectedCash}</td>
+                  <td className='px-3 py-2 text-right font-mono'>{r.actualCash ?? '\u2014'}</td>
+                  <td className={'px-3 py-2 text-right font-mono ' + cashDiffClass}>{cashDiff ?? '\u2014'}</td>
+                  <td className={'px-3 py-2 text-right font-mono ' + mobileDiffClass}>{mobileDiff ?? '\u2014'}</td>
+                  <td className='px-3 py-2'>
                     <Link
-                      href={`/ops/reconciliations/${r.id}`}
-                      className="text-xs text-slate-700 underline hover:text-slate-900"
+                      href={'/ops/reconciliations/' + r.id}
+                      className='text-xs text-slate-700 underline hover:text-slate-900'
                     >
-                      Open
+                      {t('action.open')}
                     </Link>
                   </td>
                 </tr>

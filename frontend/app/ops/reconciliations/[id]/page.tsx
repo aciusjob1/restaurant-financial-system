@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { DecimalField, TextArea, FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
+import type { Dict } from '@/lib/i18n/dictionaries';
 
 type Reconciliation = {
   id: string;
@@ -35,13 +37,28 @@ function errOf(e: unknown): { code: string; message: string } {
   return { code: 'ERR', message: 'Request failed' };
 }
 
+function reconStatusKey(s: string): keyof Dict {
+  if (s === 'SUBMITTED') return 'reconStatus.submitted';
+  if (s === 'REVIEWED') return 'reconStatus.reviewed';
+  return 'reconStatus.draft';
+}
+
+function diffClass(v: string | null): string {
+  if (v === null) return 'text-slate-400';
+  const n = parseFloat(v);
+  if (n === 0) return 'text-slate-500';
+  return n > 0 ? 'text-emerald-700' : 'text-red-700';
+}
+
 export default function ReconciliationDetailPage() {
+  const { t, tError } = useT();
   const params = useParams<{ id: string }>();
   const reconId = params.id;
 
   const [rec, setRec] = useState<Reconciliation | null>(null);
   const [shift, setShift] = useState<Shift | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [myId, setMyId] = useState<string>('');
   const [myRole, setMyRole] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
@@ -53,9 +70,6 @@ export default function ReconciliationDetailPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
 
-  // Handover-related state. A handover may only be created by the
-  // reconciliation owner (a WAITER in production), targeting a
-  // MANAGER/OWNER. Amount is server-derived and never sent by the client.
   const [handover, setHandover] = useState<{
     id: string;
     status: 'PENDING' | 'CONFIRMED';
@@ -70,27 +84,21 @@ export default function ReconciliationDetailPage() {
   function load() {
     setLoading(true);
     setErr(null);
-    apiFetch<{ success: true; reconciliation: Reconciliation }>(
-      `/api/v1/reconciliations/${reconId}`
-    )
+    apiFetch<{ success: true; reconciliation: Reconciliation }>('/api/v1/reconciliations/' + reconId)
       .then((r) => {
         setRec(r.reconciliation);
         setActualCash(r.reconciliation.actualCash ?? '');
         setActualMobile(r.reconciliation.actualMobile ?? '');
         setNotes(r.reconciliation.notes ?? '');
-        return apiFetch<{ success: true; shift: Shift }>(
-          `/api/v1/shifts/${r.reconciliation.shiftId}`
-        );
+        return apiFetch<{ success: true; shift: Shift }>('/api/v1/shifts/' + r.reconciliation.shiftId);
       })
       .then((sr) => setShift(sr.shift))
       .then(() =>
         apiFetch<{ success: true; handovers: Array<{ id: string; status: 'PENDING' | 'CONFIRMED'; amount: string; toUserId: string; confirmedAt: string | null; reconciliationId: string }> }>(
-          `/api/v1/handovers?reconciliationId=${reconId}`
+          '/api/v1/handovers?reconciliationId=' + reconId
         )
       )
-      .then((hr) => {
-        setHandover(hr.handovers.length > 0 ? hr.handovers[0] : null);
-      })
+      .then((hr) => setHandover(hr.handovers.length > 0 ? hr.handovers[0] : null))
       .catch((e) => setErr(errOf(e)))
       .finally(() => setLoading(false));
   }
@@ -99,7 +107,7 @@ export default function ReconciliationDetailPage() {
 
   useEffect(() => {
     apiFetch<{ success: true; user: User }>('/api/v1/auth/me')
-      .then((r) => setMyRole(r.user.role))
+      .then((r) => { setMyId(r.user.id); setMyRole(r.user.role); })
       .catch(() => {});
     apiFetch<{ success: true; users: User[] }>('/api/v1/users')
       .then((r) => setUsers(r.users))
@@ -116,7 +124,7 @@ export default function ReconciliationDetailPage() {
     setErr(null);
     setBusy(true);
     try {
-      await apiFetch(`/api/v1/reconciliations/${reconId}`, {
+      await apiFetch('/api/v1/reconciliations/' + reconId, {
         method: 'PATCH',
         body: JSON.stringify({
           actualCash,
@@ -136,7 +144,7 @@ export default function ReconciliationDetailPage() {
     setErr(null);
     setBusy(true);
     try {
-      await apiFetch(`/api/v1/reconciliations/${reconId}/submit`, {
+      await apiFetch('/api/v1/reconciliations/' + reconId + '/submit', {
         method: 'POST',
         body: JSON.stringify({}),
       });
@@ -152,7 +160,7 @@ export default function ReconciliationDetailPage() {
     setErr(null);
     setBusy(true);
     try {
-      await apiFetch(`/api/v1/reconciliations/${reconId}/review`, {
+      await apiFetch('/api/v1/reconciliations/' + reconId + '/review', {
         method: 'POST',
         body: JSON.stringify({
           decision,
@@ -197,8 +205,8 @@ export default function ReconciliationDetailPage() {
   if (loading) {
     return (
       <OpsShell>
-        <OpsHeader title="Reconciliation" />
-        <div className="text-slate-500">Loading…</div>
+        <OpsHeader title={t('ops.reconciliationsDetail.title')} />
+        <div className='text-slate-500'>{t('common.loading')}</div>
       </OpsShell>
     );
   }
@@ -206,9 +214,11 @@ export default function ReconciliationDetailPage() {
   if (!rec) {
     return (
       <OpsShell>
-        <OpsHeader title="Reconciliation" />
-        {err && <FormError code={err.code} message={err.message} />}
-        <Link href="/ops/reconciliations" className="text-sm text-slate-700 underline">← Back to list</Link>
+        <OpsHeader title={t('ops.reconciliationsDetail.title')} />
+        {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+        <Link href='/ops/reconciliations' className='text-sm text-slate-700 underline'>
+          {t('ops.reconciliationsDetail.backList')}
+        </Link>
       </OpsShell>
     );
   }
@@ -217,184 +227,179 @@ export default function ReconciliationDetailPage() {
   const isSubmitted = rec.status === 'SUBMITTED';
   const isReviewed = rec.status === 'REVIEWED';
   const isManager = myRole === 'MANAGER' || myRole === 'OWNER';
-
-  function diffClass(v: string | null): string {
-    if (v === null) return 'text-slate-400';
-    const n = parseFloat(v);
-    if (n === 0) return 'text-slate-500';
-    return n > 0 ? 'text-emerald-700' : 'text-red-700';
-  }
+  const isOwnerWaiter = myRole === 'WAITER' && myId === rec.userId;
 
   return (
     <OpsShell>
       <OpsHeader
-        title={`Reconciliation ${rec.id.slice(0, 8)}…`}
-        subtitle={`${userName(rec.userId)}${shift ? ' — ' + shift.businessDate : ''} — ${rec.status}`}
+        title={t('ops.reconciliationsDetail.title') + ' ' + rec.id.slice(0, 8) + '\u2026'}
+        subtitle={userName(rec.userId) + (shift ? ' \u2014 ' + shift.businessDate : '') + ' \u2014 ' + t(reconStatusKey(rec.status))}
       />
 
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <Link href="/ops/reconciliations" className="text-slate-500 hover:text-slate-900">← All reconciliations</Link>
-        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs">{rec.status}</span>
+      <div className='flex flex-wrap items-center gap-3 text-sm'>
+        <Link href='/ops/reconciliations' className='text-slate-500 hover:text-slate-900'>
+          {t('ops.reconciliationsDetail.backAll')}
+        </Link>
+        <span className='rounded bg-slate-100 px-2 py-0.5 text-xs'>{t(reconStatusKey(rec.status))}</span>
       </div>
 
-      {err && <FormError code={err.code} message={err.message} />}
+      {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
 
-      {/* Summary */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-        <h2 className="text-sm font-medium text-slate-700">Summary</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+      <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+        <h2 className='text-sm font-medium text-slate-700'>{t('ops.reconciliationsDetail.summaryHeading')}</h2>
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-4 text-sm'>
           <div>
-            <div className="text-xs text-slate-500">Expected cash</div>
-            <div className="font-mono">{rec.expectedCash}</div>
+            <div className='text-xs text-slate-500'>{t('ops.reconciliationsDetail.labelExpectedCash')}</div>
+            <div className='font-mono'>{rec.expectedCash}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500">Actual cash</div>
-            <div className="font-mono">{rec.actualCash ?? '—'}</div>
+            <div className='text-xs text-slate-500'>{t('ops.reconciliationsDetail.labelActualCash')}</div>
+            <div className='font-mono'>{rec.actualCash ?? '\u2014'}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500">Cash difference</div>
-            <div className={'font-mono ' + diffClass(rec.cashDifference)}>{rec.cashDifference ?? '—'}</div>
+            <div className='text-xs text-slate-500'>{t('ops.reconciliationsDetail.labelCashDifference')}</div>
+            <div className={'font-mono ' + diffClass(rec.cashDifference)}>{rec.cashDifference ?? '\u2014'}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500">Expected mobile</div>
-            <div className="font-mono">{rec.expectedMobile}</div>
+            <div className='text-xs text-slate-500'>{t('ops.reconciliationsDetail.labelExpectedMobile')}</div>
+            <div className='font-mono'>{rec.expectedMobile}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500">Actual mobile</div>
-            <div className="font-mono">{rec.actualMobile ?? '—'}</div>
+            <div className='text-xs text-slate-500'>{t('ops.reconciliationsDetail.labelActualMobile')}</div>
+            <div className='font-mono'>{rec.actualMobile ?? '\u2014'}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500">Mobile difference</div>
-            <div className={'font-mono ' + diffClass(rec.mobileDifference)}>{rec.mobileDifference ?? '—'}</div>
+            <div className='text-xs text-slate-500'>{t('ops.reconciliationsDetail.labelMobileDifference')}</div>
+            <div className={'font-mono ' + diffClass(rec.mobileDifference)}>{rec.mobileDifference ?? '\u2014'}</div>
           </div>
         </div>
         {rec.notes && (
-          <div className="text-sm text-slate-600">
-            <span className="text-slate-500">Notes: </span>{rec.notes}
+          <div className='text-sm text-slate-600'>
+            <span className='text-slate-500'>{t('ops.reconciliationsDetail.labelNotes')}: </span>{rec.notes}
           </div>
         )}
         {rec.submittedAt && (
-          <div className="text-xs text-slate-500">Submitted at {rec.submittedAt}</div>
+          <div className='text-xs text-slate-500'>
+            {t('ops.reconciliationsDetail.submittedAtPrefix')}{rec.submittedAt}
+          </div>
         )}
         {rec.reviewedAt && (
-          <div className="text-xs text-slate-500">
-            Reviewed by {userName(rec.reviewedBy || '')} at {rec.reviewedAt}
-            {rec.reviewNotes && <> — {rec.reviewNotes}</>}
+          <div className='text-xs text-slate-500'>
+            {t('ops.reconciliationsDetail.reviewedByPrefix')}{userName(rec.reviewedBy || '')}{t('ops.reconciliationsDetail.reviewedAtMid')}{rec.reviewedAt}
+            {rec.reviewNotes && <> \u2014 {rec.reviewNotes}</>}
           </div>
         )}
       </div>
 
-      {/* Waiter edit form — DRAFT + WAITER role (or the owner of the recon if role unknown) */}
-      {isDraft && !isManager && (
-        <form onSubmit={saveActuals} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-          <h2 className="text-sm font-medium text-slate-700">Enter actuals</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <DecimalField label="Actual cash" value={actualCash} onChange={setActualCash} required placeholder="0.00" />
-            <DecimalField label="Actual mobile" value={actualMobile} onChange={setActualMobile} required placeholder="0.00" />
+      {isDraft && isOwnerWaiter && (
+        <form onSubmit={saveActuals} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+          <h2 className='text-sm font-medium text-slate-700'>{t('ops.reconciliationsDetail.enterActuals')}</h2>
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+            <DecimalField label={t('form.actualCash')} value={actualCash} onChange={setActualCash} required placeholder='0.00' />
+            <DecimalField label={t('form.actualMobile')} value={actualMobile} onChange={setActualMobile} required placeholder='0.00' />
           </div>
-          <TextArea label="Notes (optional)" value={notes} onChange={setNotes} rows={2} />
-          <div className="flex flex-wrap gap-2">
+          <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
+          <div className='flex flex-wrap gap-2'>
             <button
-              type="submit"
+              type='submit'
               disabled={busy}
-              className="rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60"
+              className='rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
             >
-              {busy ? 'Saving…' : 'Save actuals'}
+              {busy ? t('ops.shiftsDetail.working') : t('ops.reconciliationsDetail.saveActuals')}
             </button>
             <button
-              type="button"
+              type='button'
               onClick={submitReconciliation}
               disabled={busy || actualCash.trim() === '' || actualMobile.trim() === ''}
-              className="rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60"
+              className='rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
             >
-              Submit for review
+              {t('action.submitForReview')}
             </button>
           </div>
-          <div className="text-xs text-slate-500">
-            Both actualCash and actualMobile are required before submitting.
+          <div className='text-xs text-slate-500'>
+            {t('ops.reconciliationsDetail.requireActuals')}
           </div>
         </form>
       )}
 
-      {/* Manager review form — SUBMITTED + MANAGER/OWNER */}
       {isSubmitted && isManager && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-          <h2 className="text-sm font-medium text-slate-700">Review</h2>
+        <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+          <h2 className='text-sm font-medium text-slate-700'>{t('ops.reconciliationsDetail.reviewHeading')}</h2>
           <TextArea
-            label="Review notes (optional)"
+            label={t('ops.reconciliationsDetail.reviewNotesOptional')}
             value={reviewNotes}
             onChange={setReviewNotes}
             rows={2}
           />
-          <div className="flex flex-wrap gap-2">
+          <div className='flex flex-wrap gap-2'>
             <button
-              type="button"
+              type='button'
               onClick={() => review('APPROVE')}
               disabled={busy}
-              className="rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60"
+              className='rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
             >
-              {busy ? 'Working…' : 'Approve'}
+              {busy ? t('ops.shiftsDetail.working') : t('action.approve')}
             </button>
             <button
-              type="button"
+              type='button'
               onClick={() => review('SEND_BACK')}
               disabled={busy}
-              className="rounded-lg border border-amber-300 text-amber-800 px-4 py-2 text-sm disabled:opacity-60"
+              className='rounded-lg border border-amber-300 text-amber-800 px-4 py-2 text-sm disabled:opacity-60'
             >
-              Send back to draft
+              {t('ops.reconciliationsDetail.sendBack')}
             </button>
           </div>
         </div>
       )}
 
-      {/* Status notes */}
       {isSubmitted && !isManager && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-          Submitted and awaiting manager review.
+        <div className='rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600'>
+          {t('ops.reconciliationsDetail.waitingReview')}
         </div>
       )}
       {isDraft && isManager && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-          Draft owned by {userName(rec.userId)}. Wait for the waiter to submit before reviewing.
+        <div className='rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600'>
+          {t('ops.reconciliationsDetail.draftOwnedPrefix')}{userName(rec.userId)}{t('ops.reconciliationsDetail.draftOwnedSuffix')}
         </div>
       )}
       {isReviewed && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800">
-          Reviewed and approved. This reconciliation is now read-only.
+        <div className='rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800'>
+          {t('ops.reconciliationsDetail.reviewedApproved')}
         </div>
       )}
 
-      {/* Handover panel — visible whenever recon has actualCash (SUBMITTED or REVIEWED). */}
       {(isSubmitted || isReviewed) && rec.actualCash !== null && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-          <h2 className="text-sm font-medium text-slate-700">Cash handover</h2>
+        <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
+          <h2 className='text-sm font-medium text-slate-700'>{t('ops.reconciliationsDetail.handoverHeading')}</h2>
 
           {handover ? (
-            <div className="text-sm text-slate-700 space-y-1">
+            <div className='text-sm text-slate-700 space-y-1'>
               <div>
-                <span className="text-slate-500">Status: </span>
+                <span className='text-slate-500'>{t('ops.reconciliationsDetail.handoverStatusLabel')} </span>
                 {handover.status === 'CONFIRMED'
-                  ? <span className="rounded bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs">CONFIRMED</span>
-                  : <span className="rounded bg-amber-100 text-amber-800 px-2 py-0.5 text-xs">PENDING</span>}
+                  ? <span className='rounded bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs'>{t('handoverStatus.confirmed')}</span>
+                  : <span className='rounded bg-amber-100 text-amber-800 px-2 py-0.5 text-xs'>{t('handoverStatus.pending')}</span>}
               </div>
-              <div><span className="text-slate-500">Amount: </span><span className="font-mono">{handover.amount}</span></div>
-              <div><span className="text-slate-500">To: </span>{userName(handover.toUserId)}</div>
+              <div><span className='text-slate-500'>{t('ops.reconciliationsDetail.handoverAmountLabel')} </span><span className='font-mono'>{handover.amount}</span></div>
+              <div><span className='text-slate-500'>{t('ops.reconciliationsDetail.handoverToLabel')} </span>{userName(handover.toUserId)}</div>
               {handover.confirmedAt && (
-                <div className="text-xs text-slate-500">Confirmed at {handover.confirmedAt}</div>
+                <div className='text-xs text-slate-500'>
+                  {t('ops.reconciliationsDetail.confirmedAtPrefix')}{handover.confirmedAt}
+                </div>
               )}
             </div>
-          ) : (
+          ) : isOwnerWaiter ? (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
                 <div>
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700">Receiver</span>
+                  <label className='block'>
+                    <span className='text-sm font-medium text-slate-700'>{t('form.receiver')}</span>
                     <select
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 bg-white"
+                      className='mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 bg-white'
                       value={receiverId}
                       onChange={(e) => setReceiverId(e.target.value)}
                     >
-                      <option value="">— select a manager or owner —</option>
+                      <option value=''>{t('ops.reconciliationsDetail.selectReceiverPlaceholder')}</option>
                       {users
                         .filter((u) => u.role === 'MANAGER' || u.role === 'OWNER')
                         .map((u) => (
@@ -403,28 +408,28 @@ export default function ReconciliationDetailPage() {
                     </select>
                   </label>
                 </div>
-                <div className="flex items-end pb-1">
-                  <div className="text-xs text-slate-500">
-                    Amount is server-derived from the reconciliation actual cash
-                    (<span className="font-mono">{rec.actualCash}</span>). You cannot set it.
+                <div className='flex items-end pb-1'>
+                  <div className='text-xs text-slate-500'>
+                    {t('ops.reconciliationsDetail.amountDerived.before')}
+                    <span className='font-mono'>{rec.actualCash}</span>
+                    {t('ops.reconciliationsDetail.amountDerived.after')}
                   </div>
                 </div>
               </div>
-              <TextArea label="Notes (optional)" value={handoverNotes} onChange={setHandoverNotes} rows={2} />
+              <TextArea label={t('form.notesOptional')} value={handoverNotes} onChange={setHandoverNotes} rows={2} />
               <button
-                type="button"
+                type='button'
                 onClick={createHandover}
                 disabled={handoverBusy}
-                className="rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60"
+                className='rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
               >
-                {handoverBusy ? 'Creating…' : 'Create handover'}
+                {handoverBusy ? t('ops.shiftsDetail.working') : t('action.createHandover')}
               </button>
-              <div className="text-xs text-slate-500">
-                Note: handover creation is WAITER-only in the backend. If you are logged in as
-                OWNER/MANAGER this will be rejected with 403. Same permission tension as collections
-                inside the shift page — to be revisited when the Kiosk UI (Phase 18) lands.
-              </div>
             </>
+          ) : (
+            <div className='text-sm text-slate-600'>
+              {t('ops.reconciliationsDetail.noHandoverYet')}
+            </div>
           )}
         </div>
       )}
