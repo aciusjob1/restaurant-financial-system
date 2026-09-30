@@ -23,6 +23,10 @@ const D_VOID_PAY   = '2099-04-03'; // voiding a payment
 const D_VOID_ALLOC = '2099-04-04'; // voiding a single allocation
 const D_CLOSED     = '2099-04-05'; // closed-day guard
 const D_BALANCE    = '2099-04-06'; // supplier balance calculations
+const D_CP_INVOICE = '2099-06-01'; // complete-purchase happy path
+const D_CP_ROLLBACK = '2099-06-02'; // complete-purchase rollback cases
+const D_CP_PAY_FIFO = '2099-06-03'; // complete-payment auto-allocate FIFO
+const D_CP_PAY_MAN  = '2099-06-04'; // complete-payment explicit allocateTo
 
 const TEST_SUPPLIER_NAME = 'Phase12 Test Supplier';
 const TEST_MATERIAL_CAT   = 'Phase12 Test Material Category';
@@ -68,7 +72,7 @@ async function cleanup() {
   });
 
   // Clean closings on all our dates
-  const allDates = [D_SUPPLIER, D_INVOICE, D_PAYMENT, D_VOID_PAY, D_VOID_ALLOC, D_CLOSED, D_BALANCE].map(
+  const allDates = [D_SUPPLIER, D_INVOICE, D_PAYMENT, D_VOID_PAY, D_VOID_ALLOC, D_CLOSED, D_BALANCE, D_CP_INVOICE, D_CP_ROLLBACK, D_CP_PAY_FIFO, D_CP_PAY_MAN].map(
     (d) => new Date(`${d}T00:00:00.000Z`)
   );
   await prisma.dailyClosing.deleteMany({ where: { businessDate: { in: allDates } } });
@@ -722,5 +726,210 @@ describe('Closed-day guard on supplier financial writes', () => {
     await prisma.supplierPayment.deleteMany({ where: { supplierId } });
     await prisma.purchaseInvoice.deleteMany({ where: { supplierId } });
     await prisma.supplier.deleteMany({ where: { id: supplierId } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Complete purchase (atomic header + items + post)', () => {
+  let supplierId: string;
+  let secondMaterialId: string;
+
+  beforeAll(async () => {
+    const m = await loginAs(MANAGER);
+    const sup = await m.post('/api/v1/suppliers').send({ name: 'Phase19j3 Complete Supplier' });
+    expect(sup.status).toBe(201);
+    supplierId = sup.body.supplier.id;
+
+    const cat = await m.post('/api/v1/material-categories').send({ name: 'Phase19j3 Second Cat' });
+    expect(cat.status).toBe(201);
+    const mat2 = await m.post('/api/v1/materials').send({
+      name: 'Phase19j3 Second Material',
+      categoryId: cat.body.category.id,
+      unit: 'kg',
+      currentPrice: '2.00',
+    });
+    expect(mat2.status).toBe(201);
+    secondMaterialId = mat2.body.material.id;
+  });
+
+  afterAll(async () => {
+    await prisma.stockMovement.deleteMany({ where: { material: { category: { name: 'Phase19j3 Second Cat' } } } });
+    await prisma.paymentAllocation.deleteMany({ where: { purchaseInvoice: { supplierId } } });
+    await prisma.supplierPayment.deleteMany({ where: { supplierId } });
+    await prisma.purchaseInvoice.deleteMany({ where: { supplierId } });
+    await prisma.supplier.deleteMany({ where: { id: supplierId } });
+    await prisma.material.deleteMany({ where: { category: { name: 'Phase19j3 Second Cat' } } });
+    await prisma.materialCategory.deleteMany({ where: { name: 'Phase19j3 Second Cat' } });
+  });
+
+  it('creates 3 items, posts, and emits stock movements in one call', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/purchase-invoices/complete').send({
+      supplierId,
+      invoiceNumber: 'CP-001',
+      date: D_CP_INVOICE,
+      businessDate: D_CP_INVOICE,
+      postNow: true,
+      items: [
+        { materialId, quantity: '2.000', unitPrice: '10.00' },
+        { materialId: secondMaterialId, quantity: '1.500', unitPrice: '20.00' },
+        { materialId, quantity: '3.000', unitPrice: '5.00' },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.invoice.status).toBe('POSTED');
+    expect(res.body.invoice.total).toBe('65.00');
+    expect(res.body.items).toHaveLength(3);
+    expect(res.body.invoice.postedBy).toBeTruthy();
+
+    const movements = await prisma.stockMovement.findMany({
+      where: { businessDate: new Date(D_CP_INVOICE + 'T00:00:00.000Z'), type: 'PURCHASE' },
+    });
+    expect(movements.length).toBe(3);
+  });
+
+  it('rolls back entirely when any item references an unknown material', async () => {
+    const m = await loginAs(MANAGER);
+    const before = await prisma.purchaseInvoice.count({ where: { supplierId } });
+    const res = await m.post('/api/v1/purchase-invoices/complete').send({
+      supplierId,
+      invoiceNumber: 'CP-ROLLBACK-MAT',
+      date: D_CP_ROLLBACK,
+      businessDate: D_CP_ROLLBACK,
+      postNow: false,
+      items: [
+        { materialId, quantity: '1.000', unitPrice: '1.00' },
+        { materialId: 'nonexistent-material-id', quantity: '1.000', unitPrice: '1.00' },
+      ],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_MATERIAL');
+    const after = await prisma.purchaseInvoice.count({ where: { supplierId } });
+    expect(after).toBe(before);
+  });
+
+  it('rolls back when the invoice number is a duplicate for this supplier', async () => {
+    const m = await loginAs(MANAGER);
+    const before = await prisma.purchaseInvoice.count({ where: { supplierId } });
+    const res = await m.post('/api/v1/purchase-invoices/complete').send({
+      supplierId,
+      invoiceNumber: 'CP-001',
+      date: D_CP_ROLLBACK,
+      businessDate: D_CP_ROLLBACK,
+      postNow: false,
+      items: [{ materialId, quantity: '1.000', unitPrice: '1.00' }],
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('DUPLICATE_INVOICE_NUMBER');
+    const after = await prisma.purchaseInvoice.count({ where: { supplierId } });
+    expect(after).toBe(before);
+  });
+
+  it('rejects when items array is empty', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/purchase-invoices/complete').send({
+      supplierId,
+      invoiceNumber: 'CP-EMPTY',
+      date: D_CP_ROLLBACK,
+      businessDate: D_CP_ROLLBACK,
+      postNow: false,
+      items: [],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Complete payment (atomic create + allocate)', () => {
+  let supplierId: string;
+  let invA: string;
+  let invB: string;
+
+  beforeAll(async () => {
+    const m = await loginAs(MANAGER);
+    const sup = await m.post('/api/v1/suppliers').send({ name: 'Phase19j3 CompletePay Supplier' });
+    expect(sup.status).toBe(201);
+    supplierId = sup.body.supplier.id;
+
+    const a = await m.post('/api/v1/purchase-invoices/complete').send({
+      supplierId,
+      invoiceNumber: 'CPAY-A',
+      date: D_CP_PAY_FIFO,
+      businessDate: D_CP_PAY_FIFO,
+      postNow: true,
+      items: [{ materialId, quantity: '1.000', unitPrice: '100000.00' }],
+    });
+    expect(a.status).toBe(201);
+    invA = a.body.invoice.id;
+
+    const b = await m.post('/api/v1/purchase-invoices/complete').send({
+      supplierId,
+      invoiceNumber: 'CPAY-B',
+      date: D_CP_PAY_FIFO,
+      businessDate: D_CP_PAY_FIFO,
+      postNow: true,
+      items: [{ materialId, quantity: '1.000', unitPrice: '50000.00' }],
+    });
+    expect(b.status).toBe(201);
+    invB = b.body.invoice.id;
+  });
+
+  afterAll(async () => {
+    await prisma.paymentAllocation.deleteMany({ where: { purchaseInvoice: { supplierId } } });
+    await prisma.supplierPayment.deleteMany({ where: { supplierId } });
+    await prisma.purchaseInvoice.deleteMany({ where: { supplierId } });
+    await prisma.supplier.deleteMany({ where: { id: supplierId } });
+  });
+
+  it('autoAllocate applies FIFO across unpaid invoices', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/supplier-payments/complete').send({
+      supplierId,
+      businessDate: D_CP_PAY_FIFO,
+      amount: '120000.00',
+      paymentMethod: 'CASH',
+      autoAllocate: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.payment.amount).toBe('120000.00');
+    expect(res.body.allocations).toHaveLength(2);
+    const [first, second] = res.body.allocations;
+    expect(first.purchaseInvoiceId).toBe(invA);
+    expect(first.amount).toBe('100000.00');
+    expect(second.purchaseInvoiceId).toBe(invB);
+    expect(second.amount).toBe('20000.00');
+  });
+
+  it('explicit allocateTo targets a specific invoice', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/supplier-payments/complete').send({
+      supplierId,
+      businessDate: D_CP_PAY_MAN,
+      amount: '30000.00',
+      paymentMethod: 'BANK',
+      allocateTo: [invB],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.allocations).toHaveLength(1);
+    expect(res.body.allocations[0].purchaseInvoiceId).toBe(invB);
+    expect(res.body.allocations[0].amount).toBe('30000.00');
+  });
+
+  it('overpayment leaves the remainder unallocated', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/supplier-payments/complete').send({
+      supplierId,
+      businessDate: D_CP_PAY_MAN,
+      amount: '10000.00',
+      paymentMethod: 'CASH',
+      autoAllocate: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.allocations).toHaveLength(0);
+    const bal = await m.get('/api/v1/suppliers/' + supplierId + '/balance');
+    expect(bal.body.totalUnallocated).toBe('10000.00');
   });
 });

@@ -414,3 +414,168 @@ export async function voidAllocation(input: {
   });
   return serializeAllocation(row);
 }
+
+export async function completePayment(input: {
+  actor: { id: string; role: Role };
+  supplierId: string;
+  businessDate: string;
+  amount: string;
+  paymentMethod: PaymentMethod;
+  reference?: string | null;
+  notes?: string | null;
+  autoAllocate?: boolean;
+  allocateTo?: string[];
+}) {
+  if (input.actor.role !== 'OWNER' && input.actor.role !== 'MANAGER') {
+    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER or MANAGER can record supplier payments.');
+  }
+
+  const supplier = await prisma.supplier.findUnique({ where: { id: input.supplierId } });
+  if (!supplier) throw new ApiError(400, 'INVALID_SUPPLIER', 'Supplier does not exist.');
+
+  const businessDate = parseBusinessDate(input.businessDate);
+  await assertDayNotClosed(businessDate, input.actor.role);
+
+  const amount = toDecimal(input.amount);
+
+  try {
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const paymentNumber = await nextPaymentNumber(tx);
+        const payment = await tx.supplierPayment.create({
+          data: {
+            paymentNumber,
+            supplierId: input.supplierId,
+            businessDate,
+            amount,
+            paymentMethod: input.paymentMethod,
+            reference: input.reference ?? null,
+            notes: input.notes ?? null,
+            recordedBy: input.actor.id,
+          },
+        });
+
+        // Determine target invoices.
+        let targets: string[] = [];
+        if (input.allocateTo && input.allocateTo.length > 0) {
+          targets = input.allocateTo;
+        } else if (input.autoAllocate) {
+          const all = await tx.purchaseInvoice.findMany({
+            where: { supplierId: input.supplierId, status: 'POSTED' },
+            orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+          });
+          if (all.length > 0) {
+            const activeAllocs = await tx.paymentAllocation.findMany({
+              where: {
+                purchaseInvoiceId: { in: all.map((i) => i.id) },
+                voidedAt: null,
+              },
+              select: { purchaseInvoiceId: true, amount: true },
+            });
+            const paidByInvoice = new Map<string, Prisma.Decimal>();
+            for (const a of activeAllocs) {
+              const cur = paidByInvoice.get(a.purchaseInvoiceId) ?? toDecimal('0');
+              paidByInvoice.set(a.purchaseInvoiceId, cur.plus(a.amount));
+            }
+            targets = all
+              .filter((inv) => {
+                const paid = paidByInvoice.get(inv.id) ?? toDecimal('0');
+                return paid.lessThan(inv.total);
+              })
+              .map((inv) => inv.id);
+          }
+        }
+
+        let remaining = amount;
+        const createdAllocations: Array<{
+          id: string;
+          supplierPaymentId: string;
+          purchaseInvoiceId: string;
+          amount: Prisma.Decimal;
+          voidedAt: Date | null;
+          voidedBy: string | null;
+          voidReason: string | null;
+          createdAt: Date;
+          updatedAt: Date;
+        }> = [];
+
+        for (const invId of targets) {
+          if (remaining.lessThanOrEqualTo(0)) break;
+          const invoice = await tx.purchaseInvoice.findUnique({ where: { id: invId } });
+          if (!invoice) continue;
+          if (invoice.status !== 'POSTED') continue;
+          if (invoice.supplierId !== input.supplierId) continue;
+
+          const alreadyPaid = await sumActiveAllocationsForInvoice(tx, invId);
+          const invoiceRemaining = invoice.total.minus(alreadyPaid);
+          if (invoiceRemaining.lessThanOrEqualTo(0)) continue;
+
+          const toAllocate = remaining.lessThan(invoiceRemaining) ? remaining : invoiceRemaining;
+
+          const existing = await tx.paymentAllocation.findFirst({
+            where: {
+              supplierPaymentId: payment.id,
+              purchaseInvoiceId: invId,
+              voidedAt: null,
+            },
+          });
+          let allocationRow;
+          if (existing) {
+            allocationRow = await tx.paymentAllocation.update({
+              where: { id: existing.id },
+              data: { amount: existing.amount.plus(toAllocate) },
+            });
+          } else {
+            const voidedRow = await tx.paymentAllocation.findUnique({
+              where: {
+                supplierPaymentId_purchaseInvoiceId: {
+                  supplierPaymentId: payment.id,
+                  purchaseInvoiceId: invId,
+                },
+              },
+            });
+            if (voidedRow) {
+              allocationRow = await tx.paymentAllocation.update({
+                where: { id: voidedRow.id },
+                data: {
+                  amount: toAllocate,
+                  voidedAt: null,
+                  voidedBy: null,
+                  voidReason: null,
+                },
+              });
+            } else {
+              allocationRow = await tx.paymentAllocation.create({
+                data: {
+                  supplierPaymentId: payment.id,
+                  purchaseInvoiceId: invId,
+                  amount: toAllocate,
+                },
+              });
+            }
+          }
+          createdAllocations.push(allocationRow);
+          remaining = remaining.minus(toAllocate);
+        }
+
+        return { payment, allocations: createdAllocations };
+      },
+      { isolationLevel: 'Serializable' }
+    );
+
+    return {
+      payment: serializePayment(result.payment),
+      allocations: result.allocations.map(serializeAllocation),
+    };
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    if (isSerializationFailure(err)) {
+      throw new ApiError(
+        409,
+        'CONCURRENT_WRITE',
+        'Another payment or allocation write is in progress for this supplier; retry the request.'
+      );
+    }
+    throw err;
+  }
+}

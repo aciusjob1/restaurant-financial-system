@@ -107,6 +107,38 @@ export const AllocatePaymentSchema = z.object({
   amount: PositiveMoneyString,
 });
 
+const QuantityString = z
+  .string()
+  .trim()
+  .regex(/^\d+(\.\d{1,3})?$/, 'Quantity must be a positive decimal with up to 3 places.');
+
+const PurchaseItemLineSchema = z.object({
+  materialId: z.string().min(1),
+  quantity: QuantityString,
+  unitPrice: PositiveMoneyString,
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+
+export const CompletePurchaseInvoiceSchema = z.object({
+  supplierId: z.string().min(1),
+  invoiceNumber: z.string().trim().min(1).max(64),
+  date: DateOnly,
+  businessDate: DateOnly,
+  notes: z.string().trim().max(500).nullable().optional(),
+  postNow: z.boolean(),
+  items: z.array(PurchaseItemLineSchema).min(1),
+});
+
+export const CompleteSupplierPaymentSchema = z.object({
+  supplierId: z.string().min(1),
+  businessDate: DateOnly,
+  amount: PositiveMoneyString,
+  paymentMethod: z.enum(PAYMENT_METHODS),
+  reference: z.string().trim().max(64).nullable().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+  autoAllocate: z.boolean().optional(),
+  allocateTo: z.array(z.string().min(1)).optional(),
+});
 export const VoidAllocationSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
@@ -134,4 +166,6 @@ export type CreateSupplierPaymentInput = z.infer<typeof CreateSupplierPaymentSch
 export type VoidSupplierPaymentInput = z.infer<typeof VoidSupplierPaymentSchema>;
 export type AllocatePaymentInput = z.infer<typeof AllocatePaymentSchema>;
 export type VoidAllocationInput = z.infer<typeof VoidAllocationSchema>;
+export type CompletePurchaseInvoiceInput = z.infer<typeof CompletePurchaseInvoiceSchema>;
+export type CompleteSupplierPaymentInput = z.infer<typeof CompleteSupplierPaymentSchema>;
 export type ListSupplierPaymentsQuery = z.infer<typeof ListSupplierPaymentsQuerySchema>;

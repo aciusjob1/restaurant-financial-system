@@ -16,6 +16,8 @@ import {
   type VoidSupplierPaymentInput,
   type AllocatePaymentInput,
   type VoidAllocationInput,
+  type CompletePurchaseInvoiceInput,
+  type CompleteSupplierPaymentInput,
 } from '../validators/supplier.js';
 import type { PaymentMethod } from '@prisma/client';
 
@@ -219,4 +221,42 @@ export async function voidAllocation(req: Request, res: Response) {
     reason: input.reason,
   });
   res.json({ success: true, allocation });
+}
+
+// ---------- Complete (atomic) ----------
+
+export async function completePurchase(req: Request, res: Response) {
+  const input = req.body as CompletePurchaseInvoiceInput;
+  const result = await invoiceService.completePurchase({
+    actor: { id: req.user!.id, role: req.user!.role },
+    supplierId: input.supplierId,
+    invoiceNumber: input.invoiceNumber,
+    date: input.date,
+    businessDate: input.businessDate,
+    notes: input.notes ?? null,
+    postNow: input.postNow,
+    items: input.items.map((i) => ({
+      materialId: i.materialId,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      notes: i.notes ?? null,
+    })),
+  });
+  res.status(201).json({ success: true, invoice: result.invoice, items: result.items });
+}
+
+export async function completePayment(req: Request, res: Response) {
+  const input = req.body as CompleteSupplierPaymentInput;
+  const result = await paymentService.completePayment({
+    actor: { id: req.user!.id, role: req.user!.role },
+    supplierId: input.supplierId,
+    businessDate: input.businessDate,
+    amount: input.amount,
+    paymentMethod: input.paymentMethod as PaymentMethod,
+    reference: input.reference ?? null,
+    notes: input.notes ?? null,
+    autoAllocate: input.autoAllocate,
+    allocateTo: input.allocateTo,
+  });
+  res.status(201).json({ success: true, payment: result.payment, allocations: result.allocations });
 }

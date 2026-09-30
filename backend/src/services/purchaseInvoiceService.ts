@@ -371,4 +371,145 @@ export async function cancelInvoice(input: {
   });
 }
 
-export { serialize as serializeInvoice };
+export async function completePurchase(input: {
+  actor: { id: string; role: Role };
+  supplierId: string;
+  invoiceNumber: string;
+  date: string;
+  businessDate: string;
+  notes?: string | null;
+  postNow: boolean;
+  items: Array<{
+    materialId: string;
+    quantity: string;
+    unitPrice: string;
+    notes?: string | null;
+  }>;
+}) {
+  if (input.actor.role !== 'OWNER' && input.actor.role !== 'MANAGER') {
+    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER or MANAGER can record purchases.');
+  }
+
+  const supplier = await prisma.supplier.findUnique({ where: { id: input.supplierId } });
+  if (!supplier) throw new ApiError(400, 'INVALID_SUPPLIER', 'Supplier does not exist.');
+
+  if (input.items.length === 0) {
+    throw new ApiError(400, 'NO_ITEMS', 'At least one item is required.');
+  }
+
+  const date = parseBusinessDate(input.date);
+  const businessDate = parseBusinessDate(input.businessDate);
+
+  if (input.postNow) {
+    await assertDayNotClosed(businessDate, input.actor.role);
+  }
+
+  const materialIds = Array.from(new Set(input.items.map((i) => i.materialId)));
+  const materials = await prisma.material.findMany({
+    where: { id: { in: materialIds } },
+    select: { id: true, isActive: true },
+  });
+  const found = new Map(materials.map((m) => [m.id, m]));
+  for (const id of materialIds) {
+    const m = found.get(id);
+    if (!m) throw new ApiError(400, 'INVALID_MATERIAL', `Material ${id} does not exist.`);
+    if (!m.isActive) {
+      throw new ApiError(400, 'MATERIAL_INACTIVE', `Material ${id} is not active.`);
+    }
+  }
+
+  const computedItems = input.items.map((it) => {
+    const qty = toDecimal(it.quantity);
+    const unit = toDecimal(it.unitPrice);
+    const lineTotal = qty.times(unit).toDecimalPlaces(2, 4);
+    return {
+      materialId: it.materialId,
+      quantity: qty,
+      unitPrice: unit,
+      total: lineTotal,
+      notes: it.notes ?? null,
+    };
+  });
+  const sumTotal = computedItems.reduce((acc, r) => acc.plus(r.total), toDecimal('0'));
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const invoice = await tx.purchaseInvoice.create({
+        data: {
+          invoiceNumber: input.invoiceNumber,
+          supplierId: input.supplierId,
+          date,
+          businessDate,
+          subtotal: sumTotal,
+          total: sumTotal,
+          notes: input.notes ?? null,
+          createdBy: input.actor.id,
+        },
+      });
+
+      for (const c of computedItems) {
+        await tx.purchaseItem.create({
+          data: {
+            purchaseInvoiceId: invoice.id,
+            materialId: c.materialId,
+            quantity: c.quantity,
+            unitPrice: c.unitPrice,
+            total: c.total,
+            notes: c.notes,
+          },
+        });
+      }
+
+      const createdItems = await tx.purchaseItem.findMany({
+        where: { purchaseInvoiceId: invoice.id },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (!input.postNow) {
+        return { invoice, items: createdItems };
+      }
+
+      for (const it of createdItems) {
+        if (it.materialId) {
+          await tx.material.update({
+            where: { id: it.materialId },
+            data: { currentPrice: it.unitPrice },
+          });
+        }
+      }
+
+      await createPurchaseMovementsFromItems(tx, {
+        items: createdItems,
+        businessDate,
+        actorId: input.actor.id,
+        invoiceNumber: invoice.invoiceNumber,
+      });
+
+      const updated = await tx.purchaseInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: 'POSTED',
+          postedBy: input.actor.id,
+          postedAt: new Date(),
+        },
+      });
+
+      return { invoice: updated, items: createdItems };
+    });
+
+    return {
+      invoice: serialize(result.invoice),
+      items: result.items.map(serializeItem),
+    };
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ApiError(
+        409,
+        'DUPLICATE_INVOICE_NUMBER',
+        'This supplier already has an invoice with that number.'
+      );
+    }
+    throw err;
+  }
+}
+export { serialize as serializeInvoice, serializeItem };
