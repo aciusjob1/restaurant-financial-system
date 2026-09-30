@@ -21,6 +21,7 @@ export async function createUser(req: Request, res: Response) {
     phone: input.phone ?? null,
     role: input.role,
     password: input.password,
+    language: input.language ?? null,
   });
   res.status(201).json({ success: true, user });
 }
@@ -40,6 +41,9 @@ export async function updateUser(req: Request, res: Response) {
     }
     if (input.isActive !== undefined) {
       throw new ApiError(403, 'MANAGER_CANNOT_CHANGE_STATUS', 'Managers cannot change account status.');
+    }
+    if (input.language !== undefined) {
+      throw new ApiError(403, 'MANAGER_CANNOT_CHANGE_LANGUAGE', 'Managers cannot change language.');
     }
     if (!isSelf && target.role !== 'WAITER') {
       throw new ApiError(403, 'MANAGER_CAN_ONLY_EDIT_WAITERS', 'Managers can only edit waiter profiles.');

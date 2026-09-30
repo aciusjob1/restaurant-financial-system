@@ -68,9 +68,7 @@ const LINKS: LinkSpec[] = [
   { href: '/ops/salaries',             labelKey: 'nav.ops.salaries',           sectionKey: 'nav.section.salaries',       icon: Banknote },
 
   // Staff
-  { href: '/ops/employees',            labelKey: 'nav.ops.employees',          sectionKey: 'nav.section.staff',          icon: UserRound },
-  { href: '/ops/positions',            labelKey: 'nav.ops.positions',          icon: Briefcase },
-  { href: '/ops/users',                labelKey: 'nav.ops.users',              icon: Users },
+  { href: '/ops/staff',                labelKey: 'nav.ops.staff',              sectionKey: 'nav.section.staff',          icon: UserRound },
 
   // Account (bottom, ungrouped)
   { href: '/ops/account',              labelKey: 'nav.ops.account',            icon: UserCog },

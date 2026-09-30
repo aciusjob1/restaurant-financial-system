@@ -3,6 +3,7 @@ import { z } from 'zod';
 const ROLES = ['OWNER', 'MANAGER', 'WAITER', 'AUDITOR'] as const;
 
 export const CreateUserSchema = z.object({
+  language: z.enum(['en', 'sw']).nullable().optional(),
   username: z
     .string()
     .trim()
@@ -17,6 +18,7 @@ export const CreateUserSchema = z.object({
 
 export const UpdateUserSchema = z.object({
   fullName: z.string().trim().min(1).max(128).optional(),
+  language: z.enum(['en', 'sw']).nullable().optional(),
   phone: z.string().trim().max(32).nullable().optional(),
   isActive: z.boolean().optional(),
   role: z.enum(ROLES).optional(),

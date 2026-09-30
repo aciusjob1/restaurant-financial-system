@@ -14,7 +14,7 @@ const AUDITOR = { username: 'phase3-auditor', password: 'AuditorPassword!234', f
 const POSITION_NAME = 'Phase3 Test Chef';
 
 async function cleanup() {
-  const usernames = [OWNER.username, MANAGER.username, WAITER.username, AUDITOR.username];
+  const usernames = [OWNER.username, MANAGER.username, WAITER.username, AUDITOR.username, 'phase19j2-hire', 'phase19j2-dup', 'phase19j2-deact'];
   const employees = await prisma.employee.findMany({
     where: { position: { name: POSITION_NAME } },
     select: { id: true },
@@ -206,5 +206,145 @@ describe('Employees', () => {
     // The row still exists and is still returned by list.
     const after = await list.get('/api/v1/employees');
     expect(after.body.employees.find((e: { id: string }) => e.id === emp.id)).toBeTruthy();
+  });
+
+  it('OWNER creates an employee with a login atomically', async () => {
+    const agent = await loginAs(OWNER);
+    const res = await agent.post('/api/v1/employees').send({
+      fullName: 'Phase 19j2 Hire',
+      phone: '+255711000001',
+      positionId,
+      startDate: '2026-09-28',
+      login: {
+        username: 'phase19j2-hire',
+        password: 'HirePassword!234',
+        role: 'WAITER',
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.employee.userId).toBeTruthy();
+
+    const linked = await prisma.user.findUnique({
+      where: { username: 'phase19j2-hire' },
+      select: { id: true, role: true, isActive: true, fullName: true },
+    });
+    expect(linked).toBeTruthy();
+    expect(linked!.role).toBe('WAITER');
+    expect(linked!.isActive).toBe(true);
+    expect(linked!.fullName).toBe('Phase 19j2 Hire');
+    expect(linked!.id).toBe(res.body.employee.userId);
+  });
+
+  it('rejects a duplicate login username with 409 and rolls the whole thing back', async () => {
+    const agent = await loginAs(OWNER);
+    const before = await prisma.employee.count({
+      where: { fullName: 'Phase 19j2 Duplicate' },
+    });
+    expect(before).toBe(0);
+
+    const first = await agent.post('/api/v1/employees').send({
+      fullName: 'Phase 19j2 Duplicate',
+      positionId,
+      startDate: '2026-09-28',
+      login: {
+        username: 'phase19j2-dup',
+        password: 'DupPassword!2345',
+        role: 'WAITER',
+      },
+    });
+    expect(first.status).toBe(201);
+
+    const second = await agent.post('/api/v1/employees').send({
+      fullName: 'Phase 19j2 Duplicate Second',
+      positionId,
+      startDate: '2026-09-28',
+      login: {
+        username: 'phase19j2-dup',
+        password: 'DupPassword!2345',
+        role: 'WAITER',
+      },
+    });
+    expect(second.status).toBe(409);
+    expect(second.body.code).toBe('USERNAME_TAKEN');
+
+    const after = await prisma.employee.count({
+      where: { fullName: 'Phase 19j2 Duplicate Second' },
+    });
+    expect(after).toBe(0);
+  });
+
+  it('MANAGER cannot create a login account (403 LOGIN_REQUIRES_OWNER)', async () => {
+    const agent = await loginAs(MANAGER);
+    const res = await agent.post('/api/v1/employees').send({
+      fullName: 'Phase 19j2 Mgr Attempt',
+      positionId,
+      startDate: '2026-09-28',
+      login: {
+        username: 'phase19j2-mgr-attempt',
+        password: 'ManagerPassword!234',
+        role: 'WAITER',
+      },
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('LOGIN_REQUIRES_OWNER');
+
+    const ghost = await prisma.employee.count({
+      where: { fullName: 'Phase 19j2 Mgr Attempt' },
+    });
+    expect(ghost).toBe(0);
+  });
+
+  it('atomic deactivate flips both records and revokes the linked user sessions', async () => {
+    const ownerAgent = await loginAs(OWNER);
+    const create = await ownerAgent.post('/api/v1/employees').send({
+      fullName: 'Phase 19j2 Deact',
+      positionId,
+      startDate: '2026-09-28',
+      login: {
+        username: 'phase19j2-deact',
+        password: 'DeactPassword!234',
+        role: 'WAITER',
+      },
+    });
+    expect(create.status).toBe(201);
+    const employeeId = create.body.employee.id;
+    const userId = create.body.employee.userId;
+    expect(userId).toBeTruthy();
+
+    const targetAgent = request.agent(app);
+    const targetLogin = await targetAgent.post('/api/v1/auth/login').send({
+      username: 'phase19j2-deact',
+      password: 'DeactPassword!234',
+    });
+    expect(targetLogin.status).toBe(200);
+    expect((await targetAgent.get('/api/v1/auth/me')).status).toBe(200);
+
+    const res = await ownerAgent.post('/api/v1/employees/' + employeeId + '/deactivate');
+    expect(res.status).toBe(200);
+    expect(res.body.employee.isActive).toBe(false);
+
+    const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
+    expect(emp!.isActive).toBe(false);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    expect(user!.isActive).toBe(false);
+
+    const after = await targetAgent.get('/api/v1/auth/me');
+    expect(after.status).toBe(401);
+  });
+
+  it('deactivate works for an employee without a login', async () => {
+    const agent = await loginAs(OWNER);
+    const create = await agent.post('/api/v1/employees').send({
+      fullName: 'Phase 19j2 No Login',
+      positionId,
+      startDate: '2026-09-28',
+    });
+    expect(create.status).toBe(201);
+    expect(create.body.employee.userId).toBeNull();
+
+    const res = await agent.post('/api/v1/employees/' + create.body.employee.id + '/deactivate');
+    expect(res.status).toBe(200);
+    expect(res.body.employee.isActive).toBe(false);
   });
 });

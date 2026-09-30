@@ -23,7 +23,13 @@ export async function login(req: Request, res: Response) {
 
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, fullName: user.fullName, role: user.role },
+    user: {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      language: user.language ?? null,
+    },
   });
 }
 

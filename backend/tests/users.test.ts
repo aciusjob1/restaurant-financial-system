@@ -23,7 +23,7 @@ const WAITER = {
 const CREATED_USERNAME = 'phase2-created';
 
 async function cleanup() {
-  const usernames = [OWNER.username, WAITER.username, CREATED_USERNAME];
+  const usernames = [OWNER.username, WAITER.username, CREATED_USERNAME, 'phase19j2-lang', 'phase19j2-mgr'];
   await prisma.session.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.user.deleteMany({ where: { username: { in: usernames } } });
 }
@@ -332,5 +332,68 @@ describe('MANAGER access to users', () => {
       password: NEW_PASSWORD,
     });
     expect(newLogin.status).toBe(200);
+  });
+});
+
+describe('Language preference on user accounts', () => {
+  const LANG_USERNAME = 'phase19j2-lang';
+  const LANG_PASSWORD = 'LangPassword!234';
+  const LANG_MANAGER_USERNAME = 'phase19j2-mgr';
+  const LANG_MANAGER_PASSWORD = 'ManagerPassword!234';
+
+  beforeAll(async () => {
+    await prisma.session.deleteMany({
+      where: { user: { username: { in: [LANG_USERNAME, LANG_MANAGER_USERNAME] } } },
+    });
+    await prisma.user.deleteMany({
+      where: { username: { in: [LANG_USERNAME, LANG_MANAGER_USERNAME] } },
+    });
+    await prisma.user.create({
+      data: {
+        username: LANG_MANAGER_USERNAME,
+        fullName: 'Phase 19j2 Manager',
+        role: 'MANAGER',
+        passwordHash: await argon2.hash(LANG_MANAGER_PASSWORD, { type: argon2.argon2id }),
+        isActive: true,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.session.deleteMany({
+      where: { user: { username: { in: [LANG_USERNAME, LANG_MANAGER_USERNAME] } } },
+    });
+    await prisma.user.deleteMany({
+      where: { username: { in: [LANG_USERNAME, LANG_MANAGER_USERNAME] } },
+    });
+  });
+
+  it('OWNER creates a user with language=sw; login response carries it back', async () => {
+    const owner = await loginAs(OWNER);
+    const create = await owner.post('/api/v1/users').send({
+      username: LANG_USERNAME,
+      fullName: 'Phase 19j2 Lang',
+      role: 'WAITER',
+      password: LANG_PASSWORD,
+      language: 'sw',
+    });
+    expect(create.status).toBe(201);
+    expect(create.body.user.language).toBe('sw');
+
+    const login = await request(app).post('/api/v1/auth/login').send({
+      username: LANG_USERNAME,
+      password: LANG_PASSWORD,
+    });
+    expect(login.status).toBe(200);
+    expect(login.body.user.language).toBe('sw');
+  });
+
+  it('MANAGER cannot change another user language via PATCH (403 MANAGER_CANNOT_CHANGE_LANGUAGE)', async () => {
+    const mgr = await loginAs({ username: LANG_MANAGER_USERNAME, password: LANG_MANAGER_PASSWORD });
+    const target = await prisma.user.findUnique({ where: { username: LANG_USERNAME } });
+    expect(target).toBeTruthy();
+    const res = await mgr.patch('/api/v1/users/' + target!.id).send({ language: 'en' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('MANAGER_CANNOT_CHANGE_LANGUAGE');
   });
 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import { TextField, SelectField, FormError, SubmitButton } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
@@ -217,6 +218,8 @@ export default function UsersPage() {
   return (
     <OpsShell>
       <OpsHeader title={t('ops.users.title')} subtitle={t('ops.users.subtitle')} />
+
+      <SecondarySurfaceBanner />
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
       {flash && (

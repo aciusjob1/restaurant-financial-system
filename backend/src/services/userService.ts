@@ -10,6 +10,7 @@ const PUBLIC_USER_SELECT = {
   phone: true,
   role: true,
   isActive: true,
+  language: true,
   lastLogin: true,
   createdAt: true,
 } as const;
@@ -36,6 +37,7 @@ export async function createUser(params: {
   phone?: string | null;
   role: Role;
   password: string;
+  language?: string | null;
 }) {
   const existing = await prisma.user.findUnique({ where: { username: params.username } });
   if (existing) throw new ApiError(409, 'USERNAME_TAKEN', 'Username is already in use.');
@@ -48,6 +50,7 @@ export async function createUser(params: {
       fullName: params.fullName,
       phone: params.phone ?? null,
       role: params.role,
+      language: params.language ?? null,
       passwordHash,
       isActive: true,
     },
@@ -62,6 +65,7 @@ export async function updateUser(
     phone?: string | null;
     isActive?: boolean;
     role?: Role;
+    language?: string | null;
   }
 ) {
   const existing = await prisma.user.findUnique({ where: { id } });
@@ -75,6 +79,7 @@ export async function updateUser(
         ...(input.phone !== undefined ? { phone: input.phone } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         ...(input.role !== undefined ? { role: input.role } : {}),
+        ...(input.language !== undefined ? { language: input.language } : {}),
       },
       select: PUBLIC_USER_SELECT,
     });

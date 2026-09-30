@@ -22,6 +22,17 @@ export const UpdatePositionSchema = z.object({
 
 const DateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD');
 
+export const LoginSubSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .min(3)
+    .max(64)
+    .regex(/^[A-Za-z0-9_.-]+$/, 'Username may only contain letters, digits, _, ., or -.'),
+  password: z.string().min(12).max(256),
+  role: z.enum(['WAITER', 'MANAGER']),
+});
+
 export const CreateEmployeeSchema = z.object({
   fullName: z.string().trim().min(1).max(128),
   phone: z.string().trim().max(32).nullable().optional(),
@@ -29,6 +40,7 @@ export const CreateEmployeeSchema = z.object({
   userId: z.string().nullable().optional(),
   startDate: DateOnly,
   notes: z.string().trim().max(500).nullable().optional(),
+  login: LoginSubSchema.nullable().optional(),
 });
 
 export const UpdateEmployeeSchema = z.object({

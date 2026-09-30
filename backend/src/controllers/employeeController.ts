@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import * as employeeService from '../services/employeeService.js';
 import type { CreateEmployeeInput, UpdateEmployeeInput } from '../validators/employee.js';
+import type { Role } from '@prisma/client';
 
 export async function listEmployees(_req: Request, res: Response) {
   const employees = await employeeService.listEmployees();
@@ -21,8 +22,15 @@ export async function createEmployee(req: Request, res: Response) {
     userId: input.userId ?? null,
     startDate: input.startDate,
     notes: input.notes ?? null,
+    login: input.login ?? null,
+    actorRole: req.user!.role as Role,
   });
   res.status(201).json({ success: true, employee });
+}
+
+export async function deactivateEmployee(req: Request, res: Response) {
+  const employee = await employeeService.deactivateEmployee(req.params.id!, req.user!.role as Role);
+  res.json({ success: true, employee });
 }
 
 export async function updateEmployee(req: Request, res: Response) {

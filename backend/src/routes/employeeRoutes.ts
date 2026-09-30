@@ -31,3 +31,9 @@ employeeRouter.patch(
   validateBody(UpdateEmployeeSchema),
   asyncHandler(employeeController.updateEmployee)
 );
+
+employeeRouter.post(
+  '/:id/deactivate',
+  requireRole('OWNER'),
+  asyncHandler(employeeController.deactivateEmployee)
+);
