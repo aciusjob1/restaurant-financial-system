@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   DateField, DecimalField, TextArea, SelectField, FormError, SubmitButton,
 } from '@/components/ops/Form';
@@ -112,6 +113,8 @@ export default function ShiftsPage() {
         title={t('ops.shifts.title')}
         subtitle={t('ops.shifts.subtitle')}
       />
+
+      <SecondarySurfaceBanner />
 
       <div className='flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4'>
         <div className='w-48'>

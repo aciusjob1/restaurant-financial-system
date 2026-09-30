@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   DecimalField, SelectField, TextField, TextArea, FormError,
 } from '@/components/ops/Form';
@@ -221,6 +222,7 @@ export default function ShiftDetailPage() {
         title={t('ops.shiftsDetail.title') + ' ' + shift.businessDate}
         subtitle={userName(shift.userId) + ' \\u2014 ' + t(shiftStatusKey(shift.status))}
       />
+      <SecondarySurfaceBanner />
 
       <div className='flex flex-wrap items-center gap-3 text-sm'>
         <Link href='/ops/shifts' className='text-slate-500 hover:text-slate-900'>

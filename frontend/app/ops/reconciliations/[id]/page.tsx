@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import { DecimalField, TextArea, FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
@@ -235,6 +236,7 @@ export default function ReconciliationDetailPage() {
         title={t('ops.reconciliationsDetail.title') + ' ' + rec.id.slice(0, 8) + '\u2026'}
         subtitle={userName(rec.userId) + (shift ? ' \u2014 ' + shift.businessDate : '') + ' \u2014 ' + t(reconStatusKey(rec.status))}
       />
+      <SecondarySurfaceBanner />
 
       <div className='flex flex-wrap items-center gap-3 text-sm'>
         <Link href='/ops/reconciliations' className='text-slate-500 hover:text-slate-900'>

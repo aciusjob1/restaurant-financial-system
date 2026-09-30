@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import { SelectField, FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
@@ -86,6 +87,7 @@ export default function ReconciliationsPage() {
         title={t('ops.reconciliations.title')}
         subtitle={t('ops.reconciliations.subtitle')}
       />
+      <SecondarySurfaceBanner />
 
       <div className='rounded-2xl border border-slate-200 bg-white p-4 flex flex-wrap items-end gap-3'>
         <div className='w-48'>
