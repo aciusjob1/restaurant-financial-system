@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   DateField, DecimalField, SelectField, TextField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
@@ -144,6 +145,7 @@ export default function StockMovementsPage() {
         title={t('ops.stockMovements.title')}
         subtitle={t('ops.stockMovements.subtitle')}
       />
+      <SecondarySurfaceBanner messageKey='ops.inventory.secondary.banner' targetHref='/ops/inventory' targetLabelKey='ops.inventory.secondary.link' />
 
       <form onSubmit={submit} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>

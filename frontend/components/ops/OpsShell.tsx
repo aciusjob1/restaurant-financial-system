@@ -28,6 +28,7 @@ import {
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
+import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
 import type { Dict } from '@/lib/i18n/dictionaries';
 
 type MeResponse = {
@@ -49,12 +50,8 @@ const LINKS: LinkSpec[] = [
   { href: '/ops/sales',                labelKey: 'nav.ops.sales',              sectionKey: 'nav.section.sales',          icon: ShoppingCart },
 
   // Purchasing & Inventory
-  { href: '/ops/suppliers',            labelKey: 'nav.ops.suppliers',          sectionKey: 'nav.section.purchasing',     icon: Truck },
-  { href: '/ops/purchase-invoices',    labelKey: 'nav.ops.purchaseInvoices',   icon: FileText },
-  { href: '/ops/supplier-payments',    labelKey: 'nav.ops.supplierPayments',   icon: CreditCard },
-  { href: '/ops/materials',            labelKey: 'nav.ops.materials',          icon: Package },
-  { href: '/ops/material-categories',  labelKey: 'nav.ops.materialCategories', icon: FolderTree },
-  { href: '/ops/stock-movements',      labelKey: 'nav.ops.stockMovements',     icon: Warehouse },
+  { href: '/ops/purchasing',           labelKey: 'nav.ops.purchasing',         sectionKey: 'nav.section.purchasing',     icon: Truck },
+  { href: '/ops/inventory',            labelKey: 'nav.ops.inventory',          icon: Package },
 
   // Expenses
   { href: '/ops/expenses',             labelKey: 'nav.ops.expenses',           sectionKey: 'nav.section.expenses',       icon: Receipt },
@@ -130,6 +127,9 @@ export function OpsShell({ children }: { children: ReactNode }) {
       storageKey='ops-shell-collapsed'
       me={me}
     >
+      <div className='flex justify-end px-4 pt-4'>
+        <LanguagePicker />
+      </div>
       {children}
     </AppSidebar>
   );

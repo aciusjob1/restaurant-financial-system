@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   DateField, DecimalField, SelectField, TextField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
@@ -117,6 +118,7 @@ export default function SupplierPaymentsPage() {
         title={t('ops.supplierPayments.title')}
         subtitle={t('ops.supplierPayments.subtitle')}
       />
+      <SecondarySurfaceBanner messageKey='ops.purchasing.secondary.banner' targetHref='/ops/purchasing' targetLabelKey='ops.purchasing.secondary.link' />
 
       <div className='flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4'>
         <div className='w-64'>

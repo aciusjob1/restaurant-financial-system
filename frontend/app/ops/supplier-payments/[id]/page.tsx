@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   DecimalField, SelectField, TextArea, FormError,
 } from '@/components/ops/Form';
@@ -196,6 +197,7 @@ export default function SupplierPaymentDetailPage() {
         title={`Payment ${payment.paymentNumber}`}
         subtitle={`${supplierName(payment.supplierId)} — ${isVoided ? 'VOIDED' : 'ACTIVE'}`}
       />
+      <SecondarySurfaceBanner messageKey='ops.purchasing.secondary.banner' targetHref='/ops/purchasing' targetLabelKey='ops.purchasing.secondary.link' />
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Link href="/ops/supplier-payments" className="text-slate-500 hover:text-slate-900">

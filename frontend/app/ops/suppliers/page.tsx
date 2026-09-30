@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import { TextField, TextArea, FormError, SubmitButton } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
@@ -103,6 +104,7 @@ function SuppliersContent() {
         title={t('ops.suppliers.title')}
         subtitle={t('ops.suppliers.subtitle')}
       />
+      <SecondarySurfaceBanner messageKey='ops.purchasing.secondary.banner' targetHref='/ops/purchasing' targetLabelKey='ops.purchasing.secondary.link' />
 
       {error && <FormError code={error.code} message={tError(error.code, error.message)} />}
 

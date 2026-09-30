@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   DateField, DecimalField, SelectField, TextField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
@@ -289,6 +290,7 @@ export default function PurchaseInvoiceDetailPage() {
         title={`Invoice ${invoice.invoiceNumber}`}
         subtitle={`${supplierName(invoice.supplierId)} — ${invoice.status}`}
       />
+      <SecondarySurfaceBanner messageKey='ops.purchasing.secondary.banner' targetHref='/ops/purchasing' targetLabelKey='ops.purchasing.secondary.link' />
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Link href="/ops/purchase-invoices" className="text-slate-500 hover:text-slate-900">

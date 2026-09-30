@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   TextField, DecimalField, SelectField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
@@ -129,6 +130,7 @@ function MaterialsContent() {
         title={t('ops.materials.title')}
         subtitle={t('ops.materials.subtitle')}
       />
+      <SecondarySurfaceBanner messageKey='ops.inventory.secondary.banner' targetHref='/ops/inventory' targetLabelKey='ops.inventory.secondary.link' />
 
       {error && <FormError code={error.code} message={tError(error.code, error.message)} />}
 
