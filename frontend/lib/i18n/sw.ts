@@ -142,6 +142,7 @@ export const sw: Dict = {
   'nav.ops.supplierPayments': 'Malipo',
   'nav.ops.stockMovements': 'Bidhaa Mkononi',
   'nav.ops.sales': 'Mauzo',
+  'nav.ops.moneyShift': 'Fedha na Zamu',
   'nav.ops.shifts': 'Zamu',
   'nav.ops.reconciliations': 'Upatanisho',
   'nav.ops.collections': 'Makusanyo',

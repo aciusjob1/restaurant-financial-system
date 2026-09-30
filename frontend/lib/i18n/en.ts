@@ -140,6 +140,7 @@ export const en = {
   'nav.ops.supplierPayments': 'Payments',
   'nav.ops.stockMovements': 'Stock',
   'nav.ops.sales': 'Sales',
+  'nav.ops.moneyShift': 'Money & Shift',
   'nav.ops.shifts': 'Shifts',
   'nav.ops.reconciliations': 'Reconciliations',
   'nav.ops.collections': 'Collections',

@@ -42,12 +42,8 @@ type LinkSpec = { href: string; labelKey: keyof Dict; sectionKey?: keyof Dict; i
 const LINKS: LinkSpec[] = [
   { href: '/dashboard',                labelKey: 'nav.dashboard',              icon: LayoutDashboard },
 
-  // Cash & Shift
-  { href: '/ops/shifts',               labelKey: 'nav.ops.shifts',             sectionKey: 'nav.section.cash',           icon: Clock },
-  { href: '/ops/collections',          labelKey: 'nav.ops.collections',        icon: Coins },
-  { href: '/ops/reconciliations',      labelKey: 'nav.ops.reconciliations',    icon: Scale },
-  { href: '/ops/handovers',            labelKey: 'nav.ops.handovers',          icon: HandCoins },
-  { href: '/ops/daily-closing',        labelKey: 'nav.ops.dailyClosing',       icon: Lock },
+  // Money & Shift
+  { href: '/ops/cash',                 labelKey: 'nav.ops.moneyShift',         sectionKey: 'nav.section.cash',           icon: Banknote },
 
   // Sales
   { href: '/ops/sales',                labelKey: 'nav.ops.sales',              sectionKey: 'nav.section.sales',          icon: ShoppingCart },
