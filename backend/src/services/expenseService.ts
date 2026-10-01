@@ -61,7 +61,7 @@ function serialize(e: {
   };
 }
 
-async function nextExpenseNumber(tx: Prisma.TransactionClient): Promise<string> {
+export async function nextExpenseNumber(tx: Prisma.TransactionClient): Promise<string> {
   const rows = await tx.$queryRawUnsafe<Array<{ nextval: bigint }>>(
     "SELECT nextval('expense_number_seq') AS nextval"
   );

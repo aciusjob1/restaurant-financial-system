@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import * as shiftController from '../controllers/shiftController.js';
+import * as shiftCloseController from '../controllers/shiftCloseController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { StartShiftSchema, TransitionShiftSchema, SetOpeningCashSchema } from '../validators/shift.js';
+import { CloseMoneySchema } from '../validators/shiftClose.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const shiftRouter = Router();
@@ -38,4 +40,11 @@ shiftRouter.post(
   requireRole('MANAGER', 'OWNER'),
   validateBody(SetOpeningCashSchema),
   asyncHandler(shiftController.setOpeningCash)
+);
+
+shiftRouter.post(
+  '/:id/close-money',
+  requireRole('OWNER', 'MANAGER'),
+  validateBody(CloseMoneySchema),
+  asyncHandler(shiftCloseController.closeMoney)
 );

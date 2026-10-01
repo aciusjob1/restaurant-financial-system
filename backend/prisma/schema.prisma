@@ -106,6 +106,7 @@ model User {
   collections             Collection[]    @relation("CollectionUser")
   collectionsCreated      Collection[]    @relation("CollectionCreatedBy")
   reconciliations         Reconciliation[]
+  reconciliationsCreated  Reconciliation[] @relation("ReconciliationCreatedBy")
   handoversSent           CashHandover[]     @relation("HandoverFrom")
   handoversCreated        CashHandover[]     @relation("HandoverCreatedBy")
   handoversVoided         CashHandover[]     @relation("HandoverVoidedBy")
@@ -303,6 +304,7 @@ model Reconciliation {
   id                String                @id @default(cuid())
   shiftId           String                @unique
   userId            String
+  createdBy         String?
 
   expectedCash      Decimal               @db.Decimal(14, 2)
   expectedMobile    Decimal               @db.Decimal(14, 2)
@@ -327,6 +329,7 @@ model Reconciliation {
 
   shift             Shift                 @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   user              User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdByUser     User?                 @relation("ReconciliationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   handovers         CashHandover[]
   @@index([userId])
   @@index([status])
