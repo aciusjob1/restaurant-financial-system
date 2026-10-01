@@ -55,12 +55,29 @@ export async function changePassword(params: {
 
 export async function updateMyProfile(
   userId: string,
-  input: { fullName?: string; phone?: string | null; language?: string | null }
+  input: {
+    fullName?: string;
+    phone?: string | null;
+    language?: string | null;
+    autoApproveExpenses?: boolean;
+    autoReviewReconciliations?: boolean;
+    autoConfirmHandovers?: boolean;
+  }
 ) {
-  const data: { fullName?: string; phone?: string | null; language?: string | null } = {};
+  const data: {
+    fullName?: string;
+    phone?: string | null;
+    language?: string | null;
+    autoApproveExpenses?: boolean;
+    autoReviewReconciliations?: boolean;
+    autoConfirmHandovers?: boolean;
+  } = {};
   if (input.fullName !== undefined) data.fullName = input.fullName;
   if (input.phone !== undefined) data.phone = input.phone;
   if (input.language !== undefined) data.language = input.language;
+  if (input.autoApproveExpenses !== undefined) data.autoApproveExpenses = input.autoApproveExpenses;
+  if (input.autoReviewReconciliations !== undefined) data.autoReviewReconciliations = input.autoReviewReconciliations;
+  if (input.autoConfirmHandovers !== undefined) data.autoConfirmHandovers = input.autoConfirmHandovers;
 
   const user = await prisma.user.update({
     where: { id: userId },
@@ -73,6 +90,9 @@ export async function updateMyProfile(
       language: true,
       role: true,
       isActive: true,
+      autoApproveExpenses: true,
+      autoReviewReconciliations: true,
+      autoConfirmHandovers: true,
     },
   });
   return user;

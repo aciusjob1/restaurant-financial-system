@@ -11,6 +11,9 @@ declare global {
         isActive: boolean;
         phone: string | null;
         language: string | null;
+        autoApproveExpenses: boolean;
+        autoReviewReconciliations: boolean;
+        autoConfirmHandovers: boolean;
       };
       sessionToken?: string;
     }

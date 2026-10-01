@@ -34,6 +34,9 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       isActive: session.user.isActive,
       phone: session.user.phone,
       language: session.user.language,
+      autoApproveExpenses: session.user.autoApproveExpenses,
+      autoReviewReconciliations: session.user.autoReviewReconciliations,
+      autoConfirmHandovers: session.user.autoConfirmHandovers,
     };
     req.sessionToken = token;
     next();
