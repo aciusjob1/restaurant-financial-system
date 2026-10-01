@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import {
-  DecimalField, SelectField, TextField, TextArea, FormError,
+  DecimalField, SelectField, TextField, TextArea, DateField, FormError,
 } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
@@ -155,7 +154,21 @@ export default function CashPage() {
   const [myId, setMyId] = useState<string>('');
   const [myRole, setMyRole] = useState<string>('');
   const [todayClosing, setTodayClosing] = useState<Closing | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
+  const [startBusinessDate, setStartBusinessDate] = useState(todayISO());
+  const [startOpeningCash, setStartOpeningCash] = useState('');
+  const [startNotes, setStartNotes] = useState('');
+  const [startWaiterId, setStartWaiterId] = useState('');
+  const [startBusy, setStartBusy] = useState(false);
+  const [startErr, setStartErr] = useState<{ code: string; message: string } | null>(null);
+
+  // inline collection form state
+  const [collShiftId, setCollShiftId] = useState<string | null>(null);
+  const [collMethod, setCollMethod] = useState<string>('CASH');
+  const [collAmount, setCollAmount] = useState('');
+  const [collMobileRef, setCollMobileRef] = useState('');
+  const [collNotes, setCollNotes] = useState('');
+  const [collBusy, setCollBusy] = useState(false);
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [confirmHandoverId, setConfirmHandoverId] = useState<string | null>(null);
@@ -244,10 +257,50 @@ export default function CashPage() {
   const isOwner = myRole === 'OWNER';
   const allClosed = rows.length > 0 && rows.every((r) => r.state === 'closed');
 
+  function openCollectionForm(shift: Shift) {
+    setErr(null); setFlash(null);
+    setCollShiftId(shift.id);
+    setCollMethod('CASH');
+    setCollAmount('');
+    setCollMobileRef('');
+    setCollNotes('');
+  }
+
+  async function submitCollection(e: FormEvent, shift: Shift) {
+    e.preventDefault();
+    setErr(null); setFlash(null);
+    if (!collAmount.trim()) {
+      setErr({ code: 'AMOUNT_REQUIRED', message: 'Amount is required.' });
+      return;
+    }
+    setCollBusy(true);
+    try {
+      await apiFetch('/api/v1/collections', {
+        method: 'POST',
+        body: JSON.stringify({
+          shiftId: shift.id,
+          paymentMethod: collMethod,
+          amount: collAmount.trim(),
+          mobileReference: collMobileRef.trim() === '' ? null : collMobileRef.trim(),
+          notes: collNotes.trim() === '' ? null : collNotes.trim(),
+          onBehalfOfUserId: shift.userId,
+        }),
+      });
+      setFlash(t('ops.cashFlow.flash.collectionRecorded'));
+      setCollShiftId(null);
+      load();
+    } catch (e2) {
+      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
+    } finally {
+      setCollBusy(false);
+    }
+  }
+
   function clearInline() {
     setConfirmHandoverId(null); setConfirmHandoverNotes('');
     setSendBackReconId(null); setSendBackReason('');
     setCloseShiftId(null); setCloseDayConfirming(false);
+    setCollShiftId(null);
     setCloseFormShiftId(null);
     setCloseCash(''); setCloseMpesa(''); setCloseAirtel(''); setCloseTigo('');
     setCloseHalo(''); setCloseBank(''); setCloseCard(''); setCloseOther('');
@@ -399,13 +452,44 @@ export default function CashPage() {
     finally { setBusyKey(null); }
   }
 
-  const advanced = [
-    { href: '/ops/shifts',          label: t('ops.cash.op.shifts') },
-    { href: '/ops/collections',     label: t('ops.cash.op.collections') },
-    { href: '/ops/handovers',       label: t('ops.cash.op.handovers') },
-    { href: '/ops/reconciliations', label: t('ops.cash.op.reconciliations') },
-    { href: '/ops/daily-closing',   label: t('ops.cash.op.dailyClosing') },
-  ];
+  const WAITERS = users.filter((u) => u.role === 'WAITER');
+
+  function openStartDialog() {
+    setStartBusinessDate(todayISO());
+    setStartOpeningCash('');
+    setStartNotes('');
+    setStartWaiterId(WAITERS.length > 0 ? WAITERS[0].id : '');
+    setStartErr(null);
+    setStartOpen(true);
+  }
+
+  async function submitStartShift(e: FormEvent) {
+    e.preventDefault();
+    setStartErr(null);
+    if (!startWaiterId) {
+      setStartErr({ code: 'WAITER_REQUIRED', message: 'Select a waiter.' });
+      return;
+    }
+    setStartBusy(true);
+    try {
+      await apiFetch('/api/v1/shifts', {
+        method: 'POST',
+        body: JSON.stringify({
+          businessDate: startBusinessDate,
+          openingCash: startOpeningCash.trim() || undefined,
+          notes: startNotes.trim() === '' ? null : startNotes.trim(),
+          onBehalfOfUserId: startWaiterId,
+        }),
+      });
+      setStartOpen(false);
+      setFlash(t('ops.cashFlow.flash.shiftOpened'));
+      load();
+    } catch (e2) {
+      if (e2 instanceof ApiError) setStartErr({ code: e2.code, message: e2.message });
+    } finally {
+      setStartBusy(false);
+    }
+  }
 
   return (
     <OpsShell>
@@ -413,6 +497,16 @@ export default function CashPage() {
         title={t('ops.cashFlow.title')}
         subtitle={t('ops.cashFlow.subtitle')}
       />
+
+      <div className='flex justify-end'>
+        <button
+          type='button'
+          onClick={openStartDialog}
+          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium'
+        >
+          {t('ops.cashFlow.startShiftButton')}
+        </button>
+      </div>
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
       {flash && (
@@ -455,6 +549,10 @@ export default function CashPage() {
                           <span className={'text-xs px-2 py-0.5 rounded-full ' + statePillClass(r.state)}>
                             {t(stateKey(r.state))}
                           </span>
+                          <span className='text-xs text-slate-500 font-mono'>{r.shift.businessDate}</span>
+                        </div>
+                        <div className='mt-0.5 text-xs text-slate-500'>
+                          {t('ops.cashFlow.closeForm.opening')}: <span className='font-mono'>{r.shift.openingCash ?? '0.00'}</span>
                         </div>
                         <div className='mt-1 text-sm text-slate-600'>
                           {t('ops.cashFlow.row.collected')}: <span className='font-mono'>{r.total}</span>
@@ -484,14 +582,24 @@ export default function CashPage() {
                       </div>
 
                       {isManager && isOpenShift && (
-                        <button
-                          type='button'
-                          onClick={() => openCloseForm(r.shift)}
-                          disabled={isBusyRow}
-                          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                        >
-                          {t('ops.cashFlow.row.action.close')}
-                        </button>
+                        <div className='flex gap-2'>
+                          <button
+                            type='button'
+                            onClick={() => openCollectionForm(r.shift)}
+                            disabled={isBusyRow}
+                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60'
+                          >
+                            {t('ops.cashFlow.row.addCollectionButton')}
+                          </button>
+                          <button
+                            type='button'
+                            onClick={() => openCloseForm(r.shift)}
+                            disabled={isBusyRow}
+                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
+                          >
+                            {t('ops.cashFlow.row.action.close')}
+                          </button>
+                        </div>
                       )}
 
                       {isManager && r.state === 'awaiting_review' && r.recon && (
@@ -538,9 +646,70 @@ export default function CashPage() {
                       )}
                     </div>
 
+                    {collShiftId === r.shift.id && (
+                      <form onSubmit={(e) => submitCollection(e, r.shift)} className='border-t border-slate-100 pt-3 space-y-3'>
+                        <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.row.collectionFormHeading')}</h3>
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+                          <SelectField
+                            label={t('form.paymentMethod')}
+                            value={collMethod}
+                            onChange={setCollMethod}
+                            options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
+                          />
+                          <DecimalField
+                            label={t('form.amount')}
+                            value={collAmount}
+                            onChange={setCollAmount}
+                            placeholder='0.00'
+                            required
+                          />
+                          <TextField
+                            label={t('ops.collections.mobileReferenceOptional')}
+                            value={collMobileRef}
+                            onChange={setCollMobileRef}
+                          />
+                        </div>
+                        <TextArea label={t('form.notesOptional')} value={collNotes} onChange={setCollNotes} rows={2} />
+                        <div className='flex gap-2 justify-end'>
+                          <button
+                            type='button'
+                            onClick={() => setCollShiftId(null)}
+                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'
+                          >
+                            {t('action.cancel')}
+                          </button>
+                          <button
+                            type='submit'
+                            disabled={collBusy}
+                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
+                          >
+                            {collBusy ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.collectionSubmit')}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
                     {closeFormShiftId === r.shift.id && (
                       <form onSubmit={(e) => submitCloseForm(e, r.shift)} className='border-t border-slate-100 pt-3 space-y-4'>
                         <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.closeForm.heading')}</h3>
+
+                        <div className='rounded-xl bg-blue-50 border border-blue-100 p-3'>
+                          <div className='text-xs uppercase tracking-wide text-blue-900 mb-2'>{t('ops.cashFlow.closeForm.shiftHeading')}</div>
+                          <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
+                            <div>
+                              <span className='block text-xs text-slate-500'>{t('form.businessDate')}</span>
+                              <span className='font-mono text-slate-800'>{r.shift.businessDate}</span>
+                            </div>
+                            <div>
+                              <span className='block text-xs text-slate-500'>{t('table.waiter')}</span>
+                              <span className='text-slate-800'>{r.name}</span>
+                            </div>
+                            <div>
+                              <span className='block text-xs text-slate-500'>{t('ops.cashFlow.closeForm.opening')}</span>
+                              <span className='font-mono text-slate-800'>{r.shift.openingCash ?? '0.00'}</span>
+                            </div>
+                          </div>
+                        </div>
 
                         <div>
                           <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.receivedHeading')}</div>
@@ -781,26 +950,66 @@ export default function CashPage() {
             )}
           </section>
 
-          <section className='space-y-3'>
-            <button
-              type='button'
-              onClick={() => setAdvancedOpen(!advancedOpen)}
-              className='text-xs font-medium text-slate-500 uppercase tracking-wide hover:text-slate-700'
-            >
-              {advancedOpen ? t('ops.cashFlow.advanced.hide') : t('ops.cashFlow.advanced.show')}
-            </button>
-            {advancedOpen && (
-              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
-                {advanced.map((o) => (
-                  <Link key={o.href} href={o.href}
-                    className='rounded-2xl border border-slate-200 bg-white p-4 hover:border-slate-300 hover:shadow-sm'>
-                    <div className='text-sm font-medium text-slate-900'>{o.label}</div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </section>
         </>
+      )}
+
+      {startOpen && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
+          <div className='w-full max-w-lg rounded-2xl bg-white p-6 space-y-4'>
+            <h3 className='text-lg font-medium text-slate-900'>{t('ops.cashFlow.startDialog.title')}</h3>
+            {WAITERS.length === 0 ? (
+              <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800'>
+                {t('ops.cashFlow.startDialog.noWaiters')}
+              </div>
+            ) : (
+              <form onSubmit={submitStartShift} className='space-y-4'>
+                <SelectField
+                  label={t('ops.cashFlow.startDialog.waiter')}
+                  value={startWaiterId}
+                  onChange={setStartWaiterId}
+                  required
+                  options={WAITERS.map((u) => ({ value: u.id, label: u.fullName }))}
+                />
+                <DateField
+                  label={t('form.businessDate')}
+                  value={startBusinessDate}
+                  onChange={setStartBusinessDate}
+                  required
+                />
+                <DecimalField
+                  label={t('ops.shifts.openingCashOptional')}
+                  value={startOpeningCash}
+                  onChange={setStartOpeningCash}
+                  placeholder='0.00'
+                />
+                <TextArea
+                  label={t('form.notesOptional')}
+                  value={startNotes}
+                  onChange={setStartNotes}
+                  rows={2}
+                />
+                {startErr && <FormError code={startErr.code} message={tError(startErr.code, startErr.message)} />}
+                <div className='flex justify-end gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => setStartOpen(false)}
+                    disabled={startBusy}
+                    className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'
+                  >
+                    {t('action.cancel')}
+                  </button>
+                  <button
+                    type='submit'
+                    disabled={startBusy}
+                    className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
+                  >
+                    {startBusy ? t('ops.cashFlow.startDialog.submitting') : t('action.startShift')}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
     </OpsShell>
   );
