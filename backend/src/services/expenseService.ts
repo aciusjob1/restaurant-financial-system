@@ -183,6 +183,20 @@ export async function createExpense(input: {
 
   const isWaiter = input.actor.role === 'WAITER';
 
+  // Owner preference: read the flag from the DB so a PATCH to
+  // /auth/me takes effect on the very next create without needing
+  // a session refresh. Only queried when the actor is OWNER - no
+  // cost on MANAGER/WAITER paths and no change to actor type
+  // signatures anywhere.
+  let ownerAutoApprove = false;
+  if (input.actor.role === 'OWNER') {
+    const pref = await prisma.user.findUnique({
+      where: { id: input.actor.id },
+      select: { autoApproveExpenses: true },
+    });
+    ownerAutoApprove = pref?.autoApproveExpenses === true;
+  }
+
   if (input.autoApprove === true && input.actor.role !== 'OWNER') {
     throw new ApiError(
       403,
@@ -192,7 +206,8 @@ export async function createExpense(input: {
   }
 
   const isAutoApprove =
-    input.autoApprove === true && input.actor.role === 'OWNER';
+    input.actor.role === 'OWNER'
+    && (input.autoApprove === true || ownerAutoApprove);
   const wantsSubmit = input.submitNow === true && input.actor.role === 'MANAGER';
   const now = new Date();
   const initialStatus = isAutoApprove

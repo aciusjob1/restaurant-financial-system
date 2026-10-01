@@ -158,3 +158,59 @@ describe('Expense paidByUserId', () => {
     expect(created.body.code).toBe('INVALID_PAID_BY');
   });
 });
+
+describe('Owner autoApproveExpenses preference', () => {
+  it('MANAGER cannot benefit from the OWNER preference even if set on their account', async () => {
+    const m = await loginAs(MANAGER);
+    const pref = await m.patch('/api/v1/auth/me').send({ autoApproveExpenses: true });
+    expect(pref.status).toBe(200);
+    expect(pref.body.user.autoApproveExpenses).toBe(true);
+
+    const created = await m.post('/api/v1/expenses').send({
+      businessDate: D, categoryId, amount: '5.00', paymentMethod: 'CASH',
+      description: 'manager with flag on',
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.expense.status).toBe('DRAFT');
+
+    // reset for the rest of the tests
+    await m.patch('/api/v1/auth/me').send({ autoApproveExpenses: false });
+  });
+
+  it('OWNER flag OFF -> expense lands DRAFT', async () => {
+    const o = await loginAs(OWNER);
+    await o.patch('/api/v1/auth/me').send({ autoApproveExpenses: false });
+
+    const created = await o.post('/api/v1/expenses').send({
+      businessDate: D, categoryId, amount: '40.00', paymentMethod: 'CASH',
+      description: 'owner flag off',
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.expense.status).toBe('DRAFT');
+  });
+
+  it('OWNER flag ON -> expense lands APPROVED with the owner as approver', async () => {
+    const o = await loginAs(OWNER);
+    await o.patch('/api/v1/auth/me').send({ autoApproveExpenses: true });
+
+    const created = await o.post('/api/v1/expenses').send({
+      businessDate: D, categoryId, amount: '60.00', paymentMethod: 'CASH',
+      description: 'owner flag on',
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.expense.status).toBe('APPROVED');
+    expect(created.body.expense.approvedBy).toBe(ownerId);
+  });
+
+  it('OWNER flag toggled back OFF -> next expense is DRAFT again', async () => {
+    const o = await loginAs(OWNER);
+    await o.patch('/api/v1/auth/me').send({ autoApproveExpenses: false });
+
+    const created = await o.post('/api/v1/expenses').send({
+      businessDate: D, categoryId, amount: '70.00', paymentMethod: 'CASH',
+      description: 'owner flag off again',
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.expense.status).toBe('DRAFT');
+  });
+});
