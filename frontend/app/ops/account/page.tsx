@@ -13,6 +13,9 @@ type Me = {
   phone: string | null;
   role: string;
   isActive: boolean;
+  autoApproveExpenses: boolean;
+  autoReviewReconciliations: boolean;
+  autoConfirmHandovers: boolean;
 };
 
 function errOf(e: unknown): { code: string; message: string } {
@@ -39,12 +42,22 @@ export default function AccountPage() {
 
   const [signOutBusy, setSignOutBusy] = useState(false);
 
+  const [prefAutoApproveExpenses, setPrefAutoApproveExpenses] = useState(false);
+  const [prefAutoReviewReconciliations, setPrefAutoReviewReconciliations] = useState(false);
+  const [prefAutoConfirmHandovers, setPrefAutoConfirmHandovers] = useState(false);
+  const [prefBusy, setPrefBusy] = useState(false);
+  const [prefErr, setPrefErr] = useState<{ code: string; message: string } | null>(null);
+  const [prefOk, setPrefOk] = useState(false);
+
   useEffect(() => {
     apiFetch<{ success: true; user: Me }>('/api/v1/auth/me')
       .then((res) => {
         setMe(res.user);
         setFullName(res.user.fullName);
         setPhone(res.user.phone ?? '');
+        setPrefAutoApproveExpenses(res.user.autoApproveExpenses ?? false);
+        setPrefAutoReviewReconciliations(res.user.autoReviewReconciliations ?? false);
+        setPrefAutoConfirmHandovers(res.user.autoConfirmHandovers ?? false);
       })
       .catch((e) => setProfileErr(errOf(e)))
       .finally(() => setLoading(false));
@@ -71,6 +84,29 @@ export default function AccountPage() {
       setProfileErr(errOf(e2));
     } finally {
       setProfileBusy(false);
+    }
+  }
+
+  async function savePreferences(e: FormEvent) {
+    e.preventDefault();
+    setPrefBusy(true);
+    setPrefErr(null);
+    setPrefOk(false);
+    try {
+      const res = await apiFetch<{ success: true; user: Me }>('/api/v1/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          autoApproveExpenses: prefAutoApproveExpenses,
+          autoReviewReconciliations: prefAutoReviewReconciliations,
+          autoConfirmHandovers: prefAutoConfirmHandovers,
+        }),
+      });
+      setMe(res.user);
+      setPrefOk(true);
+    } catch (e2) {
+      setPrefErr(errOf(e2));
+    } finally {
+      setPrefBusy(false);
     }
   }
 
@@ -124,6 +160,53 @@ export default function AccountPage() {
             )}
             <SubmitButton busy={profileBusy}>Save profile</SubmitButton>
           </form>
+
+          {me?.role === 'OWNER' && (
+            <form onSubmit={savePreferences} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+              <div>
+                <h2 className="text-base font-medium text-slate-900">Auto-approval preferences</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  These only affect records you create. Managers are unaffected.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={prefAutoApproveExpenses}
+                    onChange={(e) => setPrefAutoApproveExpenses(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Auto-approve my expenses
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={prefAutoReviewReconciliations}
+                    onChange={(e) => setPrefAutoReviewReconciliations(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Auto-review my reconciliations
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={prefAutoConfirmHandovers}
+                    onChange={(e) => setPrefAutoConfirmHandovers(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Auto-confirm my handovers
+                </label>
+              </div>
+              {prefErr && <FormError code={prefErr.code} message={prefErr.message} />}
+              {prefOk && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                  Preferences saved.
+                </div>
+              )}
+              <SubmitButton busy={prefBusy}>Save preferences</SubmitButton>
+            </form>
+          )}
 
           <form onSubmit={changePassword} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
             <h2 className="text-base font-medium text-slate-900">Change password</h2>

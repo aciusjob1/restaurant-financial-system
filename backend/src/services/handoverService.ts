@@ -99,6 +99,19 @@ export async function createHandover(input: {
 }) {
   const attributedUserId = resolveAttributedUser(input.actor, input.onBehalfOfUserId);
 
+  // Owner preference: when autoConfirmHandovers is ON, a handover
+  // created by the OWNER lands CONFIRMED with confirmedAt = now.
+  // Checked only when the actor is OWNER - MANAGER and WAITER
+  // paths keep the schema default PENDING.
+  let ownerAutoConfirm = false;
+  if (input.actor.role === 'OWNER') {
+    const pref = await prisma.user.findUnique({
+      where: { id: input.actor.id },
+      select: { autoConfirmHandovers: true },
+    });
+    ownerAutoConfirm = pref?.autoConfirmHandovers === true;
+  }
+
   const shift = await prisma.shift.findUnique({
     where: { id: input.shiftId },
     include: { reconciliation: { select: { id: true } } },
@@ -116,6 +129,7 @@ export async function createHandover(input: {
     throw new ApiError(400, 'INVALID_RECEIVER', 'Receiver must be a MANAGER or OWNER.');
   }
 
+  const now = new Date();
   const row = await prisma.cashHandover.create({
     data: {
       shiftId: shift.id,
@@ -125,6 +139,8 @@ export async function createHandover(input: {
       toUserId: input.toUserId,
       amount: toDecimal(input.amount),
       notes: input.notes,
+      status: ownerAutoConfirm ? 'CONFIRMED' : 'PENDING',
+      confirmedAt: ownerAutoConfirm ? now : null,
     },
   });
   return serialize(row);

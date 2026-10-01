@@ -483,3 +483,47 @@ describe('Cash handover - voiding', () => {
     expect(allIds).toContain(voidHandoverId);
   });
 });
+
+describe('Owner autoConfirmHandovers preference', () => {
+  it('OWNER with autoConfirmHandovers ON creates a CONFIRMED handover', async () => {
+    const o = await loginAs(OWNER);
+    const oId = await currentUserId(o);
+    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
+
+    const w = await loginAs(ON_BEHALF_WAITER);
+    const waiterId = await currentUserId(w);
+
+    const res = await o.post('/api/v1/handovers').send({
+      shiftId: sharedOnBehalfWaiterShiftId,
+      amount: '99.00',
+      toUserId: oId,
+      onBehalfOfUserId: waiterId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.handover.status).toBe('CONFIRMED');
+    expect(res.body.handover.confirmedAt).toBeTruthy();
+
+    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
+  });
+
+  it('MANAGER with autoConfirmHandovers ON still creates a PENDING handover', async () => {
+    const m = await loginAs(MANAGER);
+    const mId = await currentUserId(m);
+    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
+
+    const w = await loginAs(ON_BEHALF_WAITER);
+    const waiterId = await currentUserId(w);
+
+    const res = await m.post('/api/v1/handovers').send({
+      shiftId: sharedOnBehalfWaiterShiftId,
+      amount: '88.00',
+      toUserId: mId,
+      onBehalfOfUserId: waiterId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.handover.status).toBe('PENDING');
+    expect(res.body.handover.confirmedAt).toBeNull();
+
+    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
+  });
+});

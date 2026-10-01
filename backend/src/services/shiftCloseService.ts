@@ -182,6 +182,24 @@ export async function closeMoney(input: {
   const cashDifference = actualCash.minus(expectedCash);
   const mobileDifference = toDecimal('0');
 
+  // Owner preferences: read fresh from the DB so a PATCH to
+  // /auth/me takes effect on the next call without a session
+  // refresh. Only queried when the actor is OWNER - MANAGER
+  // paths pay nothing.
+  const ownerPref = input.actor.role === 'OWNER'
+    ? await prisma.user.findUnique({
+        where: { id: input.actor.id },
+        select: {
+          autoApproveExpenses: true,
+          autoReviewReconciliations: true,
+          autoConfirmHandovers: true,
+        },
+      })
+    : null;
+  const ownerAutoApprove = ownerPref?.autoApproveExpenses === true;
+  const ownerAutoReview = ownerPref?.autoReviewReconciliations === true;
+  const ownerAutoConfirm = ownerPref?.autoConfirmHandovers === true;
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const now = new Date();
@@ -214,8 +232,10 @@ export async function closeMoney(input: {
             description: e.description,
             notes: e.notes ?? null,
             createdBy: input.actor.id,
-            status: 'PENDING',
+            status: ownerAutoApprove ? 'APPROVED' : 'PENDING',
             submittedAt: now,
+            approvedBy: ownerAutoApprove ? input.actor.id : null,
+            approvedAt: ownerAutoApprove ? now : null,
           },
         });
         expenseCount += 1;
@@ -232,9 +252,11 @@ export async function closeMoney(input: {
           actualMobile,
           cashDifference,
           mobileDifference,
-          status: 'SUBMITTED',
+          status: ownerAutoReview ? 'REVIEWED' : 'SUBMITTED',
           notes: input.notes ?? null,
           submittedAt: now,
+          reviewedBy: ownerAutoReview ? input.actor.id : null,
+          reviewedAt: ownerAutoReview ? now : null,
         },
       });
 
@@ -246,8 +268,8 @@ export async function closeMoney(input: {
           toUserId: input.receivedByUserId,
           createdById: input.actor.id,
           amount: actualCash,
-          status: 'CONFIRMED',
-          confirmedAt: now,
+          status: (input.actor.role !== 'OWNER' || ownerAutoConfirm) ? 'CONFIRMED' : 'PENDING',
+          confirmedAt: (input.actor.role !== 'OWNER' || ownerAutoConfirm) ? now : null,
           notes: input.notes ?? null,
         },
       });
@@ -412,6 +434,24 @@ export async function completeShift(input: {
   const cashDifference = actualCash.minus(expectedCash);
   const mobileDifference = toDecimal('0');
 
+  // Owner preferences: read fresh from the DB so a PATCH to
+  // /auth/me takes effect on the next call without a session
+  // refresh. Only queried when the actor is OWNER - MANAGER
+  // paths pay nothing.
+  const ownerPref = input.actor.role === 'OWNER'
+    ? await prisma.user.findUnique({
+        where: { id: input.actor.id },
+        select: {
+          autoApproveExpenses: true,
+          autoReviewReconciliations: true,
+          autoConfirmHandovers: true,
+        },
+      })
+    : null;
+  const ownerAutoApprove = ownerPref?.autoApproveExpenses === true;
+  const ownerAutoReview = ownerPref?.autoReviewReconciliations === true;
+  const ownerAutoConfirm = ownerPref?.autoConfirmHandovers === true;
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const now = new Date();
@@ -431,8 +471,10 @@ export async function completeShift(input: {
             description: e.description,
             notes: e.notes ?? null,
             createdBy: input.actor.id,
-            status: 'PENDING',
+            status: ownerAutoApprove ? 'APPROVED' : 'PENDING',
             submittedAt: now,
+            approvedBy: ownerAutoApprove ? input.actor.id : null,
+            approvedAt: ownerAutoApprove ? now : null,
           },
         });
         expenseCount += 1;
@@ -449,9 +491,11 @@ export async function completeShift(input: {
           actualMobile,
           cashDifference,
           mobileDifference,
-          status: 'SUBMITTED',
+          status: ownerAutoReview ? 'REVIEWED' : 'SUBMITTED',
           notes: input.notes ?? null,
           submittedAt: now,
+          reviewedBy: ownerAutoReview ? input.actor.id : null,
+          reviewedAt: ownerAutoReview ? now : null,
         },
       });
 
@@ -463,8 +507,8 @@ export async function completeShift(input: {
           toUserId: input.receivedByUserId,
           createdById: input.actor.id,
           amount: actualCash,
-          status: 'CONFIRMED',
-          confirmedAt: now,
+          status: (input.actor.role !== 'OWNER' || ownerAutoConfirm) ? 'CONFIRMED' : 'PENDING',
+          confirmedAt: (input.actor.role !== 'OWNER' || ownerAutoConfirm) ? now : null,
           notes: input.notes ?? null,
         },
       });

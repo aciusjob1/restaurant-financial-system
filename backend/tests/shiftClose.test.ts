@@ -20,8 +20,14 @@ const WAITER9 = { username: 'phase19j4b-waiter9', password: 'WaiterPassword!234'
 const WAITER10 = { username: 'phase19j4b-waiter10', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter10', role: 'WAITER' as const };
 const WAITER11 = { username: 'phase19j4b-waiter11', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter11', role: 'WAITER' as const };
 const WAITER12 = { username: 'phase19j4b-waiter12', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter12', role: 'WAITER' as const };
+const WAITER13 = { username: 'phase19j4b-waiter13', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter13', role: 'WAITER' as const };
+const WAITER14 = { username: 'phase19j4b-waiter14', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter14', role: 'WAITER' as const };
+const WAITER15 = { username: 'phase19j4b-waiter15', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter15', role: 'WAITER' as const };
+const WAITER16 = { username: 'phase19j4b-waiter16', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter16', role: 'WAITER' as const };
+const WAITER17 = { username: 'phase19j4b-waiter17', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter17', role: 'WAITER' as const };
+const WAITER18 = { username: 'phase19j4b-waiter18', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter18', role: 'WAITER' as const };
 const MANAGER2 = { username: 'phase19j4b-manager2', password: 'ManagerPassword!234', fullName: 'Phase19j4b Manager2', role: 'MANAGER' as const };
-const ALL = [OWNER, MANAGER, MANAGER2, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7, WAITER8, WAITER9, WAITER10, WAITER11, WAITER12];
+const ALL = [OWNER, MANAGER, MANAGER2, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7, WAITER8, WAITER9, WAITER10, WAITER11, WAITER12, WAITER13, WAITER14, WAITER15, WAITER16, WAITER17, WAITER18];
 
 const D_HAPPY      = '2099-09-01';
 const D_COLLECTION = '2099-09-02';
@@ -35,7 +41,13 @@ const D_NOCOLL     = '2099-09-09';
 const D_SELFREV_M  = '2099-09-10';
 const D_SELFREV_O  = '2099-09-11';
 const D_OTHERREV   = '2099-09-12';
-const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY, D_COMPLETE, D_NOCOLL, D_SELFREV_M, D_SELFREV_O, D_OTHERREV];
+const D_AUTO_CS    = '2099-09-13';
+const D_AUTO_CS2   = '2099-09-14';
+const D_MGR_FLAGS  = '2099-09-15';
+const D_AUTO_HAND_OFF = '2099-09-16';
+const D_AUTO_HAND_ON  = '2099-09-17';
+const D_MGR_HAND      = '2099-09-18';
+const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY, D_COMPLETE, D_NOCOLL, D_SELFREV_M, D_SELFREV_O, D_OTHERREV, D_AUTO_CS, D_AUTO_CS2, D_MGR_FLAGS, D_AUTO_HAND_OFF, D_AUTO_HAND_ON, D_MGR_HAND];
 
 const TEST_CATEGORY = 'Phase19j4b Test Category';
 
@@ -72,6 +84,7 @@ async function makeUser(u) {
 let testCategoryId;
 let waiterId;
 let managerId;
+let ownerId;
 
 beforeAll(async () => {
   await cleanup();
@@ -84,6 +97,8 @@ beforeAll(async () => {
   waiterId = w.id;
   const m = await prisma.user.findUnique({ where: { username: MANAGER.username } });
   managerId = m.id;
+  const o = await prisma.user.findUnique({ where: { username: OWNER.username } });
+  ownerId = o.id;
 });
 
 afterAll(cleanup);
@@ -367,5 +382,181 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
     });
     expect(review.status).toBe(200);
     expect(review.body.reconciliation.status).toBe('REVIEWED');
+  });
+});
+
+describe('Owner auto-approval preferences in close-money', () => {
+  it('OWNER with autoApproveExpenses + autoReviewReconciliations ON: close-money lands APPROVED + REVIEWED', async () => {
+    const shiftId = await openShift(D_AUTO_CS, WAITER13);
+    const o = await loginAs(OWNER);
+    const pref = await o.patch('/api/v1/auth/me').send({
+      autoApproveExpenses: true,
+      autoReviewReconciliations: true,
+    });
+    expect(pref.status).toBe(200);
+
+    const res = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '500.00' },
+      expenses: [
+        {
+          categoryId: testCategoryId,
+          amount: '100.00',
+          paymentMethod: 'CASH',
+          description: 'owner auto-close',
+        },
+      ],
+      cashHandedOver: '400.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.reconciliation.status).toBe('REVIEWED');
+
+    const exps = await prisma.expense.findMany({ where: { shiftId } });
+    expect(exps.length).toBe(1);
+    expect(exps[0].status).toBe('APPROVED');
+    expect(exps[0].approvedBy).toBe(ownerId);
+
+    const recon = await prisma.reconciliation.findUnique({ where: { shiftId } });
+    expect(recon.status).toBe('REVIEWED');
+    expect(recon.reviewedBy).toBe(ownerId);
+
+    await o.patch('/api/v1/auth/me').send({
+      autoApproveExpenses: false,
+      autoReviewReconciliations: false,
+    });
+  });
+
+  it('OWNER with both flags ON: complete-shift honors them too', async () => {
+    const shiftId = await openShift(D_AUTO_CS2, WAITER14);
+    const w = await loginAs(WAITER14);
+    await w.post('/api/v1/collections').send({
+      shiftId,
+      paymentMethod: 'CASH',
+      amount: '300.00',
+    });
+
+    const o = await loginAs(OWNER);
+    await o.patch('/api/v1/auth/me').send({
+      autoApproveExpenses: true,
+      autoReviewReconciliations: true,
+    });
+
+    const res = await o.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
+      expenses: [
+        {
+          categoryId: testCategoryId,
+          amount: '50.00',
+          paymentMethod: 'CASH',
+          description: 'owner auto-complete',
+        },
+      ],
+      cashHandedOver: '250.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.reconciliation.status).toBe('REVIEWED');
+
+    const exps = await prisma.expense.findMany({ where: { shiftId } });
+    expect(exps.length).toBe(1);
+    expect(exps[0].status).toBe('APPROVED');
+    expect(exps[0].approvedBy).toBe(ownerId);
+
+    await o.patch('/api/v1/auth/me').send({
+      autoApproveExpenses: false,
+      autoReviewReconciliations: false,
+    });
+  });
+
+  it('MANAGER with both flags ON on their own account: still PENDING + SUBMITTED', async () => {
+    const shiftId = await openShift(D_MGR_FLAGS, WAITER15);
+    const m = await loginAs(MANAGER);
+    await m.patch('/api/v1/auth/me').send({
+      autoApproveExpenses: true,
+      autoReviewReconciliations: true,
+    });
+
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '300.00' },
+      expenses: [
+        {
+          categoryId: testCategoryId,
+          amount: '50.00',
+          paymentMethod: 'CASH',
+          description: 'manager with flags',
+        },
+      ],
+      cashHandedOver: '250.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.reconciliation.status).toBe('SUBMITTED');
+
+    const exps = await prisma.expense.findMany({ where: { shiftId } });
+    expect(exps.length).toBe(1);
+    expect(exps[0].status).toBe('PENDING');
+    expect(exps[0].approvedBy).toBeNull();
+
+    await m.patch('/api/v1/auth/me').send({
+      autoApproveExpenses: false,
+      autoReviewReconciliations: false,
+    });
+  });
+});
+
+describe('Owner autoConfirmHandovers in close-money', () => {
+  it('OWNER with autoConfirmHandovers OFF: close-money handover lands PENDING', async () => {
+    const shiftId = await openShift(D_AUTO_HAND_OFF, WAITER16);
+    const o = await loginAs(OWNER);
+    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
+
+    const res = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '100.00' },
+      cashHandedOver: '100.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.handover.status).toBe('PENDING');
+
+    const h = await prisma.cashHandover.findFirst({ where: { shiftId } });
+    expect(h).not.toBeNull();
+    expect(h!.confirmedAt).toBeNull();
+  });
+
+  it('OWNER with autoConfirmHandovers ON: close-money handover lands CONFIRMED', async () => {
+    const shiftId = await openShift(D_AUTO_HAND_ON, WAITER17);
+    const o = await loginAs(OWNER);
+    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
+
+    const res = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '100.00' },
+      cashHandedOver: '100.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.handover.status).toBe('CONFIRMED');
+
+    const h = await prisma.cashHandover.findFirst({ where: { shiftId } });
+    expect(h).not.toBeNull();
+    expect(h!.confirmedAt).not.toBeNull();
+
+    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
+  });
+
+  it('MANAGER: close-money handover stays CONFIRMED regardless of any owner or own preference', async () => {
+    const shiftId = await openShift(D_MGR_HAND, WAITER18);
+    const m = await loginAs(MANAGER);
+    // Manager sets their own flag ON. The service only reads the flag
+    // for the OWNER role, so this must be ignored.
+    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
+
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '100.00' },
+      cashHandedOver: '100.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.handover.status).toBe('CONFIRMED');
+
+    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
   });
 });
