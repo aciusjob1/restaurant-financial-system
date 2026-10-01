@@ -11,8 +11,9 @@ const MANAGER = { username: 'phase4-manager', password: 'ManagerPassword!234', f
 const WAITER = { username: 'phase4-waiter', password: 'WaiterPassword!234', fullName: 'Phase 4 Waiter', role: 'WAITER' as const };
 const WAITER2 = { username: 'phase4-waiter2', password: 'WaiterPassword!234', fullName: 'Phase 4 Waiter 2', role: 'WAITER' as const };
 const AUDITOR = { username: 'phase4-auditor', password: 'AuditorPassword!234', fullName: 'Phase 4 Auditor', role: 'AUDITOR' as const };
+const WAITER3 = { username: 'phase4-waiter3', password: 'WaiterPassword!234', fullName: 'Phase 4 Waiter 3', role: 'WAITER' as const };
 
-const ALL_USERS = [OWNER, MANAGER, WAITER, WAITER2, AUDITOR];
+const ALL_USERS = [OWNER, MANAGER, WAITER, WAITER2, WAITER3, AUDITOR];
 
 async function cleanup() {
   const usernames = ALL_USERS.map((u) => u.username);
@@ -192,6 +193,58 @@ describe('Enrichment - shift list rows expose user.fullName', () => {
       expect(typeof s.user.fullName).toBe('string');
       expect(s.user.id).toBe(s.userId);
     }
+  });
+});
+
+describe('Open shift on behalf of a waiter (onBehalfOfUserId)', () => {
+  it('MANAGER opens a shift for a specific WAITER', async () => {
+    const target = await prisma.user.findUnique({ where: { username: WAITER3.username } });
+    expect(target).toBeTruthy();
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/shifts').send({
+      businessDate: '2099-12-01',
+      openingCash: '5000.00',
+      onBehalfOfUserId: target!.id,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.shift.userId).toBe(target!.id);
+    expect(res.body.shift.status).toBe('OPEN');
+    expect(res.body.shift.openingCash).toBe('5000.00');
+  });
+
+  it('WAITER cannot pass onBehalfOfUserId (403)', async () => {
+    const target = await prisma.user.findUnique({ where: { username: WAITER3.username } });
+    const w = await loginAs(WAITER);
+    const res = await w.post('/api/v1/shifts').send({
+      businessDate: '2099-12-02',
+      openingCash: '0.00',
+      onBehalfOfUserId: target!.id,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it('MANAGER cannot open on behalf of a non-WAITER (400)', async () => {
+    const target = await prisma.user.findUnique({ where: { username: MANAGER.username } });
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/shifts').send({
+      businessDate: '2099-12-03',
+      openingCash: '0.00',
+      onBehalfOfUserId: target!.id,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_ON_BEHALF_USER');
+  });
+
+  it('MANAGER gets 400 for a nonexistent target', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/shifts').send({
+      businessDate: '2099-12-04',
+      openingCash: '0.00',
+      onBehalfOfUserId: 'nonexistent-user-id',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_ON_BEHALF_USER');
   });
 });
 

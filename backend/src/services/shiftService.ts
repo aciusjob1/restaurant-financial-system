@@ -91,13 +91,38 @@ export async function startShift(input: {
   businessDate?: string;
   openingCash?: string;
   notes?: string | null;
+  onBehalfOfUserId?: string;
 }) {
   const businessDate = input.businessDate
     ? parseBusinessDate(input.businessDate)
     : todayBusinessDate();
 
   // The waiter may only start their own shift.
-  const userId = input.actor.id;
+  // MANAGER/OWNER may open on behalf of a specific WAITER.
+  let userId = input.actor.id;
+  if (input.onBehalfOfUserId !== undefined) {
+    if (input.actor.role !== 'MANAGER' && input.actor.role !== 'OWNER') {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'Only MANAGER or OWNER can open a shift on behalf of another user.'
+      );
+    }
+    const target = await prisma.user.findUnique({
+      where: { id: input.onBehalfOfUserId },
+      select: { id: true, role: true, isActive: true },
+    });
+    if (!target) {
+      throw new ApiError(400, 'INVALID_ON_BEHALF_USER', 'Target user does not exist.');
+    }
+    if (!target.isActive) {
+      throw new ApiError(400, 'INVALID_ON_BEHALF_USER', 'Target user is not active.');
+    }
+    if (target.role !== 'WAITER') {
+      throw new ApiError(400, 'INVALID_ON_BEHALF_USER', 'Target user must be a WAITER.');
+    }
+    userId = input.onBehalfOfUserId;
+  }
 
   // Friendly pre-check. The DB has a partial unique index that backstops this.
   const existing = await prisma.shift.findFirst({

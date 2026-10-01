@@ -15,6 +15,7 @@ export const StartShiftSchema = z.object({
   businessDate: DateOnly.optional(),
   openingCash: MoneyString,
   notes: z.string().trim().max(500).nullable().optional(),
+  onBehalfOfUserId: z.string().min(1).optional(),
 });
 
 export const TransitionShiftSchema = z.object({

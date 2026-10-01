@@ -33,6 +33,7 @@ export async function startShift(req: Request, res: Response) {
     businessDate: input.businessDate,
     openingCash: input.openingCash,
     notes: input.notes ?? null,
+    onBehalfOfUserId: input.onBehalfOfUserId,
   });
   res.status(201).json({ success: true, shift });
 }
