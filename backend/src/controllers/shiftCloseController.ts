@@ -15,6 +15,7 @@ export async function closeMoney(req: Request, res: Response) {
       paymentMethod: e.paymentMethod as PaymentMethod,
       description: e.description,
       notes: e.notes ?? null,
+      paidByUserId: e.paidByUserId ?? null,
     })),
     cashHandedOver: input.cashHandedOver,
     receivedByUserId: input.receivedByUserId,

@@ -29,6 +29,7 @@ type ExpenseInput = {
   paymentMethod: PaymentMethod;
   description: string;
   notes?: string | null;
+  paidByUserId?: string | null;
 };
 
 function isUniqueViolation(err: unknown): boolean {
@@ -85,6 +86,14 @@ export async function closeMoney(input: {
     );
   }
 
+  if (shift.openingCash === null) {
+    throw new ApiError(
+      409,
+      'OPENING_CASH_REQUIRED',
+      'Declare opening cash before closing the shift money picture.'
+    );
+  }
+
   await assertDayNotClosed(shift.businessDate, input.actor.role);
 
   const receiver = await prisma.user.findUnique({
@@ -107,6 +116,26 @@ export async function closeMoney(input: {
       const c = found.get(id);
       if (!c) throw new ApiError(400, 'INVALID_CATEGORY', 'Category ' + id + ' does not exist.');
       if (!c.isActive) throw new ApiError(400, 'CATEGORY_INACTIVE', 'Category ' + id + ' is not active.');
+    }
+  }
+
+  const paidByIds = Array.from(
+    new Set(
+      expenseInputs
+        .map((e) => e.paidByUserId)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    )
+  );
+  if (paidByIds.length > 0) {
+    const paidByUsers = await prisma.user.findMany({
+      where: { id: { in: paidByIds } },
+      select: { id: true, isActive: true },
+    });
+    const paidByFound = new Map(paidByUsers.map((u) => [u.id, u]));
+    for (const id of paidByIds) {
+      const u = paidByFound.get(id);
+      if (!u) throw new ApiError(400, 'INVALID_PAID_BY', 'Paid-by user ' + id + ' does not exist.');
+      if (!u.isActive) throw new ApiError(400, 'INVALID_PAID_BY', 'Paid-by user ' + id + ' is not active.');
     }
   }
 
@@ -155,6 +184,7 @@ export async function closeMoney(input: {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const now = new Date();
       for (const r of collectionRows) {
         await tx.collection.create({
           data: {
@@ -178,14 +208,14 @@ export async function closeMoney(input: {
             businessDate: shift.businessDate,
             categoryId: e.categoryId,
             shiftId: shift.id,
-            paidByUserId: shift.userId,
+            paidByUserId: e.paidByUserId ?? shift.userId,
             amount: toDecimal(e.amount),
             paymentMethod: e.paymentMethod,
             description: e.description,
             notes: e.notes ?? null,
             createdBy: input.actor.id,
             status: 'PENDING',
-            submittedAt: new Date(),
+            submittedAt: now,
           },
         });
         expenseCount += 1;
@@ -204,7 +234,7 @@ export async function closeMoney(input: {
           mobileDifference,
           status: 'SUBMITTED',
           notes: input.notes ?? null,
-          submittedAt: new Date(),
+          submittedAt: now,
         },
       });
 
@@ -217,8 +247,16 @@ export async function closeMoney(input: {
           createdById: input.actor.id,
           amount: actualCash,
           status: 'CONFIRMED',
-          confirmedAt: new Date(),
+          confirmedAt: now,
           notes: input.notes ?? null,
+        },
+      });
+
+      await tx.shift.update({
+        where: { id: shift.id },
+        data: {
+          status: 'SUBMITTED',
+          submittedAt: now,
         },
       });
 

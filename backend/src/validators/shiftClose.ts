@@ -34,6 +34,7 @@ const ExpenseLineSchema = z.object({
   paymentMethod: z.enum(PAYMENT_METHODS),
   description: z.string().trim().min(1).max(500),
   notes: z.string().trim().max(500).nullable().optional(),
+  paidByUserId: z.string().min(1).nullable().optional(),
 });
 
 export const CloseMoneySchema = z.object({

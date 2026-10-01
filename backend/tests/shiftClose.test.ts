@@ -13,14 +13,18 @@ const WAITER2 = { username: 'phase19j4b-waiter2', password: 'WaiterPassword!234'
 const WAITER3 = { username: 'phase19j4b-waiter3', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter3', role: 'WAITER' as const };
 const WAITER4 = { username: 'phase19j4b-waiter4', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter4', role: 'WAITER' as const };
 const WAITER5 = { username: 'phase19j4b-waiter5', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter5', role: 'WAITER' as const };
-const ALL = [OWNER, MANAGER, WAITER, WAITER2, WAITER3, WAITER4, WAITER5];
+const WAITER6 = { username: 'phase19j4b-waiter6', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter6', role: 'WAITER' as const };
+const WAITER7 = { username: 'phase19j4b-waiter7', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter7', role: 'WAITER' as const };
+const ALL = [OWNER, MANAGER, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7];
 
 const D_HAPPY      = '2099-09-01';
 const D_COLLECTION = '2099-09-02';
 const D_NOTOPEN    = '2099-09-03';
 const D_BADRECV    = '2099-09-04';
 const D_EMPTY      = '2099-09-05';
-const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY];
+const D_NOOPENING  = '2099-09-06';
+const D_BADPAIDBY  = '2099-09-07';
+const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY];
 
 const TEST_CATEGORY = 'Phase19j4b Test Category';
 
@@ -87,6 +91,18 @@ async function openShift(businessDate, waiter) {
   return res.body.shift.id;
 }
 
+async function openShiftNoCash(businessDate, waiter) {
+  // StartShiftSchema requires openingCash, so open with it, then
+  // nulls opening cash directly to simulate the state close-money
+  // must handle. This is a setup path the business API cannot create.
+  const w = await loginAs(waiter);
+  const res = await w.post('/api/v1/shifts').send({ businessDate, openingCash: '1000.00' });
+  expect(res.status).toBe(201);
+  const id = res.body.shift.id;
+  await prisma.shift.update({ where: { id }, data: { openingCash: null } });
+  return id;
+}
+
 describe('POST /shifts/:id/close-money', () => {
   it('happy path: collections + expense + handover in one transaction', async () => {
     const shiftId = await openShift(D_HAPPY, WAITER);
@@ -124,6 +140,10 @@ describe('POST /shifts/:id/close-money', () => {
     const recon = await prisma.reconciliation.findUnique({ where: { shiftId } });
     expect(recon.createdBy).toBe(managerId);
     expect(recon.userId).toBe(waiterId);
+
+    const shiftAfter = await prisma.shift.findUnique({ where: { id: shiftId } });
+    expect(shiftAfter.status).toBe('SUBMITTED');
+    expect(shiftAfter.submittedAt).toBeTruthy();
   });
 
   it('refuses when the shift already has non-voided collections (COLLECTIONS_EXIST)', async () => {
@@ -186,5 +206,38 @@ describe('POST /shifts/:id/close-money', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('NOTHING_TO_CLOSE');
+  });
+
+  it('refuses to close when opening cash is null (OPENING_CASH_REQUIRED)', async () => {
+    const shiftId = await openShiftNoCash(D_NOOPENING, WAITER6);
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '200.00' },
+      cashHandedOver: '200.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('OPENING_CASH_REQUIRED');
+  });
+
+  it('rejects a bogus paidByUserId on an expense line (INVALID_PAID_BY)', async () => {
+    const shiftId = await openShift(D_BADPAIDBY, WAITER7);
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '1000.00' },
+      expenses: [
+        {
+          categoryId: testCategoryId,
+          amount: '100.00',
+          paymentMethod: 'CASH',
+          description: 'Bad paid-by',
+          paidByUserId: 'nonexistent-paid-by-id',
+        },
+      ],
+      cashHandedOver: '900.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_PAID_BY');
   });
 });
