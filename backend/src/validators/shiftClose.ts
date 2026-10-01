@@ -55,3 +55,13 @@ export const CompleteShiftSchema = z.object({
 });
 
 export type CompleteShiftInput = z.infer<typeof CompleteShiftSchema>;
+
+export const SubmitShiftSchema = z.object({
+  collections: CollectionsSchema.optional(),
+  expenses: z.array(ExpenseLineSchema).optional(),
+  cashHandedOver: MoneyString,
+  receivedByUserId: z.string().min(1),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+
+export type SubmitShiftInput = z.infer<typeof SubmitShiftSchema>;
