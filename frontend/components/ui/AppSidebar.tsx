@@ -1,17 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import {
-  LogOut,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
 
 export type NavLink = { href: string; label: string; icon: LucideIcon; section?: string };
 
@@ -69,12 +67,10 @@ export function AppSidebar({
   me,
   children,
 }: AppSidebarProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);       // user preference
   const [hydrated, setHydrated] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
   const [idleCollapsed, setIdleCollapsed] = useState(false); // transient
 
   // Viewport tier checks.
@@ -139,14 +135,6 @@ export function AppSidebar({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [drawerOpen]);
-
-  async function handleSignOut() {
-    setSigningOut(true);
-    try {
-      await apiFetch('/api/v1/auth/logout', { method: 'POST' });
-    } catch { /* fall through — still send the user to /login */ }
-    router.push('/login');
-  }
 
   // What the rail actually renders as: auto-collapse (viewport OR idle)
   // takes priority over the user's stored preference.
@@ -290,34 +278,6 @@ export function AppSidebar({
           })}
         </nav>
 
-        {/* Footer: user + sign-out */}
-        <div className="border-t border-slate-200 p-3 space-y-2">
-          <div className={['flex items-center gap-2', effectiveCollapsed ? 'lg:hidden' : ''].join(' ')}>
-            <div className="w-7 h-7 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center shrink-0">
-              {me.fullName.slice(0, 1).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-slate-900 truncate">{me.fullName}</div>
-              <div className="text-[10px] text-slate-500">{me.role}</div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={signingOut}
-            title={effectiveCollapsed ? 'Sign out' : undefined}
-            className={[
-              'flex items-center gap-2 w-full px-2 py-2 rounded-lg text-sm',
-              'text-slate-700 hover:bg-slate-100 disabled:opacity-60',
-              effectiveCollapsed ? 'lg:justify-center lg:px-0' : '',
-            ].join(' ')}
-          >
-            <LogOut className="w-4 h-4 shrink-0" />
-            <span className={effectiveCollapsed ? 'lg:hidden' : ''}>
-              {signingOut ? 'Signing out…' : 'Sign out'}
-            </span>
-          </button>
-        </div>
       </aside>
 
       {/* Main content */}

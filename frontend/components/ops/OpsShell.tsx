@@ -29,6 +29,7 @@ import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
 import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
+import { UserMenu } from '@/components/ops/UserMenu';
 import type { Dict } from '@/lib/i18n/dictionaries';
 
 type MeResponse = {
@@ -55,7 +56,6 @@ const LINKS: LinkSpec[] = [
 
   // Expenses
   { href: '/ops/expenses',             labelKey: 'nav.ops.expenses',           sectionKey: 'nav.section.expenses',       icon: Receipt },
-  { href: '/ops/expense-categories',   labelKey: 'nav.ops.expenseCategories',  icon: Tags },
 
   // Salaries
   { href: '/ops/salaries',             labelKey: 'nav.ops.salaries',           sectionKey: 'nav.section.salaries',       icon: Banknote },
@@ -63,8 +63,8 @@ const LINKS: LinkSpec[] = [
   // Staff
   { href: '/ops/staff',                labelKey: 'nav.ops.staff',              sectionKey: 'nav.section.staff',          icon: UserRound },
 
-  // Account (bottom, ungrouped)
-  { href: '/ops/account',              labelKey: 'nav.ops.account',            icon: UserCog },
+  // Settings (bottom, ungrouped)
+  { href: '/ops/settings',             labelKey: 'nav.ops.settings',           icon: UserCog },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {
@@ -127,8 +127,9 @@ export function OpsShell({ children }: { children: ReactNode }) {
       storageKey='ops-shell-collapsed'
       me={me}
     >
-      <div className='flex justify-end px-4 pt-4'>
+      <div className='flex justify-end items-center gap-3 px-4 pt-4'>
         <LanguagePicker />
+        {me && <UserMenu fullName={me.fullName} role={me.role} />}
       </div>
       {children}
     </AppSidebar>
