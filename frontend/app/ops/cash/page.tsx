@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
-import { FormError } from '@/components/ops/Form';
+import {
+  DecimalField, SelectField, TextField, FormError,
+} from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
 import { useT } from '@/lib/i18n/LanguageContext';
@@ -38,8 +40,26 @@ type Handover = {
   status: 'PENDING' | 'CONFIRMED';
 };
 
+type Expense = {
+  id: string;
+  expenseNumber: string;
+  shiftId: string | null;
+  categoryId: string;
+  amount: string;
+  paymentMethod: string;
+  description: string;
+  status: string;
+};
+
+type ExpenseCategory = { id: string; name: string; isActive: boolean };
+
 type User = { id: string; fullName: string; role: string };
 type Closing = { id: string; businessDate: string; status: string };
+
+const PAYMENT_METHODS = [
+  'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA',
+  'HALOPESA', 'BANK', 'CARD', 'OTHER',
+] as const;
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -103,6 +123,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 type Row = {
   shift: Shift;
   total: string;
+  expenseTotal: number;
   state: FlowState;
   name: string;
   recon: Reconciliation | undefined;
@@ -112,12 +133,16 @@ type Row = {
 export default function CashPage() {
   const { t, tError } = useT();
   const [loading, setLoading] = useState(true);
+  const [flash, setFlash] = useState<string | null>(null);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [recons, setRecons] = useState<Reconciliation[]>([]);
   const [handovers, setHandovers] = useState<Handover[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [myId, setMyId] = useState<string>('');
   const [myRole, setMyRole] = useState<string>('');
   const [todayClosing, setTodayClosing] = useState<Closing | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -130,6 +155,15 @@ export default function CashPage() {
   const [closeShiftId, setCloseShiftId] = useState<string | null>(null);
   const [closeDayConfirming, setCloseDayConfirming] = useState(false);
 
+  // inline expense form state
+  const [expenseShiftId, setExpenseShiftId] = useState<string | null>(null);
+  const [expenseCategoryId, setExpenseCategoryId] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseMethod, setExpenseMethod] = useState<string>('CASH');
+  const [expenseDescription, setExpenseDescription] = useState('');
+  const [expensePaidByUserId, setExpensePaidByUserId] = useState('');
+  const [expenseBusy, setExpenseBusy] = useState(false);
+
   function load() {
     setLoading(true);
     const today = todayISO();
@@ -138,16 +172,21 @@ export default function CashPage() {
       apiFetch<{ success: true; collections: Collection[] }>(OPS_PATHS.collections),
       apiFetch<{ success: true; reconciliations: Reconciliation[] }>(OPS_PATHS.reconciliations),
       apiFetch<{ success: true; handovers: Handover[] }>(OPS_PATHS.handovers),
+      apiFetch<{ success: true; expenses: Expense[] }>('/api/v1/expenses?businessDate=' + today).catch(() => ({ success: true as const, expenses: [] as Expense[] })),
+      apiFetch<{ success: true; categories: ExpenseCategory[] }>('/api/v1/expense-categories').catch(() => ({ success: true as const, categories: [] as ExpenseCategory[] })),
       apiFetch<{ success: true; users: User[] }>('/api/v1/users').catch(() => ({ success: true as const, users: [] as User[] })),
       apiFetch<{ success: true; user: User }>('/api/v1/auth/me').catch(() => ({ success: true as const, user: { id: '', fullName: '', role: '' } })),
       apiFetch<{ success: true; closings: Closing[] }>('/api/v1/daily-closings?businessDate=' + today).catch(() => ({ success: true as const, closings: [] as Closing[] })),
     ])
-      .then(([sRes, cRes, rRes, hRes, uRes, meRes, dRes]) => {
+      .then(([sRes, cRes, rRes, hRes, eRes, catRes, uRes, meRes, dRes]) => {
         setShifts(sRes.shifts.filter((s) => s.businessDate === today));
         setCollections(cRes.collections);
         setRecons(rRes.reconciliations);
         setHandovers(hRes.handovers);
+        setExpenses(eRes.expenses);
+        setCategories(catRes.categories.filter((c) => c.isActive));
         setUsers(uRes.users);
+        setMyId(meRes.user.id);
         setMyRole(meRes.user.role);
         setTodayClosing(dRes.closings.length > 0 ? dRes.closings[0] : null);
       })
@@ -161,15 +200,17 @@ export default function CashPage() {
     return shifts.map((s) => {
       const coll = collections.filter((c) => c.shiftId === s.id && !c.voidedAt);
       const total = coll.reduce((acc, c) => acc + parseFloat(c.amount), 0);
+      const rowExpenses = expenses.filter((e) => e.shiftId === s.id);
+      const expenseTotal = rowExpenses.reduce((acc, e) => acc + parseFloat(e.amount), 0);
       const recon = recons.find((r) => r.shiftId === s.id);
       const handover = recon ? handovers.find((h) => h.reconciliationId === recon.id) : undefined;
       const state = deriveState(s, recon, handover);
       const name =
         users.find((u) => u.id === s.userId)?.fullName ??
         (s.userId ? s.userId.slice(0, 8) : '\u2014');
-      return { shift: s, total: total.toFixed(2), state, name, recon, handover };
+      return { shift: s, total: total.toFixed(2), expenseTotal, state, name, recon, handover };
     });
-  }, [shifts, collections, recons, handovers, users]);
+  }, [shifts, collections, recons, handovers, expenses, users]);
 
   const summary = useMemo(() => {
     let open = 0; let awaitingReview = 0; let awaitingConfirm = 0; let readyToClose = 0;
@@ -183,12 +224,58 @@ export default function CashPage() {
   }, [rows]);
 
   const isManager = myRole === 'MANAGER' || myRole === 'OWNER';
+  const isOwner = myRole === 'OWNER';
   const allClosed = rows.length > 0 && rows.every((r) => r.state === 'closed');
 
   function clearInline() {
     setConfirmHandoverId(null); setConfirmHandoverNotes('');
     setSendBackReconId(null); setSendBackReason('');
     setCloseShiftId(null); setCloseDayConfirming(false);
+    setExpenseShiftId(null); setExpenseAmount(''); setExpenseDescription('');
+    setExpenseCategoryId(''); setExpenseMethod('CASH'); setExpensePaidByUserId('');
+  }
+
+  function openExpenseForm(shift: Shift) {
+    setErr(null); setFlash(null);
+    setExpenseShiftId(shift.id);
+    setExpenseCategoryId(categories.length > 0 ? categories[0].id : '');
+    setExpenseAmount('');
+    setExpenseMethod('CASH');
+    setExpenseDescription('');
+    setExpensePaidByUserId(shift.userId ?? '');
+  }
+
+  async function submitExpense(e: FormEvent, shift: Shift) {
+    e.preventDefault();
+    setErr(null); setFlash(null);
+    if (!expenseCategoryId) { setErr({ code: 'CATEGORY_REQUIRED', message: 'Select a category.' }); return; }
+    if (!expenseAmount.trim()) { setErr({ code: 'AMOUNT_REQUIRED', message: 'Amount is required.' }); return; }
+    if (!expenseDescription.trim()) { setErr({ code: 'DESC_REQUIRED', message: 'Description is required.' }); return; }
+    setExpenseBusy(true);
+    try {
+      const body: Record<string, unknown> = {
+        businessDate: shift.businessDate,
+        categoryId: expenseCategoryId,
+        shiftId: shift.id,
+        amount: expenseAmount.trim(),
+        paymentMethod: expenseMethod,
+        description: expenseDescription.trim(),
+      };
+      if (expensePaidByUserId) body.paidByUserId = expensePaidByUserId;
+      if (isOwner) body.autoApprove = true;
+      else if (myRole === 'MANAGER') body.submitNow = true;
+      await apiFetch('/api/v1/expenses', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      setFlash(t('ops.cashFlow.flash.expenseRecorded'));
+      clearInline();
+      load();
+    } catch (e2) {
+      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
+    } finally {
+      setExpenseBusy(false);
+    }
   }
 
   async function doConfirmHandover(hid: string) {
@@ -271,6 +358,11 @@ export default function CashPage() {
       />
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+      {flash && (
+        <div className='rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800'>
+          {flash}
+        </div>
+      )}
 
       {loading ? (
         <div className='text-slate-500'>{t('common.loading')}</div>
@@ -296,6 +388,7 @@ export default function CashPage() {
                   busyKey === 'rv:' + (r.recon?.id ?? '') ||
                   busyKey === 'sb:' + (r.recon?.id ?? '') ||
                   busyKey === 'cs:' + r.shift.id;
+                const isOpenShift = r.shift.status === 'OPEN';
                 return (
                   <div key={r.shift.id} className='rounded-2xl border border-slate-200 bg-white p-4 space-y-3'>
                     <div className='flex items-center gap-4'>
@@ -309,7 +402,23 @@ export default function CashPage() {
                         <div className='mt-1 text-sm text-slate-600'>
                           {t('ops.cashFlow.row.collected')}: <span className='font-mono'>{r.total}</span>
                         </div>
+                        <div className='mt-0.5 text-sm text-slate-600'>
+                          {t('table.expenses')}: {r.expenseTotal > 0
+                            ? <span className='font-mono'>{r.expenseTotal.toFixed(2)}</span>
+                            : <span className='text-slate-400'>{t('ops.cashFlow.row.noExpenses')}</span>}
+                        </div>
                       </div>
+
+                      {isManager && isOpenShift && (
+                        <button
+                          type='button'
+                          onClick={() => openExpenseForm(r.shift)}
+                          disabled={isBusyRow}
+                          className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60'
+                        >
+                          {t('ops.cashFlow.row.addExpense')}
+                        </button>
+                      )}
 
                       {isManager && r.state === 'awaiting_review' && r.recon && (
                         <div className='flex gap-2'>
@@ -354,6 +463,62 @@ export default function CashPage() {
                         </button>
                       )}
                     </div>
+
+                    {expenseShiftId === r.shift.id && (
+                      <form onSubmit={(e) => submitExpense(e, r.shift)} className='border-t border-slate-100 pt-3 space-y-3'>
+                        <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.row.expenseFormHeading')}</h3>
+                        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
+                          <SelectField
+                            label={t('form.category')}
+                            value={expenseCategoryId}
+                            onChange={setExpenseCategoryId}
+                            required
+                            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                          />
+                          <DecimalField
+                            label={t('form.amount')}
+                            value={expenseAmount}
+                            onChange={setExpenseAmount}
+                            placeholder='0.00'
+                            required
+                          />
+                          <SelectField
+                            label={t('form.paymentMethod')}
+                            value={expenseMethod}
+                            onChange={setExpenseMethod}
+                            options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
+                          />
+                          <TextField
+                            label={t('form.description')}
+                            value={expenseDescription}
+                            onChange={setExpenseDescription}
+                            required
+                          />
+                          <SelectField
+                            label={t('form.paidBy')}
+                            value={expensePaidByUserId}
+                            onChange={setExpensePaidByUserId}
+                            options={[{ value: '', label: t('common.notSpecified') }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
+                          />
+                        </div>
+                        <div className='flex gap-2 justify-end'>
+                          <button
+                            type='button'
+                            onClick={() => { setExpenseShiftId(null); }}
+                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'
+                          >
+                            {t('action.cancel')}
+                          </button>
+                          <button
+                            type='submit'
+                            disabled={expenseBusy}
+                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
+                          >
+                            {expenseBusy ? t('ops.cashFlow.row.expenseSubmitting') : t('ops.cashFlow.row.expenseSubmit')}
+                          </button>
+                        </div>
+                      </form>
+                    )}
 
                     {sendBackReconId === r.recon?.id && (
                       <div className='border-t border-slate-100 pt-3 space-y-2'>

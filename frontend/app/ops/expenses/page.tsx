@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   TextField,
   DecimalField,
@@ -202,6 +203,8 @@ function ExpensesContent() {
         title={t('ops.expenses.title')}
         subtitle={t('ops.expenses.subtitle')}
       />
+
+      <SecondarySurfaceBanner messageKey='ops.expenses.secondary.banner' targetHref='/ops/cash' targetLabelKey='ops.cashFlow.secondary.link' />
 
       {error && <FormError code={error.code} message={tError(error.code, error.message)} />}
 
