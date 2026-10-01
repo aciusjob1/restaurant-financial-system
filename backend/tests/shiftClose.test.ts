@@ -15,7 +15,13 @@ const WAITER4 = { username: 'phase19j4b-waiter4', password: 'WaiterPassword!234'
 const WAITER5 = { username: 'phase19j4b-waiter5', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter5', role: 'WAITER' as const };
 const WAITER6 = { username: 'phase19j4b-waiter6', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter6', role: 'WAITER' as const };
 const WAITER7 = { username: 'phase19j4b-waiter7', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter7', role: 'WAITER' as const };
-const ALL = [OWNER, MANAGER, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7];
+const WAITER8 = { username: 'phase19j4b-waiter8', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter8', role: 'WAITER' as const };
+const WAITER9 = { username: 'phase19j4b-waiter9', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter9', role: 'WAITER' as const };
+const WAITER10 = { username: 'phase19j4b-waiter10', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter10', role: 'WAITER' as const };
+const WAITER11 = { username: 'phase19j4b-waiter11', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter11', role: 'WAITER' as const };
+const WAITER12 = { username: 'phase19j4b-waiter12', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter12', role: 'WAITER' as const };
+const MANAGER2 = { username: 'phase19j4b-manager2', password: 'ManagerPassword!234', fullName: 'Phase19j4b Manager2', role: 'MANAGER' as const };
+const ALL = [OWNER, MANAGER, MANAGER2, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7, WAITER8, WAITER9, WAITER10, WAITER11, WAITER12];
 
 const D_HAPPY      = '2099-09-01';
 const D_COLLECTION = '2099-09-02';
@@ -24,7 +30,12 @@ const D_BADRECV    = '2099-09-04';
 const D_EMPTY      = '2099-09-05';
 const D_NOOPENING  = '2099-09-06';
 const D_BADPAIDBY  = '2099-09-07';
-const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY];
+const D_COMPLETE   = '2099-09-08';
+const D_NOCOLL     = '2099-09-09';
+const D_SELFREV_M  = '2099-09-10';
+const D_SELFREV_O  = '2099-09-11';
+const D_OTHERREV   = '2099-09-12';
+const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY, D_COMPLETE, D_NOCOLL, D_SELFREV_M, D_SELFREV_O, D_OTHERREV];
 
 const TEST_CATEGORY = 'Phase19j4b Test Category';
 
@@ -239,5 +250,122 @@ describe('POST /shifts/:id/close-money', () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_PAID_BY');
+  });
+});
+
+describe('POST /shifts/:id/complete-shift (existing collections)', () => {
+  it('MANAGER completes a shift using collections the waiter already recorded', async () => {
+    const shiftId = await openShift(D_COMPLETE, WAITER8);
+    const w = await loginAs(WAITER8);
+    const c = await w.post('/api/v1/collections').send({
+      shiftId,
+      paymentMethod: 'CASH',
+      amount: '5000.00',
+    });
+    expect(c.status).toBe(201);
+
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
+      expenses: [
+        {
+          categoryId: testCategoryId,
+          amount: '200.00',
+          paymentMethod: 'CASH',
+          description: 'Gas during shift',
+        },
+      ],
+      cashHandedOver: '5800.00',
+      receivedByUserId: managerId,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reconciliation.status).toBe('SUBMITTED');
+    expect(res.body.handover.status).toBe('CONFIRMED');
+    expect(res.body.created.collections).toBe(0);
+    expect(res.body.created.expenses).toBe(1);
+    expect(res.body.reconciliation.expectedCash).toBe('5800.00');
+    expect(res.body.reconciliation.actualCash).toBe('5800.00');
+    expect(res.body.reconciliation.cashDifference).toBe('0.00');
+
+    const recon = await prisma.reconciliation.findUnique({ where: { shiftId } });
+    expect(recon.createdBy).toBe(managerId);
+    const shiftAfter = await prisma.shift.findUnique({ where: { id: shiftId } });
+    expect(shiftAfter.status).toBe('SUBMITTED');
+  });
+
+  it('refuses complete-shift when the shift has no non-voided collections (NO_COLLECTIONS)', async () => {
+    const shiftId = await openShift(D_NOCOLL, WAITER9);
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
+      cashHandedOver: '1000.00',
+      receivedByUserId: managerId,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('NO_COLLECTIONS');
+  });
+
+  it('MANAGER cannot review their own submission (SELF_REVIEW_FORBIDDEN)', async () => {
+    const shiftId = await openShift(D_SELFREV_M, WAITER10);
+    const w = await loginAs(WAITER10);
+    await w.post('/api/v1/collections').send({
+      shiftId,
+      paymentMethod: 'CASH',
+      amount: '3000.00',
+    });
+    const m = await loginAs(MANAGER);
+    const c = await m.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
+      cashHandedOver: '4000.00',
+      receivedByUserId: managerId,
+    });
+    expect(c.status).toBe(201);
+    const reconId = c.body.reconciliation.id;
+
+    const review = await m.post('/api/v1/reconciliations/' + reconId + '/review').send({
+      decision: 'APPROVE',
+    });
+    expect(review.status).toBe(403);
+    expect(review.body.code).toBe('SELF_REVIEW_FORBIDDEN');
+  });
+
+  it('OWNER may review their own submission', async () => {
+    const shiftId = await openShift(D_SELFREV_O, WAITER11);
+    const o = await loginAs(OWNER);
+    const c = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '2000.00' },
+      cashHandedOver: '3000.00',
+      receivedByUserId: managerId,
+    });
+    expect(c.status).toBe(201);
+    const reconId = c.body.reconciliation.id;
+
+    const review = await o.post('/api/v1/reconciliations/' + reconId + '/review').send({
+      decision: 'APPROVE',
+    });
+    expect(review.status).toBe(200);
+    expect(review.body.reconciliation.status).toBe('REVIEWED');
+  });
+
+  it('a different MANAGER can review a submission they did not create', async () => {
+    const shiftId = await openShift(D_OTHERREV, WAITER12);
+    const w = await loginAs(WAITER12);
+    await w.post('/api/v1/collections').send({
+      shiftId,
+      paymentMethod: 'CASH',
+      amount: '1500.00',
+    });
+    const mA = await loginAs(MANAGER);
+    const c = await mA.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
+      cashHandedOver: '2500.00',
+      receivedByUserId: managerId,
+    });
+    expect(c.status).toBe(201);
+    const reconId = c.body.reconciliation.id;
+
+    const mB = await loginAs(MANAGER2);
+    const review = await mB.post('/api/v1/reconciliations/' + reconId + '/review').send({
+      decision: 'APPROVE',
+    });
+    expect(review.status).toBe(200);
+    expect(review.body.reconciliation.status).toBe('REVIEWED');
   });
 });

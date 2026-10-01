@@ -46,3 +46,12 @@ export const CloseMoneySchema = z.object({
 });
 
 export type CloseMoneyInput = z.infer<typeof CloseMoneySchema>;
+
+export const CompleteShiftSchema = z.object({
+  expenses: z.array(ExpenseLineSchema).optional(),
+  cashHandedOver: MoneyString,
+  receivedByUserId: z.string().min(1),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+
+export type CompleteShiftInput = z.infer<typeof CompleteShiftSchema>;

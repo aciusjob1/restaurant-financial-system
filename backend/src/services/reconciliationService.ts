@@ -308,6 +308,17 @@ export async function reviewReconciliation(input: {
 
   const existing = await prisma.reconciliation.findUnique({ where: { id: input.id } });
   if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Reconciliation not found.');
+
+  // Separation of duties: a MANAGER cannot review their own submission.
+  // OWNER is the final authority and may self-review to avoid deadlock.
+  if (input.actor.role === 'MANAGER' && existing.createdBy === input.actor.id) {
+    throw new ApiError(
+      403,
+      'SELF_REVIEW_FORBIDDEN',
+      'A manager cannot review their own submission. Ask an owner to review.'
+    );
+  }
+
   if (existing.status !== 'SUBMITTED') {
     throw new ApiError(
       409,
