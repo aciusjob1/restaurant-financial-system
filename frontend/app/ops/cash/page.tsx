@@ -22,6 +22,7 @@ type Shift = {
 type Collection = {
   id: string;
   shiftId: string;
+  paymentMethod: string;
   amount: string;
   voidedAt: string | null;
 };
@@ -259,6 +260,7 @@ export default function CashPage() {
 
   function openCollectionForm(shift: Shift) {
     setErr(null); setFlash(null);
+    setCloseFormShiftId(null);
     setCollShiftId(shift.id);
     setCollMethod('CASH');
     setCollAmount('');
@@ -310,6 +312,7 @@ export default function CashPage() {
 
   function openCloseForm(shift: Shift) {
     setErr(null); setFlash(null);
+    setCollShiftId(null);
     setCloseFormShiftId(shift.id);
     setCloseCash(''); setCloseMpesa(''); setCloseAirtel(''); setCloseTigo('');
     setCloseHalo(''); setCloseBank(''); setCloseCard(''); setCloseOther('');
@@ -368,7 +371,7 @@ export default function CashPage() {
           description: row.description.trim(),
           paidByUserId: row.paidByUserId || null,
         }));
-      await apiFetch('/api/v1/shifts/' + shift.id + '/close-money', {
+      await apiFetch('/api/v1/shifts/' + shift.id + '/submit', {
         method: 'POST',
         body: JSON.stringify({
           collections,
@@ -711,8 +714,41 @@ export default function CashPage() {
                           </div>
                         </div>
 
+                        <div className='rounded-xl bg-slate-50 border border-slate-200 p-3'>
+                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.existingHeading')}</div>
+                          {(() => {
+                            const existing = collections.filter((c) => c.shiftId === r.shift.id && !c.voidedAt);
+                            if (existing.length === 0) {
+                              return <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.existingNone')}</div>;
+                            }
+                            const byMethod: Record<string, number> = {};
+                            for (const c of existing) {
+                              byMethod[c.paymentMethod] = (byMethod[c.paymentMethod] ?? 0) + (parseFloat(c.amount) || 0);
+                            }
+                            let sum = 0;
+                            const rows = Object.keys(byMethod).map((m) => {
+                              sum += byMethod[m];
+                              return (
+                                <div key={m} className='flex justify-between text-sm'>
+                                  <span>{m.replace(/_/g, ' ')}</span>
+                                  <span className='font-mono'>{byMethod[m].toFixed(2)}</span>
+                                </div>
+                              );
+                            });
+                            return (
+                              <div className='space-y-1'>
+                                {rows}
+                                <div className='flex justify-between text-sm font-medium border-t border-slate-200 pt-1'>
+                                  <span>{t('ops.cashFlow.closeForm.existingTotal')}</span>
+                                  <span className='font-mono'>{sum.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
                         <div>
-                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.receivedHeading')}</div>
+                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.additionalHeading')}</div>
                           <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
                             <DecimalField label='Cash' value={closeCash} onChange={setCloseCash} placeholder='0.00' />
                             <DecimalField label='MPesa' value={closeMpesa} onChange={setCloseMpesa} placeholder='0.00' />
@@ -817,9 +853,12 @@ export default function CashPage() {
                         />
 
                         {(() => {
+                          const existing = collections.filter((c) => c.shiftId === r.shift.id && !c.voidedAt);
+                          const existingCash = existing.filter((c) => c.paymentMethod === 'CASH').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+                          const existingMobile = existing.filter((c) => c.paymentMethod === 'MPESA' || c.paymentMethod === 'AIRTEL_MONEY' || c.paymentMethod === 'TIGO_PESA' || c.paymentMethod === 'HALOPESA').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
                           const opening = parseFloat(r.shift.openingCash ?? '0') || 0;
-                          const cashIn = parseFloat(closeCash) || 0;
-                          const mobileIn = (parseFloat(closeMpesa) || 0) + (parseFloat(closeAirtel) || 0) + (parseFloat(closeTigo) || 0) + (parseFloat(closeHalo) || 0);
+                          const cashIn = existingCash + (parseFloat(closeCash) || 0);
+                          const mobileIn = existingMobile + (parseFloat(closeMpesa) || 0) + (parseFloat(closeAirtel) || 0) + (parseFloat(closeTigo) || 0) + (parseFloat(closeHalo) || 0);
                           const cashOut = closeExpenses.reduce((acc, e) => e.paymentMethod === 'CASH' ? acc + (parseFloat(e.amount) || 0) : acc, 0);
                           const expected = opening + cashIn - cashOut;
                           const actual = parseFloat(closeCashHandedOver) || 0;
