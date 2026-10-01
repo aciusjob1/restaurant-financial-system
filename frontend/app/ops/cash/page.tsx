@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import {
-  DecimalField, SelectField, TextField, FormError,
+  DecimalField, SelectField, TextField, TextArea, FormError,
 } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
@@ -31,6 +31,9 @@ type Reconciliation = {
   id: string;
   shiftId: string;
   status: 'DRAFT' | 'SUBMITTED' | 'REVIEWED';
+  expectedCash?: string | null;
+  actualCash?: string | null;
+  cashDifference?: string | null;
 };
 
 type Handover = {
@@ -54,6 +57,15 @@ type Expense = {
 type ExpenseCategory = { id: string; name: string; isActive: boolean };
 
 type User = { id: string; fullName: string; role: string };
+
+type CloseExpense = {
+  id: string;
+  categoryId: string;
+  amount: string;
+  paymentMethod: string;
+  description: string;
+  paidByUserId: string;
+};
 type Closing = { id: string; businessDate: string; status: string };
 
 const PAYMENT_METHODS = [
@@ -82,13 +94,11 @@ function deriveState(
 ): FlowState {
   if (shift.status === 'CLOSED') return 'closed';
   if (shift.status === 'RECONCILING') return 'ready_to_close';
-  if (shift.status === 'OPEN') return 'open';
+  if (shift.status === 'OPEN' && !recon) return 'open';
   if (!recon) return 'awaiting_recon';
   if (recon.status === 'DRAFT') return 'awaiting_recon';
-  if (!handover) {
-    if (recon.status === 'SUBMITTED') return 'awaiting_review';
-    return 'awaiting_handover';
-  }
+  if (recon.status === 'SUBMITTED') return 'awaiting_review';
+  if (!handover) return 'awaiting_handover';
   if (handover.status === 'PENDING') return 'awaiting_confirm';
   return 'awaiting_close_mid';
 }
@@ -155,14 +165,21 @@ export default function CashPage() {
   const [closeShiftId, setCloseShiftId] = useState<string | null>(null);
   const [closeDayConfirming, setCloseDayConfirming] = useState(false);
 
-  // inline expense form state
-  const [expenseShiftId, setExpenseShiftId] = useState<string | null>(null);
-  const [expenseCategoryId, setExpenseCategoryId] = useState('');
-  const [expenseAmount, setExpenseAmount] = useState('');
-  const [expenseMethod, setExpenseMethod] = useState<string>('CASH');
-  const [expenseDescription, setExpenseDescription] = useState('');
-  const [expensePaidByUserId, setExpensePaidByUserId] = useState('');
-  const [expenseBusy, setExpenseBusy] = useState(false);
+  // close-shift form state
+  const [closeFormShiftId, setCloseFormShiftId] = useState<string | null>(null);
+  const [closeCash, setCloseCash] = useState('');
+  const [closeMpesa, setCloseMpesa] = useState('');
+  const [closeAirtel, setCloseAirtel] = useState('');
+  const [closeTigo, setCloseTigo] = useState('');
+  const [closeHalo, setCloseHalo] = useState('');
+  const [closeBank, setCloseBank] = useState('');
+  const [closeCard, setCloseCard] = useState('');
+  const [closeOther, setCloseOther] = useState('');
+  const [closeExpenses, setCloseExpenses] = useState<CloseExpense[]>([]);
+  const [closeCashHandedOver, setCloseCashHandedOver] = useState('');
+  const [closeReceivedByUserId, setCloseReceivedByUserId] = useState('');
+  const [closeNotes, setCloseNotes] = useState('');
+  const [closeBusy, setCloseBusy] = useState(false);
 
   function load() {
     setLoading(true);
@@ -231,50 +248,90 @@ export default function CashPage() {
     setConfirmHandoverId(null); setConfirmHandoverNotes('');
     setSendBackReconId(null); setSendBackReason('');
     setCloseShiftId(null); setCloseDayConfirming(false);
-    setExpenseShiftId(null); setExpenseAmount(''); setExpenseDescription('');
-    setExpenseCategoryId(''); setExpenseMethod('CASH'); setExpensePaidByUserId('');
+    setCloseFormShiftId(null);
+    setCloseCash(''); setCloseMpesa(''); setCloseAirtel(''); setCloseTigo('');
+    setCloseHalo(''); setCloseBank(''); setCloseCard(''); setCloseOther('');
+    setCloseExpenses([]);
+    setCloseCashHandedOver(''); setCloseReceivedByUserId(''); setCloseNotes('');
   }
 
-  function openExpenseForm(shift: Shift) {
+  function openCloseForm(shift: Shift) {
     setErr(null); setFlash(null);
-    setExpenseShiftId(shift.id);
-    setExpenseCategoryId(categories.length > 0 ? categories[0].id : '');
-    setExpenseAmount('');
-    setExpenseMethod('CASH');
-    setExpenseDescription('');
-    setExpensePaidByUserId(shift.userId ?? '');
+    setCloseFormShiftId(shift.id);
+    setCloseCash(''); setCloseMpesa(''); setCloseAirtel(''); setCloseTigo('');
+    setCloseHalo(''); setCloseBank(''); setCloseCard(''); setCloseOther('');
+    setCloseExpenses([]);
+    setCloseCashHandedOver('');
+    setCloseReceivedByUserId(myId);
+    setCloseNotes('');
   }
 
-  async function submitExpense(e: FormEvent, shift: Shift) {
+  function addCloseExpense(ownerId: string) {
+    setCloseExpenses((prev) => [
+      ...prev,
+      {
+        id: 'e' + Date.now() + Math.random().toString(36).slice(2, 8),
+        categoryId: categories.length > 0 ? categories[0].id : '',
+        amount: '',
+        paymentMethod: 'CASH',
+        description: '',
+        paidByUserId: ownerId,
+      },
+    ]);
+  }
+
+  function updateCloseExpense(id: string, patch: Partial<CloseExpense>) {
+    setCloseExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+  function removeCloseExpense(id: string) {
+    setCloseExpenses((prev) => prev.filter((e) => e.id !== id));
+  }
+
+  async function submitCloseForm(e: FormEvent, shift: Shift) {
     e.preventDefault();
     setErr(null); setFlash(null);
-    if (!expenseCategoryId) { setErr({ code: 'CATEGORY_REQUIRED', message: 'Select a category.' }); return; }
-    if (!expenseAmount.trim()) { setErr({ code: 'AMOUNT_REQUIRED', message: 'Amount is required.' }); return; }
-    if (!expenseDescription.trim()) { setErr({ code: 'DESC_REQUIRED', message: 'Description is required.' }); return; }
-    setExpenseBusy(true);
+    if (!closeReceivedByUserId) {
+      setErr({ code: 'RECEIVER_REQUIRED', message: 'Select who received the cash.' });
+      return;
+    }
+    setCloseBusy(true);
     try {
-      const body: Record<string, unknown> = {
-        businessDate: shift.businessDate,
-        categoryId: expenseCategoryId,
-        shiftId: shift.id,
-        amount: expenseAmount.trim(),
-        paymentMethod: expenseMethod,
-        description: expenseDescription.trim(),
-      };
-      if (expensePaidByUserId) body.paidByUserId = expensePaidByUserId;
-      if (isOwner) body.autoApprove = true;
-      else if (myRole === 'MANAGER') body.submitNow = true;
-      await apiFetch('/api/v1/expenses', {
+      const collections: Record<string, string> = {};
+      if (closeCash.trim()) collections.cash = closeCash.trim();
+      if (closeMpesa.trim()) collections.mpesa = closeMpesa.trim();
+      if (closeAirtel.trim()) collections.airtelMoney = closeAirtel.trim();
+      if (closeTigo.trim()) collections.tigoPesa = closeTigo.trim();
+      if (closeHalo.trim()) collections.halopesa = closeHalo.trim();
+      if (closeBank.trim()) collections.bank = closeBank.trim();
+      if (closeCard.trim()) collections.card = closeCard.trim();
+      if (closeOther.trim()) collections.other = closeOther.trim();
+      const expensesPayload = closeExpenses
+        .filter((row) => row.categoryId && row.amount.trim() && row.description.trim())
+        .map((row) => ({
+          categoryId: row.categoryId,
+          amount: row.amount.trim(),
+          paymentMethod: row.paymentMethod,
+          description: row.description.trim(),
+          paidByUserId: row.paidByUserId || null,
+        }));
+      await apiFetch('/api/v1/shifts/' + shift.id + '/close-money', {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          collections,
+          expenses: expensesPayload,
+          cashHandedOver: closeCashHandedOver.trim() || '0.00',
+          receivedByUserId: closeReceivedByUserId,
+          notes: closeNotes.trim() || null,
+        }),
       });
-      setFlash(t('ops.cashFlow.flash.expenseRecorded'));
+      setFlash(t('ops.cashFlow.flash.shiftClosed'));
       clearInline();
       load();
     } catch (e2) {
       if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
     } finally {
-      setExpenseBusy(false);
+      setCloseBusy(false);
     }
   }
 
@@ -407,16 +464,33 @@ export default function CashPage() {
                             ? <span className='font-mono'>{r.expenseTotal.toFixed(2)}</span>
                             : <span className='text-slate-400'>{t('ops.cashFlow.row.noExpenses')}</span>}
                         </div>
+                        {r.recon?.expectedCash && (
+                          <>
+                            <div className='mt-0.5 text-sm text-slate-600'>
+                              {t('ops.cashFlow.row.expected')}: <span className='font-mono'>{r.recon.expectedCash}</span>
+                            </div>
+                            {r.recon.actualCash !== null && r.recon.actualCash !== undefined && (
+                              <div className='mt-0.5 text-sm text-slate-600'>
+                                {t('ops.cashFlow.row.handover')}: <span className='font-mono'>{r.recon.actualCash}</span>
+                              </div>
+                            )}
+                            {r.recon.cashDifference !== null && r.recon.cashDifference !== undefined && (
+                              <div className={'mt-0.5 text-sm ' + (r.recon.cashDifference === '0.00' ? 'text-emerald-700' : 'text-amber-700')}>
+                                {t('ops.cashFlow.row.difference')}: <span className='font-mono'>{r.recon.cashDifference}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
 
                       {isManager && isOpenShift && (
                         <button
                           type='button'
-                          onClick={() => openExpenseForm(r.shift)}
+                          onClick={() => openCloseForm(r.shift)}
                           disabled={isBusyRow}
-                          className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60'
+                          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
                         >
-                          {t('ops.cashFlow.row.addExpense')}
+                          {t('ops.cashFlow.row.action.close')}
                         </button>
                       )}
 
@@ -464,57 +538,151 @@ export default function CashPage() {
                       )}
                     </div>
 
-                    {expenseShiftId === r.shift.id && (
-                      <form onSubmit={(e) => submitExpense(e, r.shift)} className='border-t border-slate-100 pt-3 space-y-3'>
-                        <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.row.expenseFormHeading')}</h3>
-                        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
-                          <SelectField
-                            label={t('form.category')}
-                            value={expenseCategoryId}
-                            onChange={setExpenseCategoryId}
-                            required
-                            options={categories.map((c) => ({ value: c.id, label: c.name }))}
-                          />
-                          <DecimalField
-                            label={t('form.amount')}
-                            value={expenseAmount}
-                            onChange={setExpenseAmount}
-                            placeholder='0.00'
-                            required
-                          />
-                          <SelectField
-                            label={t('form.paymentMethod')}
-                            value={expenseMethod}
-                            onChange={setExpenseMethod}
-                            options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
-                          />
-                          <TextField
-                            label={t('form.description')}
-                            value={expenseDescription}
-                            onChange={setExpenseDescription}
-                            required
-                          />
-                          <SelectField
-                            label={t('form.paidBy')}
-                            value={expensePaidByUserId}
-                            onChange={setExpensePaidByUserId}
-                            options={[{ value: '', label: t('common.notSpecified') }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
-                          />
+                    {closeFormShiftId === r.shift.id && (
+                      <form onSubmit={(e) => submitCloseForm(e, r.shift)} className='border-t border-slate-100 pt-3 space-y-4'>
+                        <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.closeForm.heading')}</h3>
+
+                        <div>
+                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.receivedHeading')}</div>
+                          <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
+                            <DecimalField label='Cash' value={closeCash} onChange={setCloseCash} placeholder='0.00' />
+                            <DecimalField label='MPesa' value={closeMpesa} onChange={setCloseMpesa} placeholder='0.00' />
+                            <DecimalField label='Airtel Money' value={closeAirtel} onChange={setCloseAirtel} placeholder='0.00' />
+                            <DecimalField label='Tigo Pesa' value={closeTigo} onChange={setCloseTigo} placeholder='0.00' />
+                            <DecimalField label='HaloPesa' value={closeHalo} onChange={setCloseHalo} placeholder='0.00' />
+                            <DecimalField label='Bank' value={closeBank} onChange={setCloseBank} placeholder='0.00' />
+                            <DecimalField label='Card' value={closeCard} onChange={setCloseCard} placeholder='0.00' />
+                            <DecimalField label='Other' value={closeOther} onChange={setCloseOther} placeholder='0.00' />
+                          </div>
                         </div>
+
+                        <div>
+                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.expensesHeading')}</div>
+                          {closeExpenses.length === 0 && (
+                            <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.noExpenses')}</div>
+                          )}
+                          {closeExpenses.map((row) => (
+                            <div key={row.id} className='grid grid-cols-1 md:grid-cols-12 gap-3 items-end mb-3'>
+                              <div className='md:col-span-3'>
+                                <SelectField
+                                  label={t('form.category')}
+                                  value={row.categoryId}
+                                  onChange={(v) => updateCloseExpense(row.id, { categoryId: v })}
+                                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                                />
+                              </div>
+                              <div className='md:col-span-2'>
+                                <DecimalField
+                                  label={t('form.amount')}
+                                  value={row.amount}
+                                  onChange={(v) => updateCloseExpense(row.id, { amount: v })}
+                                  placeholder='0.00'
+                                />
+                              </div>
+                              <div className='md:col-span-2'>
+                                <SelectField
+                                  label={t('form.paymentMethod')}
+                                  value={row.paymentMethod}
+                                  onChange={(v) => updateCloseExpense(row.id, { paymentMethod: v })}
+                                  options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
+                                />
+                              </div>
+                              <div className='md:col-span-3'>
+                                <TextField
+                                  label={t('form.description')}
+                                  value={row.description}
+                                  onChange={(v) => updateCloseExpense(row.id, { description: v })}
+                                />
+                              </div>
+                              <div className='md:col-span-2'>
+                                <SelectField
+                                  label={t('form.paidBy')}
+                                  value={row.paidByUserId}
+                                  onChange={(v) => updateCloseExpense(row.id, { paidByUserId: v })}
+                                  options={[{ value: '', label: t('common.notSpecified') }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
+                                />
+                              </div>
+                              <div className='md:col-span-12 flex justify-end'>
+                                <button
+                                  type='button'
+                                  onClick={() => removeCloseExpense(row.id)}
+                                  className='text-xs text-red-600 hover:text-red-700'
+                                >
+                                  {t('ops.cashFlow.closeForm.removeExpense')}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          <button
+                            type='button'
+                            onClick={() => addCloseExpense(r.shift.userId ?? '')}
+                            className='text-sm text-slate-600 hover:text-slate-900'
+                          >
+                            {t('ops.cashFlow.closeForm.addExpense')}
+                          </button>
+                        </div>
+
+                        <div>
+                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.handoverHeading')}</div>
+                          <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+                            <DecimalField
+                              label={t('ops.cashFlow.closeForm.cashHandedOver')}
+                              value={closeCashHandedOver}
+                              onChange={setCloseCashHandedOver}
+                              placeholder='0.00'
+                            />
+                            <SelectField
+                              label={t('form.receiver')}
+                              value={closeReceivedByUserId}
+                              onChange={setCloseReceivedByUserId}
+                              options={[{ value: '', label: t('form.selectPlaceholder') }, ...users.filter((u) => u.role === 'MANAGER' || u.role === 'OWNER').map((u) => ({ value: u.id, label: u.fullName }))]}
+                            />
+                          </div>
+                        </div>
+
+                        <TextArea
+                          label={t('form.notesOptional')}
+                          value={closeNotes}
+                          onChange={setCloseNotes}
+                          rows={2}
+                        />
+
+                        {(() => {
+                          const opening = parseFloat(r.shift.openingCash ?? '0') || 0;
+                          const cashIn = parseFloat(closeCash) || 0;
+                          const mobileIn = (parseFloat(closeMpesa) || 0) + (parseFloat(closeAirtel) || 0) + (parseFloat(closeTigo) || 0) + (parseFloat(closeHalo) || 0);
+                          const cashOut = closeExpenses.reduce((acc, e) => e.paymentMethod === 'CASH' ? acc + (parseFloat(e.amount) || 0) : acc, 0);
+                          const expected = opening + cashIn - cashOut;
+                          const actual = parseFloat(closeCashHandedOver) || 0;
+                          const diff = actual - expected;
+                          return (
+                            <div className='rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm space-y-1'>
+                              <div className='text-xs uppercase tracking-wide text-slate-500 mb-1'>{t('ops.cashFlow.closeForm.summaryHeading')}</div>
+                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.opening')}</span><span className='font-mono'>{opening.toFixed(2)}</span></div>
+                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashCollected')}</span><span className='font-mono'>{cashIn.toFixed(2)}</span></div>
+                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashExpenses')}</span><span className='font-mono'>-{cashOut.toFixed(2)}</span></div>
+                              <div className='flex justify-between font-medium border-t border-slate-200 pt-1'><span>{t('ops.cashFlow.closeForm.expected')}</span><span className='font-mono'>{expected.toFixed(2)}</span></div>
+                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashHandedOver')}</span><span className='font-mono'>{actual.toFixed(2)}</span></div>
+                              <div className={'flex justify-between font-medium ' + (diff === 0 ? 'text-emerald-700' : 'text-amber-700')}><span>{t('ops.cashFlow.closeForm.difference')}</span><span className='font-mono'>{diff.toFixed(2)}</span></div>
+                              <div className='flex justify-between text-slate-600 pt-1'><span>{t('ops.cashFlow.closeForm.mobile')}</span><span className='font-mono'>{mobileIn.toFixed(2)}</span></div>
+                            </div>
+                          );
+                        })()}
+
                         <div className='flex gap-2 justify-end'>
                           <button
                             type='button'
-                            onClick={() => { setExpenseShiftId(null); }}
+                            onClick={() => { setCloseFormShiftId(null); setCloseExpenses([]); }}
                             className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'
                           >
                             {t('action.cancel')}
                           </button>
                           <button
                             type='submit'
-                            disabled={expenseBusy}
+                            disabled={closeBusy}
                             className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
                           >
-                            {expenseBusy ? t('ops.cashFlow.row.expenseSubmitting') : t('ops.cashFlow.row.expenseSubmit')}
+                            {closeBusy ? t('ops.cashFlow.closeForm.submitting') : t('ops.cashFlow.closeForm.submit')}
                           </button>
                         </div>
                       </form>

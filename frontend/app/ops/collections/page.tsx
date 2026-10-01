@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { SecondarySurfaceBanner } from '@/components/ops/SecondarySurfaceBanner';
 import {
   SelectField, DecimalField, TextField, TextArea, FormError, SubmitButton,
 } from '@/components/ops/Form';
@@ -144,6 +145,8 @@ export default function CollectionsPage() {
         title={t('ops.collections.title')}
         subtitle={t('ops.collections.subtitle')}
       />
+
+      <SecondarySurfaceBanner />
 
       <div className='rounded-2xl border border-slate-200 bg-white p-4 flex flex-wrap items-end gap-3'>
         <div className='w-72'>
