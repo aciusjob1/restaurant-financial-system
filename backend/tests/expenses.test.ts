@@ -27,6 +27,8 @@ const D_WAITER_CREATE = '2099-08-06';
 const D_WAITER_SCOPE  = '2099-08-07';
 const D_WAITER_EDIT   = '2099-08-08';
 const D_AUTOAPPROVE   = '2099-08-09';
+const D_SHIFT_NOW     = '2099-08-10';
+const D_SHIFT_MISMATCH = '2099-08-11';
 
 const TEST_CATEGORY = 'Phase10 Test Category';
 
@@ -45,7 +47,7 @@ async function cleanup() {
   await prisma.expenseCategory.deleteMany({ where: { name: TEST_CATEGORY } });
 
   // Clean closings on the dates we used
-  const dates = [D_BASIC, D_CLOSED, D_LIFECYCLE, D_FILTERS, D_ATTACH, D_WAITER_CREATE, D_WAITER_SCOPE, D_WAITER_EDIT, D_AUTOAPPROVE].map(
+  const dates = [D_BASIC, D_CLOSED, D_LIFECYCLE, D_FILTERS, D_ATTACH, D_WAITER_CREATE, D_WAITER_SCOPE, D_WAITER_EDIT, D_AUTOAPPROVE, D_SHIFT_NOW, D_SHIFT_MISMATCH].map(
     (d) => new Date(`${d}T00:00:00.000Z`)
   );
   await prisma.dailyClosing.deleteMany({ where: { businessDate: { in: dates } } });
@@ -643,5 +645,114 @@ describe('Expenses - auto-approve (OWNER Record & Approve)', () => {
     expect(res.status).toBe(201);
     expect(res.body.expense.status).toBe('APPROVED');
     expect(res.body.expense.selfApproved).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Create expense on a shift (submitNow + shift-date guard)', () => {
+  let ownerId: string;
+  let managerId: string;
+  let waiterId: string;
+  let shiftId: string;
+
+  beforeAll(async () => {
+    const o = await loginAs(OWNER);
+    const me = await o.get('/api/v1/auth/me');
+    ownerId = me.body.user.id;
+
+    const users = await prisma.user.findMany({
+      where: { username: { in: [MANAGER.username, WAITER.username, WAITER2.username] } },
+      select: { id: true, username: true },
+    });
+    managerId = users.find((u) => u.username === MANAGER.username)!.id;
+    waiterId = users.find((u) => u.username === WAITER.username)!.id;
+
+    // WAITER opens a shift on D_SHIFT_NOW (also creates the collection-less OPEN state).
+    const w = await loginAs(WAITER2);
+    const sh = await w.post('/api/v1/shifts').send({ businessDate: D_SHIFT_NOW, openingCash: '0.00' });
+    expect(sh.status).toBe(201);
+    shiftId = sh.body.shift.id;
+  });
+
+  // Cleanup is handled by the outer afterAll: cleanup() deletes shifts +
+  // expenses by username, and both WAITER2 and the manager/owner users
+  // are in that list.
+
+  it('MANAGER + submitNow=true creates PENDING with submittedAt set', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/expenses').send({
+      businessDate: D_SHIFT_NOW,
+      categoryId: testCategoryId,
+      shiftId,
+      amount: '5000.00',
+      paymentMethod: 'CASH',
+      description: 'Gas refill',
+      submitNow: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.status).toBe('PENDING');
+    expect(res.body.expense.submittedAt).toBeTruthy();
+    expect(res.body.expense.approvedAt).toBeNull();
+    expect(res.body.expense.shiftId).toBe(shiftId);
+  });
+
+  it('MANAGER without submitNow still creates DRAFT', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/expenses').send({
+      businessDate: D_SHIFT_NOW,
+      categoryId: testCategoryId,
+      shiftId,
+      amount: '1200.00',
+      paymentMethod: 'CASH',
+      description: 'Draft on shift',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.status).toBe('DRAFT');
+    expect(res.body.expense.submittedAt).toBeNull();
+  });
+
+  it('OWNER + submitNow=true is ignored: creates DRAFT (OWNER uses autoApprove)', async () => {
+    const o = await loginAs(OWNER);
+    const res = await o.post('/api/v1/expenses').send({
+      businessDate: D_SHIFT_NOW,
+      categoryId: testCategoryId,
+      shiftId,
+      amount: '700.00',
+      paymentMethod: 'CASH',
+      description: 'Owner submitNow noop',
+      submitNow: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.expense.status).toBe('DRAFT');
+  });
+
+  it('rejects when shift businessDate does not match the expense date (SHIFT_DATE_MISMATCH)', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/expenses').send({
+      businessDate: D_SHIFT_MISMATCH,
+      categoryId: testCategoryId,
+      shiftId,
+      amount: '100.00',
+      paymentMethod: 'CASH',
+      description: 'Wrong day',
+      submitNow: true,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('SHIFT_DATE_MISMATCH');
+  });
+
+  it('rejects a nonexistent shiftId with INVALID_SHIFT', async () => {
+    const m = await loginAs(MANAGER);
+    const res = await m.post('/api/v1/expenses').send({
+      businessDate: D_SHIFT_NOW,
+      categoryId: testCategoryId,
+      shiftId: 'nonexistent-shift-id',
+      amount: '100.00',
+      paymentMethod: 'CASH',
+      description: 'Bad shift id',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_SHIFT');
   });
 });

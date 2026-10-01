@@ -135,6 +135,7 @@ export async function createExpense(input: {
   attachmentPath?: string | null;
   notes?: string | null;
   autoApprove?: boolean;
+  submitNow?: boolean;
 }) {
   if (
     input.actor.role !== 'OWNER' &&
@@ -165,6 +166,14 @@ export async function createExpense(input: {
     if (input.actor.role === 'WAITER' && shift.userId !== input.actor.id) {
       throw new ApiError(403, 'FORBIDDEN', 'Shift does not belong to you.');
     }
+    const shiftDate = shift.businessDate.toISOString().slice(0, 10);
+    if (shiftDate !== input.businessDate) {
+      throw new ApiError(
+        400,
+        'SHIFT_DATE_MISMATCH',
+        'Shift business date does not match the expense date.'
+      );
+    }
   }
 
   if (input.paidByUserId) {
@@ -184,13 +193,14 @@ export async function createExpense(input: {
 
   const isAutoApprove =
     input.autoApprove === true && input.actor.role === 'OWNER';
+  const wantsSubmit = input.submitNow === true && input.actor.role === 'MANAGER';
   const now = new Date();
   const initialStatus = isAutoApprove
     ? 'APPROVED'
-    : isWaiter
+    : isWaiter || wantsSubmit
       ? 'PENDING'
       : 'DRAFT';
-  const initialSubmittedAt = isAutoApprove || isWaiter ? now : null;
+  const initialSubmittedAt = isAutoApprove || isWaiter || wantsSubmit ? now : null;
   const initialApprovedBy = isAutoApprove ? input.actor.id : null;
   const initialApprovedAt = isAutoApprove ? now : null;
 
@@ -234,6 +244,7 @@ export async function updateExpense(input: {
   attachmentPath?: string | null;
   notes?: string | null;
   autoApprove?: boolean;
+  submitNow?: boolean;
 }) {
   const existing = await prisma.expense.findUnique({ where: { id: input.id } });
   if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Expense not found.');
