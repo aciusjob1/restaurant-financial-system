@@ -22,7 +22,8 @@ const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA', 'HALOPESA', 'BANK', 'CARD', 'OTHER',
 ] as const;
 
-type ExpenseCategory = { id: string; name: string; isActive: boolean };
+type ExpenseCategory = { id: string; name: string; isActive: boolean; systemKey: string | null };
+type Employee = { id: string; fullName: string; isActive: boolean };
 
 type Expense = {
   id: string;
@@ -35,6 +36,7 @@ type Expense = {
   status: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
   createdBy: string;
   paidByUserId: string | null;
+  salaryTargetEmployeeId: string | null;
 };
 
 type MeResponse = {
@@ -83,6 +85,8 @@ function ExpensesContent() {
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('CASH');
   const [paidByUserId, setPaidByUserId] = useState('');
+  const [salaryTargetEmployeeId, setSalaryTargetEmployeeId] = useState('');
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [description, setDescription] = useState('');
   const [receiptNumber, setReceiptNumber] = useState('');
   const [notes, setNotes] = useState('');
@@ -91,6 +95,9 @@ function ExpensesContent() {
   const [rejectTarget, setRejectTarget] = useState<Expense | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectBusy, setRejectBusy] = useState(false);
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const reload = useCallback(
     async (status: string, withRejected: boolean) => {
@@ -124,10 +131,19 @@ function ExpensesContent() {
     apiFetch<{ success: true; users: Array<{ id: string; fullName: string; username: string }> }>('/api/v1/users')
       .then((res) => setUsers(res.users))
       .catch(() => {});
+    apiFetch<{ success: true; employees: Employee[] }>('/api/v1/employees')
+      .then((res) => setEmployees(res.employees.filter((e) => e.isActive)))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { void reload(statusFilter, includeRejected); }, [reload, statusFilter, includeRejected]);
+
+  const selectedCategory = categories.find((c) => c.id === categoryId);
+  const isSalaryCategory = selectedCategory?.systemKey === 'SALARY';
+  useEffect(() => {
+    if (!isSalaryCategory) setSalaryTargetEmployeeId('');
+  }, [isSalaryCategory]);
 
   function onCreate(ev: FormEvent) {
     ev.preventDefault();
@@ -146,6 +162,7 @@ function ExpensesContent() {
         description: description.trim(),
       };
       if (paidByUserId) body.paidByUserId = paidByUserId;
+      if (isSalaryCategory && salaryTargetEmployeeId) body.salaryTargetEmployeeId = salaryTargetEmployeeId;
       if (receiptNumber.trim()) body.receiptNumber = receiptNumber.trim();
       if (notes.trim()) body.notes = notes.trim();
       if (autoApprove) body.autoApprove = true;
@@ -197,6 +214,33 @@ function ExpensesContent() {
     }
   }
 
+  const approvableIds = rows
+    .filter((x) => x.status === 'PENDING')
+    .filter((x) => myId != null && x.createdBy !== myId)
+    .concat(
+      myRole === 'OWNER'
+        ? rows.filter((x) => x.status === 'PENDING' && myId != null && x.createdBy === myId)
+        : []
+    )
+    .map((x) => x.id);
+
+  async function confirmBulkApprove() {
+    setBulkBusy(true);
+    setError(null);
+    try {
+      await apiFetch<{ success: true; approved: number; skipped: Array<{ id: string; reason: string }> }>(
+        OPS_PATHS.expenses + '/bulk-approve',
+        { method: 'POST', body: JSON.stringify({ ids: approvableIds }) }
+      );
+      setBulkOpen(false);
+      await reload(statusFilter, includeRejected);
+    } catch (e) {
+      if (e instanceof ApiError) setError({ code: e.code, message: e.message });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <OpsShell>
       <OpsHeader
@@ -224,7 +268,7 @@ function ExpensesContent() {
             value={categoryId}
             onChange={setCategoryId}
             required
-            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            options={categories.map((c) => ({ value: c.id, label: c.systemKey === 'SALARY' ? t('expenseCategory.SALARY') : c.name }))}
           />
           <DecimalField label={t('form.amount')} value={amount} onChange={setAmount} placeholder='0.00' required />
           <SelectField
@@ -240,6 +284,15 @@ function ExpensesContent() {
             onChange={setPaidByUserId}
             options={[{ value: '', label: t('common.notSpecified') }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
           />
+          {isSalaryCategory && (
+            <SelectField
+              label='Employee (salary target)'
+              value={salaryTargetEmployeeId}
+              onChange={setSalaryTargetEmployeeId}
+              required
+              options={[{ value: '', label: 'Select an employee' }, ...employees.map((e) => ({ value: e.id, label: e.fullName }))]}
+            />
+          )}
         </div>
         <TextField label={t('form.description')} value={description} onChange={setDescription} required />
         <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
@@ -284,7 +337,18 @@ function ExpensesContent() {
             {t('common.includeRejected')}
           </label>
         </div>
-        {loading && <span className='text-xs text-slate-400'>{t('common.loading')}</span>}
+        <div className='flex items-center gap-3'>
+          {approvableIds.length > 0 && (
+            <button
+              type='button'
+              onClick={() => setBulkOpen(true)}
+              className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium'
+            >
+              Approve {approvableIds.length} pending
+            </button>
+          )}
+          {loading && <span className='text-xs text-slate-400'>{t('common.loading')}</span>}
+        </div>
       </div>
 
       <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
@@ -293,24 +357,33 @@ function ExpensesContent() {
             <tr>
               <th className='text-left px-3 py-2 font-medium'>{t('table.date')}</th>
               <th className='text-left px-3 py-2 font-medium'>#</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.category')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('table.description')}</th>
               <th className='text-right px-3 py-2 font-medium'>{t('table.amount')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('table.method')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('form.paidBy')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
+              <th className='text-left px-3 py-2 font-medium'>{t('table.employee')}</th>
               <th className='text-right px-3 py-2 font-medium'>{t('table.action')}</th>
             </tr>
           </thead>
           <tbody className='divide-y divide-slate-100'>
             {rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className='px-3 py-6 text-center text-slate-500'>{t('ops.expenses.empty')}</td>
+                <td colSpan={10} className='px-3 py-6 text-center text-slate-500'>{t('ops.expenses.empty')}</td>
               </tr>
             )}
             {rows.map((x) => (
               <tr key={x.id} className='hover:bg-slate-50'>
                 <td className='px-3 py-2 text-slate-700'>{x.businessDate}</td>
                 <td className='px-3 py-2 font-mono text-xs text-slate-500'>{x.expenseNumber}</td>
+                <td className='px-3 py-2 text-slate-600'>
+                  {(() => {
+                    const cat = categories.find((c) => c.id === x.categoryId);
+                    if (!cat) return '\u2014';
+                    return cat.systemKey === 'SALARY' ? t('expenseCategory.SALARY') : cat.name;
+                  })()}
+                </td>
                 <td className='px-3 py-2 text-slate-800'>{x.description}</td>
                 <td className='px-3 py-2 text-right font-mono text-slate-700'>{x.amount}</td>
                 <td className='px-3 py-2 text-slate-600'>{x.paymentMethod}</td>
@@ -319,6 +392,11 @@ function ExpensesContent() {
                   <span className={'text-xs px-2 py-0.5 rounded-full ' + statusPill(x.status)}>
                     {t(statusLabelKey(x.status))}
                   </span>
+                </td>
+                <td className='px-3 py-2 text-slate-600'>
+                  {x.salaryTargetEmployeeId
+                    ? (employees.find((e) => e.id === x.salaryTargetEmployeeId)?.fullName ?? '\u2014')
+                    : '\u2014'}
                 </td>
                 <td className='px-3 py-2 text-right space-x-3 whitespace-nowrap'>
                   {x.status === 'DRAFT' && (
@@ -377,6 +455,20 @@ function ExpensesContent() {
         }
         onConfirm={confirmReject}
         onCancel={() => { setRejectTarget(null); setRejectReason(''); }}
+      />
+
+      <ConfirmDialog
+        open={bulkOpen}
+        title='Approve expenses'
+        busy={bulkBusy}
+        confirmLabel={t('action.approve')}
+        body={
+          <p>
+            Approve {approvableIds.length} expense{approvableIds.length === 1 ? '' : 's'}? This cannot be undone.
+          </p>
+        }
+        onConfirm={confirmBulkApprove}
+        onCancel={() => setBulkOpen(false)}
       />
     </OpsShell>
   );
