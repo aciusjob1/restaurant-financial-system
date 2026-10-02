@@ -24,15 +24,15 @@ const FORWARD_ORDER = [
   'Reconciliation',
   'CashHandover',
   'DailyClosing',
-  'Expense',
   'SalaryRecord',
   'SalaryPayment',
+  'Expense',
   'SalaryAdvance',
   'PurchaseInvoice',
+  'Material',
   'PurchaseItem',
   'SupplierPayment',
   'PaymentAllocation',
-  'Material',
   'StockMovement',
 ] as const;
 
@@ -150,16 +150,17 @@ export async function restoreFromBackup(
   await prisma.$transaction(async (tx) => {
     const clients = tx as unknown as DynClient;
 
-    // 1. Delete in reverse FK order.
-    for (let i = FORWARD_ORDER.length - 1; i >= 0; i--) {
-      const table = FORWARD_ORDER[i];
-      if (table === undefined) continue;
-      const client = clients[modelKey(table)];
-      if (!client || typeof client.deleteMany !== 'function') {
-        throw new ApiError(500, 'RESTORE_DELETE_FAILED', 'Missing deleteMany for ' + table);
-      }
-      await client.deleteMany({});
-    }
+    // 1. Wipe every target table in one statement.
+    //
+    // The FK graph has cycles (Material <- PurchaseItem, Material <-
+    // StockMovement, StockMovement <-> StockMovement via reversalOfId),
+    // so no ordering of per-table DELETE statements can satisfy every
+    // constraint. TRUNCATE ... CASCADE handles the whole set atomically.
+    //
+    // No RESTART IDENTITY: sequences are reset explicitly below so the
+    // responsibility stays in one place.
+    const truncateList = FORWARD_ORDER.map((t) => '"' + t + '"').join(', ');
+    await tx.$executeRawUnsafe('TRUNCATE TABLE ' + truncateList + ' CASCADE');
 
     // 2. Insert in forward FK order.
     for (const table of FORWARD_ORDER) {

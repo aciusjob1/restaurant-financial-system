@@ -21,6 +21,7 @@ const EXPORT_ORDER = [
   'Collection',
   'Reconciliation',
   'CashHandover',
+  'DailyClosing',
   'Expense',
   'SalaryRecord',
   'SalaryPayment',
