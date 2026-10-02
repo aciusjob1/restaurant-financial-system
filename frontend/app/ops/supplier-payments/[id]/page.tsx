@@ -182,7 +182,7 @@ export default function SupplierPaymentDetailPage() {
       <OpsShell>
         <OpsHeader title="Supplier Payment" />
         {err && <FormError code={err.code} message={err.message} />}
-        <Link href="/ops/supplier-payments" className="text-sm text-slate-700 underline">
+        <Link href="/ops/purchasing" className="text-sm text-slate-700 underline">
           ← Back to list
         </Link>
       </OpsShell>
@@ -200,7 +200,7 @@ export default function SupplierPaymentDetailPage() {
       <SecondarySurfaceBanner messageKey='ops.purchasing.secondary.banner' targetHref='/ops/purchasing' targetLabelKey='ops.purchasing.secondary.link' />
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <Link href="/ops/supplier-payments" className="text-slate-500 hover:text-slate-900">
+        <Link href="/ops/purchasing" className="text-slate-500 hover:text-slate-900">
           ← All payments
         </Link>
         {isVoided

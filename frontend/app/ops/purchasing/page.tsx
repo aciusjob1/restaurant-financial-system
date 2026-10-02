@@ -611,7 +611,7 @@ export default function PurchasingPage() {
                               onChange={() => toggleManualInvoice(inv.id)}
                             />
                             <span className='font-mono text-xs'>{inv.invoiceNumber}</span>
-                            <span className='text-slate-500'>\u2014 {inv.total}</span>
+                            <span className='text-slate-500'>{'\u2014'} {inv.total}</span>
                           </label>
                         </li>
                       ))}
@@ -667,7 +667,7 @@ export default function PurchasingPage() {
                       </td>
                       <td className='px-3 py-2 font-mono text-xs text-slate-600'>{a.reference}</td>
                       <td className='px-3 py-2 text-slate-700'>
-                        {suppliers.find((su) => su.id === a.supplierId)?.name ?? '\\u2014'}
+                        {suppliers.find((su) => su.id === a.supplierId)?.name ?? '\u2014'}
                       </td>
                       <td className='px-3 py-2 text-right font-mono text-slate-700'>{a.amount}</td>
                       <td className='px-3 py-2'>

@@ -252,7 +252,7 @@ export default function PurchaseInvoiceDetailPage() {
     setActionBusy(true);
     try {
       await apiFetch(`/api/v1/purchase-invoices/${invoiceId}`, { method: 'DELETE' });
-      router.push('/ops/purchase-invoices');
+      router.push('/ops/purchasing');
     } catch (e) {
       setErr(errOf(e));
       setActionBusy(false);
@@ -273,7 +273,7 @@ export default function PurchaseInvoiceDetailPage() {
       <OpsShell>
         <OpsHeader title="Purchase Invoice" />
         {err && <FormError code={err.code} message={err.message} />}
-        <Link href="/ops/purchase-invoices" className="text-sm text-slate-700 underline">
+        <Link href="/ops/purchasing" className="text-sm text-slate-700 underline">
           ← Back to list
         </Link>
       </OpsShell>
@@ -293,7 +293,7 @@ export default function PurchaseInvoiceDetailPage() {
       <SecondarySurfaceBanner messageKey='ops.purchasing.secondary.banner' targetHref='/ops/purchasing' targetLabelKey='ops.purchasing.secondary.link' />
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <Link href="/ops/purchase-invoices" className="text-slate-500 hover:text-slate-900">
+        <Link href="/ops/purchasing" className="text-slate-500 hover:text-slate-900">
           ← All invoices
         </Link>
         <span className="rounded bg-slate-100 px-2 py-0.5 text-xs">{invoice.status}</span>
