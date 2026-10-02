@@ -76,8 +76,6 @@ type InlineForm =
 
 type SubDialog =
   | { kind: 'send-back'; reconId: string }
-  | { kind: 'confirm-handover'; handoverId: string }
-  | { kind: 'close-shift'; shiftId: string; status: string }
   | null;
 
 type Row = {
@@ -528,55 +526,9 @@ function SendBackInline({
   );
 }
 
-function ConfirmHandoverInline({
-  onConfirm,
-  onCancel,
-  busy,
-}: { onConfirm: (notes: string) => void; onCancel: () => void; busy: boolean }) {
-  const { t } = useT();
-  const [notes, setNotes] = useState('');
-  return (
-    <div className='border-t border-slate-100 pt-3 space-y-2'>
-      <input
-        className='w-full rounded border border-slate-300 px-3 py-2 text-sm'
-        placeholder={t('ops.handovers.confirmNotesPlaceholder')}
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-      />
-      <div className='flex gap-2 justify-end'>
-        <button type='button' onClick={() => onConfirm(notes)} disabled={busy}
-          className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-          {busy ? t('ops.shiftsDetail.working') : t('action.confirm')}
-        </button>
-        <button type='button' onClick={onCancel} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
-          {t('action.cancel')}
-        </button>
-      </div>
-    </div>
-  );
-}
 
-function CloseShiftInline({
-  onConfirm,
-  onCancel,
-  busy,
-}: { onConfirm: () => void; onCancel: () => void; busy: boolean }) {
-  const { t } = useT();
-  return (
-    <div className='border-t border-slate-100 pt-3 space-y-2'>
-      <div className='text-sm text-slate-700'>{t('ops.cashFlow.row.closeConfirmPrompt')}</div>
-      <div className='flex gap-2 justify-end'>
-        <button type='button' onClick={onConfirm} disabled={busy}
-          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-          {busy ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.close')}
-        </button>
-        <button type='button' onClick={onCancel} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
-          {t('action.cancel')}
-        </button>
-      </div>
-    </div>
-  );
-}
+
+
 
 // ============================================================ Open shift dialog
 
@@ -760,16 +712,6 @@ export default function CashPage() {
     load();
   }
 
-  async function doApprove(reconId: string) {
-    setErr(null); setBusyKey('rv:' + reconId);
-    try {
-      await apiFetch('/api/v1/reconciliations/' + reconId + '/review', {
-        method: 'POST', body: JSON.stringify({ decision: 'APPROVE' }),
-      });
-      load();
-    } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
-    finally { setBusyKey(null); }
-  }
 
   async function doSendBack(reconId: string, reason: string) {
     setErr(null); setBusyKey('sb:' + reconId);
@@ -782,33 +724,18 @@ export default function CashPage() {
     finally { setBusyKey(null); }
   }
 
-  async function doConfirmHandover(handoverId: string, notes: string) {
-    setErr(null); setBusyKey('ho:' + handoverId);
+  async function doFinalize(shiftId: string) {
+    setErr(null); setBusyKey('fin:' + shiftId);
     try {
-      await apiFetch('/api/v1/handovers/' + handoverId + '/confirm', {
-        method: 'POST',
-        body: JSON.stringify({ confirmedNotes: notes.trim() === '' ? undefined : notes.trim() }),
+      await apiFetch('/api/v1/shifts/' + shiftId + '/finalize', {
+        method: 'POST', body: JSON.stringify({}),
       });
-      clearAndReload();
+      clearAndReload(t('ops.cashFlow.flash.shiftFinalized'));
     } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
     finally { setBusyKey(null); }
   }
 
-  async function doCloseShift(shiftId: string, currentStatus: string) {
-    setErr(null); setBusyKey('cs:' + shiftId);
-    try {
-      if (currentStatus === 'SUBMITTED') {
-        await apiFetch('/api/v1/shifts/' + shiftId + '/transition', {
-          method: 'POST', body: JSON.stringify({ to: 'RECONCILING' }),
-        });
-      }
-      await apiFetch('/api/v1/shifts/' + shiftId + '/transition', {
-        method: 'POST', body: JSON.stringify({ to: 'CLOSED' }),
-      });
-      clearAndReload();
-    } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
-    finally { setBusyKey(null); }
-  }
+
 
   async function doCloseToday() {
     setErr(null); setBusyKey('day');
@@ -857,16 +784,12 @@ export default function CashPage() {
             <div className='space-y-3'>
               {rows.map((r) => {
                 const isBusyRow =
-                  busyKey === 'ho:' + (r.handover?.id ?? '') ||
-                  busyKey === 'rv:' + (r.recon?.id ?? '') ||
                   busyKey === 'sb:' + (r.recon?.id ?? '') ||
-                  busyKey === 'cs:' + r.shift.id;
+                  busyKey === 'fin:' + r.shift.id;
                 const isOpenShift = r.shift.status === 'OPEN';
                 const inline = inlineForm?.shiftId === r.shift.id ? inlineForm : null;
                 const dialogForThisRow =
-                  (subDialog?.kind === 'send-back' && subDialog.reconId === r.recon?.id) ||
-                  (subDialog?.kind === 'confirm-handover' && subDialog.handoverId === r.handover?.id) ||
-                  (subDialog?.kind === 'close-shift' && subDialog.shiftId === r.shift.id)
+                  subDialog?.kind === 'send-back' && subDialog.reconId === r.recon?.id
                     ? subDialog
                     : null;
 
@@ -926,31 +849,29 @@ export default function CashPage() {
                         </div>
                       )}
 
-                      {isManager && r.state === 'awaiting_review' && r.recon && (
+                      {isManager && (
+                        r.state === 'awaiting_review' ||
+                        r.state === 'awaiting_handover' ||
+                        r.state === 'awaiting_confirm' ||
+                        r.state === 'awaiting_close_mid' ||
+                        r.state === 'ready_to_close'
+                      ) && (
                         <div className='flex gap-2'>
-                          <button type='button' onClick={() => doApprove(r.recon!.id)} disabled={isBusyRow}
+                          <button type='button' onClick={() => doFinalize(r.shift.id)} disabled={isBusyRow}
                             className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                            {busyKey === 'rv:' + r.recon!.id ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.approve')}
+                            {busyKey === 'fin:' + r.shift.id
+                              ? t('ops.shiftsDetail.working')
+                              : ((r.recon?.status === 'SUBMITTED' || r.handover?.status === 'PENDING')
+                                  ? t('ops.cashFlow.row.action.approveAndFinalize')
+                                  : t('ops.cashFlow.row.action.finalize'))}
                           </button>
-                          <button type='button' onClick={() => setSubDialog({ kind: 'send-back', reconId: r.recon!.id })} disabled={isBusyRow}
-                            className='rounded-lg border border-amber-300 text-amber-800 px-3 py-1.5 text-sm disabled:opacity-60'>
-                            {t('ops.cashFlow.row.action.sendBack')}
-                          </button>
+                          {r.state === 'awaiting_review' && r.recon && (
+                            <button type='button' onClick={() => setSubDialog({ kind: 'send-back', reconId: r.recon!.id })} disabled={isBusyRow}
+                              className='rounded-lg border border-amber-300 text-amber-800 px-3 py-1.5 text-sm disabled:opacity-60'>
+                              {t('ops.cashFlow.row.action.sendBack')}
+                            </button>
+                          )}
                         </div>
-                      )}
-
-                      {isManager && r.state === 'awaiting_confirm' && r.handover && (
-                        <button type='button' onClick={() => setSubDialog({ kind: 'confirm-handover', handoverId: r.handover!.id })} disabled={isBusyRow}
-                          className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                          {t('ops.cashFlow.row.action.confirm')}
-                        </button>
-                      )}
-
-                      {isManager && (r.state === 'ready_to_close' || r.state === 'awaiting_close_mid') && (
-                        <button type='button' onClick={() => setSubDialog({ kind: 'close-shift', shiftId: r.shift.id, status: r.shift.status })} disabled={isBusyRow}
-                          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                          {busyKey === 'cs:' + r.shift.id ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.close')}
-                        </button>
                       )}
                     </div>
 
@@ -982,21 +903,6 @@ export default function CashPage() {
                       />
                     )}
 
-                    {dialogForThisRow?.kind === 'confirm-handover' && (
-                      <ConfirmHandoverInline
-                        busy={busyKey === 'ho:' + dialogForThisRow.handoverId}
-                        onCancel={() => setSubDialog(null)}
-                        onConfirm={(notes) => doConfirmHandover(dialogForThisRow.handoverId, notes)}
-                      />
-                    )}
-
-                    {dialogForThisRow?.kind === 'close-shift' && (
-                      <CloseShiftInline
-                        busy={busyKey === 'cs:' + dialogForThisRow.shiftId}
-                        onCancel={() => setSubDialog(null)}
-                        onConfirm={() => doCloseShift(dialogForThisRow.shiftId, dialogForThisRow.status)}
-                      />
-                    )}
                   </div>
                 );
               })}
