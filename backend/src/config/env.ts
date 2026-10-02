@@ -10,6 +10,7 @@ const EnvSchema = z.object({
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 chars'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   ATTACHMENTS_ROOT: z.string().min(1).default('./storage/attachments'),
+  BACKUP_LOCAL_PATH: z.string().min(1).default('./storage/backups'),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
