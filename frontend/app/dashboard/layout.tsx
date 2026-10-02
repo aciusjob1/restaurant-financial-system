@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { BarChart3, Cog, LayoutDashboard } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
+import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
+import { UserMenu } from '@/components/ops/UserMenu';
 import { apiFetch, ApiError } from '@/lib/api';
 
 type MeResponse = {
@@ -75,6 +77,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       storageKey="dashboard-shell-collapsed"
       me={me}
     >
+      <div className="flex justify-end items-center gap-3 px-4 pt-4">
+        <LanguagePicker />
+        {me && <UserMenu fullName={me.fullName} role={me.role} />}
+      </div>
       {children}
     </AppSidebar>
   );

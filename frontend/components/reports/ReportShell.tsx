@@ -14,6 +14,8 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
+import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
+import { UserMenu } from '@/components/ops/UserMenu';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
 import type { Dict } from '@/lib/i18n/dictionaries';
@@ -104,6 +106,10 @@ export function ReportShell({ children }: { children: ReactNode }) {
       storageKey='reports-shell-collapsed'
       me={me}
     >
+      <div className='flex justify-end items-center gap-3 px-4 pt-4'>
+        <LanguagePicker />
+        {me && <UserMenu fullName={me.fullName} role={me.role} />}
+      </div>
       {children}
     </AppSidebar>
   );

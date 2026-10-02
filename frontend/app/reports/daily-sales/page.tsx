@@ -14,6 +14,10 @@ import {
 } from '@/components/reports/StateViews';
 import { useReport } from '@/hooks/useReport';
 import {
+  SalesOverTimeChart,
+  CollectionsByMethodChart,
+} from '@/components/ops/DashboardCharts';
+import {
   REPORT_PATHS,
   defaultRange,
   type DailySalesResponse,
@@ -89,6 +93,21 @@ function DailySalesContent() {
               { label: t('totals.days'),          value: String(state.data.totals.rowCount) },
             ]}
           />
+
+          {state.data.rows.length > 0 && (
+            <div className='grid grid-cols-1 lg:grid-cols-2 gap-3'>
+              <SalesOverTimeChart rows={state.data.rows} />
+              <CollectionsByMethodChart
+                cash={state.data.rows.reduce((a, r) => a + (parseFloat(r.collectionsCash) || 0), 0)}
+                mobile={state.data.rows.reduce((a, r) => a + (parseFloat(r.collectionsMobile) || 0), 0)}
+                other={Math.max(0,
+                  state.data.rows.reduce((a, r) => a + (parseFloat(r.collectionsTotal) || 0), 0)
+                  - state.data.rows.reduce((a, r) => a + (parseFloat(r.collectionsCash) || 0), 0)
+                  - state.data.rows.reduce((a, r) => a + (parseFloat(r.collectionsMobile) || 0), 0)
+                )}
+              />
+            </div>
+          )}
 
           {state.data.rows.length === 0 ? (
             <EmptyState />

@@ -8,7 +8,16 @@ import {
   REPORT_PATHS,
   type DailySalesResponse,
   type SupplierBalancesResponse,
+  type ExpenseResponse,
+  type DailySalesRow,
+  type SupplierBalanceRow,
 } from '@/lib/reports';
+import {
+  SalesOverTimeChart,
+  CollectionsByMethodChart,
+  ExpensesByCategoryChart,
+  TopSuppliersChart,
+} from '@/components/ops/DashboardCharts';
 
 type Period = 'daily' | 'weekly' | 'monthly' | 'annual';
 
@@ -24,6 +33,9 @@ type Stats = {
   cashDifference: string;
   handoverTotal: string;
   supplierBalance: string;
+  rows: DailySalesRow[];
+  byCategory: Array<{ categoryId: string; categoryName: string; amount: string }>;
+  supplierRows: SupplierBalanceRow[];
 };
 
 type StatsState =
@@ -86,6 +98,21 @@ function diffColor(v: string): string {
   return v.startsWith('-') ? 'text-red-600' : 'text-slate-900';
 }
 
+// Net = Sales - Expenses. Salary payments are already Salary-category
+// expenses, so they are counted inside expenseTotal and must not be
+// subtracted again.
+function netValue(salesTotal: string, expenseTotal: string): string {
+  const sales = parseFloat(salesTotal) || 0;
+  const expenses = parseFloat(expenseTotal) || 0;
+  return (sales - expenses).toFixed(2);
+}
+
+function netClass(v: string): string {
+  const n = parseFloat(v) || 0;
+  if (Math.abs(n) < 0.005) return 'text-slate-500';
+  return n > 0 ? 'text-emerald-700' : 'text-red-600';
+}
+
 // ------------------------------------------------------------------
 // UI atoms
 // ------------------------------------------------------------------
@@ -145,9 +172,10 @@ export default function DashboardPage() {
       try {
         const qs = `from=${range.from}&to=${range.to}`;
 
-        const [daily, suppliers] = await Promise.all([
+        const [daily, suppliers, expenses] = await Promise.all([
           apiFetch<DailySalesResponse>(`${REPORT_PATHS.dailySales}?${qs}`),
           apiFetch<SupplierBalancesResponse>(REPORT_PATHS.supplierBalances),
+          apiFetch<ExpenseResponse>(`${REPORT_PATHS.expenses}?${qs}`),
         ]);
 
         if (cancelled) return;
@@ -165,6 +193,9 @@ export default function DashboardPage() {
             cashDifference: daily.totals.cashDifference,
             handoverTotal: daily.totals.handoverTotal,
             supplierBalance: suppliers.totals.balance,
+            rows: daily.rows,
+            byCategory: expenses.totals.byCategory,
+            supplierRows: suppliers.rows,
           },
         });
       } catch (err) {
@@ -273,7 +304,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
               <StatCard label={t('dashboard.stat.sales')} value={stats.data.salesTotal} />
               <StatCard
                 label={t('dashboard.stat.collected')}
@@ -294,6 +325,26 @@ export default function DashboardPage() {
                 hint={t('dashboard.supplierBalance.hint')}
                 hintMuted
               />
+              <StatCard
+                label={t('dashboard.stat.net')}
+                value={netValue(stats.data.salesTotal, stats.data.expenseTotal)}
+                valueClassName={netClass(netValue(stats.data.salesTotal, stats.data.expenseTotal))}
+              />
+            </div>
+
+            <div className='grid grid-cols-1 lg:grid-cols-2 gap-3'>
+              <SalesOverTimeChart rows={stats.data.rows} />
+              <CollectionsByMethodChart
+                cash={parseFloat(stats.data.collectionsCash) || 0}
+                mobile={parseFloat(stats.data.collectionsMobile) || 0}
+                other={Math.max(0,
+                  (parseFloat(stats.data.collectionsTotal) || 0)
+                  - (parseFloat(stats.data.collectionsCash) || 0)
+                  - (parseFloat(stats.data.collectionsMobile) || 0)
+                )}
+              />
+              <ExpensesByCategoryChart data={stats.data.byCategory} />
+              <TopSuppliersChart rows={stats.data.supplierRows} />
             </div>
           </>
         )}
