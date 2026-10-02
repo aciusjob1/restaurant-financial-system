@@ -81,6 +81,8 @@ type SubDialog =
 type Row = {
   shift: Shift;
   total: string;
+  cashTotal: string;
+  mobileTotal: string;
   collectionCount: number;
   expenseTotal: number;
   state: FlowState;
@@ -242,7 +244,6 @@ function SubmitShiftInline({
   collections,
   categories,
   users,
-  myId,
   onDone,
   onCancel,
 }: {
@@ -250,7 +251,6 @@ function SubmitShiftInline({
   collections: Collection[];
   categories: ExpenseCategory[];
   users: User[];
-  myId: string;
   onDone: (msg: string) => void;
   onCancel: () => void;
 }) {
@@ -265,7 +265,6 @@ function SubmitShiftInline({
   const [other, setOther] = useState('');
   const [expenses, setExpenses] = useState<DraftExpense[]>([]);
   const [cashHandedOver, setCashHandedOver] = useState('');
-  const [receivedByUserId, setReceivedByUserId] = useState(myId);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
@@ -309,10 +308,6 @@ function SubmitShiftInline({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (!receivedByUserId) {
-      setErr({ code: 'RECEIVER_REQUIRED', message: 'Select who received the cash.' });
-      return;
-    }
     setBusy(true);
     try {
       const collPayload: Record<string, string> = {};
@@ -339,7 +334,6 @@ function SubmitShiftInline({
           collections: collPayload,
           expenses: expensesPayload,
           cashHandedOver: cashHandedOver.trim() || '0.00',
-          receivedByUserId,
           notes: notes.trim() || null,
         }),
       });
@@ -460,12 +454,6 @@ function SubmitShiftInline({
         <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.handoverHeading')}</div>
         <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
           <DecimalField label={t('ops.cashFlow.closeForm.cashHandedOver')} value={cashHandedOver} onChange={setCashHandedOver} placeholder='0.00' />
-          <SelectField
-            label={t('form.receiver')}
-            value={receivedByUserId}
-            onChange={setReceivedByUserId}
-            options={[{ value: '', label: t('form.selectPlaceholder') }, ...users.filter((u) => u.role === 'MANAGER' || u.role === 'OWNER').map((u) => ({ value: u.id, label: u.fullName }))]}
-          />
         </div>
       </div>
 
@@ -625,7 +613,7 @@ export default function CashPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [myId, setMyId] = useState('');
+  const [, setMyId] = useState('');
   const [myRole, setMyRole] = useState('');
   const [todayClosing, setTodayClosing] = useState<Closing | null>(null);
 
@@ -671,6 +659,8 @@ export default function CashPage() {
     return shifts.map((s) => {
       const coll = collections.filter((c) => c.shiftId === s.id && !c.voidedAt);
       const total = coll.reduce((acc, c) => acc + parseFloat(c.amount), 0);
+      const cashTotal = coll.filter((c) => c.paymentMethod === 'CASH').reduce((acc, c) => acc + parseFloat(c.amount), 0);
+      const mobileTotal = coll.filter((c) => MOBILE_METHODS.has(c.paymentMethod)).reduce((acc, c) => acc + parseFloat(c.amount), 0);
       const rowExpenses = expenses.filter((e) => e.shiftId === s.id);
       const expenseTotal = rowExpenses.reduce((acc, e) => acc + parseFloat(e.amount), 0);
       const recon = recons.find((r) => r.shiftId === s.id);
@@ -680,6 +670,8 @@ export default function CashPage() {
       return {
         shift: s,
         total: total.toFixed(2),
+        cashTotal: cashTotal.toFixed(2),
+        mobileTotal: mobileTotal.toFixed(2),
         collectionCount: coll.length,
         expenseTotal,
         state,
@@ -811,6 +803,12 @@ export default function CashPage() {
                           {t('ops.cashFlow.row.collected')}: <span className='font-mono'>{r.total}</span>
                         </div>
                         <div className='mt-0.5 text-sm text-slate-600'>
+                          {t('ops.cashFlow.row.cash')}: <span className='font-mono'>{r.cashTotal}</span>
+                        </div>
+                        <div className='mt-0.5 text-sm text-slate-600'>
+                          {t('ops.cashFlow.row.mobile')}: <span className='font-mono'>{r.mobileTotal}</span>
+                        </div>
+                        <div className='mt-0.5 text-sm text-slate-600'>
                           {t('table.expenses')}: {r.expenseTotal > 0
                             ? <span className='font-mono'>{r.expenseTotal.toFixed(2)}</span>
                             : <span className='text-slate-400'>{t('ops.cashFlow.row.noExpenses')}</span>}
@@ -889,7 +887,6 @@ export default function CashPage() {
                         collections={collections}
                         categories={categories}
                         users={users}
-                        myId={myId}
                         onCancel={() => setInlineForm(null)}
                         onDone={(msg) => clearAndReload(msg)}
                       />
