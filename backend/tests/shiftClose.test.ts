@@ -166,7 +166,7 @@ describe('POST /shifts/:id/close-money', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
-    expect(res.body.handover.status).toBe('CONFIRMED');
+    expect(res.body.handover).toBeNull();
     expect(res.body.created.collections).toBe(2);
     expect(res.body.created.expenses).toBe(1);
     expect(res.body.reconciliation.expectedCash).toBe('5500.00');
@@ -224,7 +224,11 @@ describe('POST /shifts/:id/close-money', () => {
     expect(res.body.code).toBe('SHIFT_NOT_OPEN');
   });
 
-  it('rejects a WAITER as receiver (INVALID_RECEIVER)', async () => {
+  it('manager close-money produces no handover even with a legacy receivedByUserId', async () => {
+    // Invariant: runShiftClose is only reachable by MANAGER/OWNER. A
+    // manager operating a waiter-owned shift already holds the cash, so
+    // no CashHandover row is created. The legacy receivedByUserId field
+    // is accepted in the schema but ignored.
     const shiftId = await openShift(D_BADRECV, WAITER4);
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
@@ -233,8 +237,10 @@ describe('POST /shifts/:id/close-money', () => {
       receivedByUserId: waiterId,
     });
 
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('INVALID_RECEIVER');
+    expect(res.status).toBe(201);
+    expect(res.body.handover).toBeNull();
+    const handoverCount = await prisma.cashHandover.count({ where: { shiftId } });
+    expect(handoverCount).toBe(0);
   });
 
   it('rejects an empty close (NOTHING_TO_CLOSE)', async () => {
@@ -311,7 +317,7 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
-    expect(res.body.handover.status).toBe('CONFIRMED');
+    expect(res.body.handover).toBeNull();
     expect(res.body.created.collections).toBe(0);
     expect(res.body.created.expenses).toBe(1);
     expect(res.body.reconciliation.expectedCash).toBe('5800.00');
@@ -519,63 +525,10 @@ describe('Owner auto-approval preferences in close-money', () => {
   });
 });
 
-describe('Owner autoConfirmHandovers in close-money', () => {
-  it('OWNER with autoConfirmHandovers OFF: close-money handover lands PENDING', async () => {
-    const shiftId = await openShift(D_AUTO_HAND_OFF, WAITER16);
-    const o = await loginAs(OWNER);
-    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
-
-    const res = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '100.00' },
-      cashHandedOver: '100.00',
-      receivedByUserId: managerId,
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.handover.status).toBe('PENDING');
-
-    const h = await prisma.cashHandover.findFirst({ where: { shiftId } });
-    expect(h).not.toBeNull();
-    expect(h!.confirmedAt).toBeNull();
-  });
-
-  it('OWNER with autoConfirmHandovers ON: close-money handover lands CONFIRMED', async () => {
-    const shiftId = await openShift(D_AUTO_HAND_ON, WAITER17);
-    const o = await loginAs(OWNER);
-    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
-
-    const res = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '100.00' },
-      cashHandedOver: '100.00',
-      receivedByUserId: managerId,
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.handover.status).toBe('CONFIRMED');
-
-    const h = await prisma.cashHandover.findFirst({ where: { shiftId } });
-    expect(h).not.toBeNull();
-    expect(h!.confirmedAt).not.toBeNull();
-
-    await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
-  });
-
-  it('MANAGER: close-money handover stays CONFIRMED regardless of any owner or own preference', async () => {
-    const shiftId = await openShift(D_MGR_HAND, WAITER18);
-    const m = await loginAs(MANAGER);
-    // Manager sets their own flag ON. The service only reads the flag
-    // for the OWNER role, so this must be ignored.
-    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
-
-    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '100.00' },
-      cashHandedOver: '100.00',
-      receivedByUserId: managerId,
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.handover.status).toBe('CONFIRMED');
-
-    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
-  });
-});
+// The Owner autoConfirmHandovers describe block was removed in 5a-4b.
+// runShiftClose no longer creates a handover, so the flag has no
+// meaning on this endpoint. Its behavior on the kiosk /handovers
+// endpoint is covered in handover.test.ts.
 
 describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
   it('Submit with NO existing collections and 2 new: creates 2, closes the shift', async () => {
@@ -589,7 +542,7 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
     expect(res.status).toBe(201);
     expect(res.body.created.collections).toBe(2);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
-    expect(res.body.handover.status).toBe('CONFIRMED');
+    expect(res.body.handover).toBeNull();
     const shiftAfter = await prisma.shift.findUnique({ where: { id: shiftId } });
     expect(shiftAfter!.status).toBe('SUBMITTED');
   });
@@ -693,7 +646,7 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('REVIEWED');
-    expect(res.body.handover.status).toBe('CONFIRMED');
+    expect(res.body.handover).toBeNull();
     const exps = await prisma.expense.findMany({ where: { shiftId } });
     expect(exps[0].status).toBe('APPROVED');
     await o.patch('/api/v1/auth/me').send({
@@ -721,7 +674,7 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
-    expect(res.body.handover.status).toBe('CONFIRMED');
+    expect(res.body.handover).toBeNull();
     const exps = await prisma.expense.findMany({ where: { shiftId } });
     expect(exps[0].status).toBe('PENDING');
   });

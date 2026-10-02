@@ -41,7 +41,7 @@ export const CloseMoneySchema = z.object({
   collections: CollectionsSchema,
   expenses: z.array(ExpenseLineSchema).optional(),
   cashHandedOver: MoneyString,
-  receivedByUserId: z.string().min(1),
+  receivedByUserId: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -50,7 +50,7 @@ export type CloseMoneyInput = z.infer<typeof CloseMoneySchema>;
 export const CompleteShiftSchema = z.object({
   expenses: z.array(ExpenseLineSchema).optional(),
   cashHandedOver: MoneyString,
-  receivedByUserId: z.string().min(1),
+  receivedByUserId: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -60,7 +60,7 @@ export const SubmitShiftSchema = z.object({
   collections: CollectionsSchema.optional(),
   expenses: z.array(ExpenseLineSchema).optional(),
   cashHandedOver: MoneyString,
-  receivedByUserId: z.string().min(1),
+  receivedByUserId: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
 

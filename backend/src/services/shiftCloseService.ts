@@ -50,7 +50,7 @@ async function runShiftClose(
     collections?: CollectionInput;
     expenses?: ExpenseInput[];
     cashHandedOver: string;
-    receivedByUserId: string;
+    receivedByUserId?: string;
     notes?: string | null;
   },
   mode: ShiftCloseMode
@@ -111,13 +111,9 @@ async function runShiftClose(
 
   await assertDayNotClosed(shift.businessDate, input.actor.role);
 
-  const receiver = await prisma.user.findUnique({
-    where: { id: input.receivedByUserId },
-  });
-  if (!receiver) throw new ApiError(400, 'INVALID_RECEIVER', 'Receiver does not exist.');
-  if (receiver.role !== 'MANAGER' && receiver.role !== 'OWNER') {
-    throw new ApiError(400, 'INVALID_RECEIVER', 'Receiver must be a MANAGER or OWNER.');
-  }
+  // No receiver validation here. This endpoint is only reachable by
+  // MANAGER/OWNER. The waiter kiosk path creates its own handover via
+  // POST /handovers.
 
   const expenseInputs = input.expenses ?? [];
   const categoryIds = Array.from(new Set(expenseInputs.map((e) => e.categoryId)));
@@ -228,7 +224,6 @@ async function runShiftClose(
     : null;
   const ownerAutoApprove = ownerPref?.autoApproveExpenses === true;
   const ownerAutoReview = ownerPref?.autoReviewReconciliations === true;
-  const ownerAutoConfirm = ownerPref?.autoConfirmHandovers === true;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -292,19 +287,10 @@ async function runShiftClose(
         },
       });
 
-      const handover = await tx.cashHandover.create({
-        data: {
-          shiftId: shift.id,
-          reconciliationId: recon.id,
-          fromUserId: shift.userId,
-          toUserId: input.receivedByUserId,
-          createdById: input.actor.id,
-          amount: actualCash,
-          status: (input.actor.role !== 'OWNER' || ownerAutoConfirm) ? 'CONFIRMED' : 'PENDING',
-          confirmedAt: (input.actor.role !== 'OWNER' || ownerAutoConfirm) ? now : null,
-          notes: input.notes ?? null,
-        },
-      });
+      // No handover is created by this endpoint. The waiter kiosk path
+      // records its handover via POST /handovers; a manager/owner
+      // operating the shift directly is already holding the cash.
+      const handover = null;
 
       await tx.shift.update({
         where: { id: shift.id },
@@ -329,11 +315,7 @@ async function runShiftClose(
         mobileDifference: toMoneyString(mobileDifference),
         status: result.recon.status,
       },
-      handover: {
-        id: result.handover.id,
-        amount: toMoneyString(actualCash),
-        status: result.handover.status,
-      },
+      handover: null,
       created: {
         collections: newCollectionRows.length,
         expenses: result.expenseCount,
@@ -353,7 +335,7 @@ export async function closeMoney(input: {
   collections: CollectionInput;
   expenses?: ExpenseInput[];
   cashHandedOver: string;
-  receivedByUserId: string;
+  receivedByUserId?: string;
   notes?: string | null;
 }) {
   return runShiftClose(input, 'close-money');
@@ -364,7 +346,7 @@ export async function completeShift(input: {
   shiftId: string;
   expenses?: ExpenseInput[];
   cashHandedOver: string;
-  receivedByUserId: string;
+  receivedByUserId?: string;
   notes?: string | null;
 }) {
   return runShiftClose({ ...input, collections: undefined }, 'complete-shift');
@@ -376,7 +358,7 @@ export async function submitShift(input: {
   collections?: CollectionInput;
   expenses?: ExpenseInput[];
   cashHandedOver: string;
-  receivedByUserId: string;
+  receivedByUserId?: string;
   notes?: string | null;
 }) {
   return runShiftClose(input, 'submit');
