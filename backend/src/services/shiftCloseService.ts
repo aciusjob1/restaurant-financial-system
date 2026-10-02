@@ -3,6 +3,7 @@ import { ApiError } from '../errors/ApiError.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
 import { nextExpenseNumber } from './expenseService.js';
+import { applySalaryExpense } from './salaryService.js';
 import type { PaymentMethod, Role, Prisma } from '@prisma/client';
 
 const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
@@ -30,6 +31,7 @@ type ExpenseInput = {
   description: string;
   notes?: string | null;
   paidByUserId?: string | null;
+  salaryTargetEmployeeId?: string | null;
 };
 
 type ShiftCloseMode = 'close-money' | 'complete-shift' | 'submit';
@@ -117,17 +119,42 @@ async function runShiftClose(
 
   const expenseInputs = input.expenses ?? [];
   const categoryIds = Array.from(new Set(expenseInputs.map((e) => e.categoryId)));
+  const categoryByKey = new Map<string, { id: string; isActive: boolean; systemKey: string | null }>();
   if (categoryIds.length > 0) {
     const cats = await prisma.expenseCategory.findMany({
       where: { id: { in: categoryIds } },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, systemKey: true },
     });
-    const found = new Map(cats.map((c) => [c.id, c]));
+    for (const c of cats) categoryByKey.set(c.id, c);
     for (const id of categoryIds) {
-      const c = found.get(id);
+      const c = categoryByKey.get(id);
       if (!c) throw new ApiError(400, 'INVALID_CATEGORY', 'Category ' + id + ' does not exist.');
       if (!c.isActive) throw new ApiError(400, 'CATEGORY_INACTIVE', 'Category ' + id + ' is not active.');
     }
+  }
+
+  // Salary expenses submitted via a shift auto-target the shift owner.
+  // Resolve Employee.userId === shift.userId once; error if missing.
+  const hasSalaryExpense = expenseInputs.some(
+    (e) => categoryByKey.get(e.categoryId)?.systemKey === 'SALARY'
+  );
+  let salaryTargetEmployeeId: string | null = null;
+  if (hasSalaryExpense) {
+    const emp = await prisma.employee.findFirst({
+      where: { userId: shift.userId },
+      select: { id: true, isActive: true },
+    });
+    if (!emp) {
+      throw new ApiError(
+        409,
+        'NO_EMPLOYEE_FOR_SHIFT',
+        'The shift owner has no linked Employee record. Link a User to an Employee before recording a salary expense from this shift.'
+      );
+    }
+    if (!emp.isActive) {
+      throw new ApiError(409, 'EMPLOYEE_INACTIVE', 'The shift owner Employee record is not active.');
+    }
+    salaryTargetEmployeeId = emp.id;
   }
 
   const paidByIds = Array.from(
@@ -247,13 +274,16 @@ async function runShiftClose(
       let expenseCount = 0;
       for (const e of expenseInputs) {
         const expenseNumber = await nextExpenseNumber(tx);
-        await tx.expense.create({
+        const isSalaryRow = categoryByKey.get(e.categoryId)?.systemKey === 'SALARY';
+        const targetEmployeeId = isSalaryRow ? salaryTargetEmployeeId : null;
+        const created = await tx.expense.create({
           data: {
             expenseNumber,
             businessDate: shift.businessDate,
             categoryId: e.categoryId,
             shiftId: shift.id,
             paidByUserId: e.paidByUserId ?? shift.userId,
+            salaryTargetEmployeeId: targetEmployeeId,
             amount: toDecimal(e.amount),
             paymentMethod: e.paymentMethod,
             description: e.description,
@@ -265,6 +295,19 @@ async function runShiftClose(
             approvedAt: ownerAutoApprove ? now : null,
           },
         });
+
+        if (isSalaryRow && ownerAutoApprove && created.salaryTargetEmployeeId) {
+          await applySalaryExpense(tx, {
+            expenseId: created.id,
+            employeeId: created.salaryTargetEmployeeId,
+            amount: created.amount,
+            paymentMethod: created.paymentMethod,
+            businessDate: created.businessDate,
+            recordedBy: input.actor.id,
+            notes: created.notes,
+          });
+        }
+
         expenseCount += 1;
       }
 

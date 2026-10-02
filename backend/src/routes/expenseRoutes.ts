@@ -10,6 +10,7 @@ import {
   CreateExpenseSchema,
   UpdateExpenseSchema,
   RejectExpenseSchema,
+  BulkApproveExpensesSchema,
 } from '../validators/expense.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../errors/ApiError.js';
@@ -70,6 +71,13 @@ expenseRouter.get(
   '/',
   requireRole('OWNER', 'MANAGER', 'AUDITOR', 'WAITER'),
   asyncHandler(expenseController.listExpenses)
+);
+// Bulk routes must come before /:id so 'bulk-approve' is not parsed as an id.
+expenseRouter.post(
+  '/bulk-approve',
+  requireRole('OWNER', 'MANAGER'),
+  validateBody(BulkApproveExpensesSchema),
+  asyncHandler(expenseController.bulkApproveExpenses)
 );
 expenseRouter.get(
   '/:id',

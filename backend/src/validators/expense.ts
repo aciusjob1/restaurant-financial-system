@@ -41,6 +41,7 @@ export const CreateExpenseSchema = z.object({
   categoryId: z.string().min(1),
   shiftId: z.string().nullable().optional(),
   paidByUserId: z.string().min(1).nullable().optional(),
+  salaryTargetEmployeeId: z.string().min(1).nullable().optional(),
   amount: PositiveMoneyString,
   paymentMethod: z.enum(PAYMENT_METHODS),
   description: z.string().trim().min(2).max(500),
@@ -67,6 +68,10 @@ export const RejectExpenseSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
+export const BulkApproveExpensesSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(200),
+});
+
 export const ListExpensesQuerySchema = z.object({
   businessDate: DateOnly.optional(),
   from: DateOnly.optional(),
@@ -86,4 +91,5 @@ export type UpdateExpenseCategoryInput = z.infer<typeof UpdateExpenseCategorySch
 export type CreateExpenseInput = z.infer<typeof CreateExpenseSchema>;
 export type UpdateExpenseInput = z.infer<typeof UpdateExpenseSchema>;
 export type RejectExpenseInput = z.infer<typeof RejectExpenseSchema>;
+export type BulkApproveExpensesInput = z.infer<typeof BulkApproveExpensesSchema>;
 export type ListExpensesQuery = z.infer<typeof ListExpensesQuerySchema>;

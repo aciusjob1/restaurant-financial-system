@@ -5,6 +5,7 @@ function serialize(c: {
   id: string;
   name: string;
   description: string | null;
+  systemKey: string | null;
   isActive: boolean;
   createdAt: Date;
 }) {
@@ -12,6 +13,7 @@ function serialize(c: {
     id: c.id,
     name: c.name,
     description: c.description,
+    systemKey: c.systemKey,
     isActive: c.isActive,
     createdAt: c.createdAt.toISOString(),
   };

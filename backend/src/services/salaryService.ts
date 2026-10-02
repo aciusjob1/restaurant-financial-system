@@ -202,10 +202,18 @@ export async function createSalaryRecord(input: {
 
   const baseSalary = toDecimal(input.baseSalary);
   const adjustments = input.adjustments !== undefined ? toDecimal(input.adjustments) : toDecimal('0');
-  const deductions = input.deductions !== undefined ? toDecimal(input.deductions) : toDecimal('0');
+  const explicitDeductions = input.deductions !== undefined ? toDecimal(input.deductions) : toDecimal('0');
+
+  // Sum unsettled advances for this employee — they become part of this record's deductions.
+  const unsettledAdvances = await prisma.salaryAdvance.findMany({
+    where: { employeeId: input.employeeId, settledAt: null },
+    select: { id: true, amount: true },
+  });
+  const advanceSum = unsettledAdvances.reduce((acc, a) => acc.plus(a.amount), toDecimal('0'));
+  const deductions = explicitDeductions.plus(advanceSum);
   const netSalary = computeNetSalary(baseSalary, adjustments, deductions);
   if (netSalary.lessThanOrEqualTo(0)) {
-    throw new ApiError(400, 'NON_POSITIVE_NET', 'netSalary must be greater than zero.');
+    throw new ApiError(400, 'NON_POSITIVE_NET', 'netSalary must be greater than zero (after absorbing advances).');
   }
 
   try {
@@ -236,7 +244,7 @@ export async function createSalaryRecord(input: {
         }
 
         const salaryNumber = await nextSalaryNumber(tx);
-        return tx.salaryRecord.create({
+        const created = await tx.salaryRecord.create({
           data: {
             salaryNumber,
             employeeId: input.employeeId,
@@ -251,6 +259,15 @@ export async function createSalaryRecord(input: {
             notes: input.notes ?? null,
           },
         });
+
+        if (unsettledAdvances.length > 0) {
+          await tx.salaryAdvance.updateMany({
+            where: { id: { in: unsettledAdvances.map((a) => a.id) } },
+            data: { settledById: created.id, settledAt: new Date() },
+          });
+        }
+
+        return created;
       },
       { isolationLevel: 'Serializable' }
     );
@@ -586,4 +603,74 @@ export async function voidSalaryPayment(input: {
     }
     throw err;
   }
+}
+
+export async function applySalaryExpense(tx: Prisma.TransactionClient, input: {
+  expenseId: string;
+  employeeId: string;
+  amount: Prisma.Decimal;
+  paymentMethod: PaymentMethod;
+  businessDate: Date;
+  recordedBy: string;
+  notes: string | null;
+}): Promise<{ paymentId: string | null; advanceId: string | null }> {
+  const record = await tx.salaryRecord.findFirst({
+    where: { employeeId: input.employeeId, status: { in: ['APPROVED', 'PAID'] } },
+    orderBy: { periodEnd: 'desc' },
+  });
+  if (!record) {
+    throw new ApiError(
+      409,
+      'NO_SALARY_RECORD',
+      'No approved salary record exists for this employee. Create a salary record first.'
+    );
+  }
+
+  const totalPaid = await sumActivePaid(tx, record.id);
+  const outstanding = record.netSalary.minus(totalPaid);
+  const outstandingPositive = outstanding.greaterThan(0) ? outstanding : toDecimal('0');
+  const paidNow = input.amount.lessThanOrEqualTo(outstandingPositive) ? input.amount : outstandingPositive;
+  const excess = input.amount.minus(paidNow);
+
+  let paymentId: string | null = null;
+  let advanceId: string | null = null;
+
+  if (paidNow.greaterThan(0)) {
+    const created = await tx.salaryPayment.create({
+      data: {
+        salaryRecordId: record.id,
+        amount: paidNow,
+        paymentMethod: input.paymentMethod,
+        businessDate: input.businessDate,
+        notes: input.notes ?? null,
+        recordedBy: input.recordedBy,
+      },
+    });
+    paymentId = created.id;
+
+    const newTotal = totalPaid.plus(paidNow);
+    const nextStatus = statusFromPaid(newTotal, record.netSalary, record.status);
+    if (nextStatus !== record.status) {
+      await tx.salaryRecord.update({
+        where: { id: record.id },
+        data: { status: nextStatus },
+      });
+    }
+  }
+
+  if (excess.greaterThan(0)) {
+    const adv = await tx.salaryAdvance.create({
+      data: {
+        employeeId: input.employeeId,
+        expenseId: input.expenseId,
+        amount: excess,
+        businessDate: input.businessDate,
+        notes: input.notes ?? null,
+        recordedBy: input.recordedBy,
+      },
+    });
+    advanceId = adv.id;
+  }
+
+  return { paymentId, advanceId };
 }

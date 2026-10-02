@@ -7,6 +7,7 @@ import {
   type CreateExpenseInput,
   type UpdateExpenseInput,
   type RejectExpenseInput,
+  type BulkApproveExpensesInput,
   type CreateExpenseCategoryInput,
   type UpdateExpenseCategoryInput,
 } from '../validators/expense.js';
@@ -79,6 +80,7 @@ export async function createExpense(req: Request, res: Response) {
     categoryId: input.categoryId,
     shiftId: input.shiftId ?? null,
     paidByUserId: input.paidByUserId ?? null,
+    salaryTargetEmployeeId: input.salaryTargetEmployeeId ?? null,
     amount: input.amount,
     paymentMethod: input.paymentMethod as PaymentMethod,
     description: input.description,
@@ -123,6 +125,15 @@ export async function approveExpense(req: Request, res: Response) {
     actor: { id: req.user!.id, role: req.user!.role },
   });
   res.json({ success: true, expense });
+}
+
+export async function bulkApproveExpenses(req: Request, res: Response) {
+  const input = req.body as BulkApproveExpensesInput;
+  const result = await expenseService.bulkApproveExpenses({
+    ids: input.ids,
+    actor: { id: req.user!.id, role: req.user!.role },
+  });
+  res.json({ success: true, approved: result.approved, skipped: result.skipped });
 }
 
 export async function rejectExpense(req: Request, res: Response) {

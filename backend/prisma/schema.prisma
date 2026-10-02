@@ -45,10 +45,6 @@ enum SalesSummarySource {
   FUTURE_API
 }
 
-enum SalesSummaryStatus {
-  DRAFT
-  VERIFIED
-}
 
 enum ReconciliationStatus {
   DRAFT
@@ -105,6 +101,7 @@ model User {
 
   sessions                Session[]
   employee                Employee?
+  salesSummaries          SalesSummary[]
   shifts                  Shift[]
   shiftsOpeningCashSetBy  Shift[]         @relation("ShiftOpeningCashSetBy")
   collections             Collection[]    @relation("CollectionUser")
@@ -187,6 +184,8 @@ model Employee {
   position         Position          @relation(fields: [positionId], references: [id], onDelete: Restrict)
   user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   salaries         SalaryRecord[]
+  salaryExpenses   Expense[]         @relation("SalaryExpenseTarget")
+  salaryAdvances   SalaryAdvance[]
 
   @@index([positionId])
   @@index([employmentStatus])
@@ -239,12 +238,13 @@ model SalesSummary {
   businessDate    DateTime            @db.Date
   source          SalesSummarySource
   sourceReference String
-  status          SalesSummaryStatus  @default(DRAFT)
 
   totalSales      Decimal             @db.Decimal(14, 2)
   cashSales       Decimal             @db.Decimal(14, 2)
   mobileSales     Decimal             @db.Decimal(14, 2)
   otherSales      Decimal             @db.Decimal(14, 2)
+
+  userId          String?
 
   enteredBy       String?
   verifiedBy      String?
@@ -254,11 +254,12 @@ model SalesSummary {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
+  user            User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   lines           SalesSummaryLine[]
 
-  @@unique([source, businessDate, sourceReference])
+  @@unique([source, businessDate, sourceReference, userId])
   @@index([businessDate])
-  @@index([status])
+  @@index([userId])
 }
 
 model SalesSummaryLine {
@@ -441,6 +442,7 @@ model ExpenseCategory {
   id            String     @id @default(cuid())
   name          String     @unique
   description   String?
+  systemKey     String?    @unique
   isActive      Boolean    @default(true)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -457,6 +459,7 @@ model Expense {
 
   categoryId      String
   shiftId         String?
+  salaryTargetEmployeeId String?
   createdBy       String
   approvedBy      String?
   paidByUserId    String?
@@ -483,6 +486,8 @@ model Expense {
   createdByUser   User            @relation("ExpenseCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   approvedByUser  User?           @relation("ExpenseApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
   paidByUser      User?           @relation("ExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: Restrict)
+  salaryTargetEmployee Employee?  @relation("SalaryExpenseTarget", fields: [salaryTargetEmployeeId], references: [id], onDelete: Restrict)
+  salaryAdvances  SalaryAdvance[]
 
   @@index([businessDate])
   @@index([categoryId])
@@ -490,6 +495,7 @@ model Expense {
   @@index([status])
   @@index([paymentMethod])
   @@index([createdBy])
+  @@index([salaryTargetEmployeeId])
   @@index([businessDate, status])
 }
 
@@ -522,6 +528,7 @@ model SalaryRecord {
   createdByUser   User         @relation("SalaryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   approvedByUser  User?        @relation("SalaryApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
   payments        SalaryPayment[]
+  settledAdvances SalaryAdvance[]
 
   @@index([employeeId])
   @@index([status])
@@ -708,6 +715,7 @@ model MaterialCategory {
   id            String     @id @default(cuid())
   name          String     @unique
   description   String?
+  systemKey     String?    @unique
   isActive      Boolean    @default(true)
 
   createdBy     String
@@ -795,4 +803,28 @@ model StockMovement {
   @@index([type])
   @@index([businessDate])
   @@index([createdBy])
+}
+
+model SalaryAdvance {
+  id              String        @id @default(cuid())
+  employeeId      String
+  expenseId       String?       @unique
+  amount          Decimal       @db.Decimal(14, 2)
+  businessDate    DateTime      @db.Date
+  notes           String?
+  recordedBy      String
+
+  settledById     String?
+  settledAt       DateTime?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  expense         Expense?      @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  settledBy       SalaryRecord? @relation(fields: [settledById], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([settledById])
+  @@index([employeeId, settledById])
 }

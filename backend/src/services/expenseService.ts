@@ -4,6 +4,7 @@ import { toDecimal, toMoneyString } from '../utils/money.js';
 import { parseBusinessDate, toDateOnly } from '../utils/businessDate.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
 import type { ExpenseStatus, PaymentMethod, Prisma, Role } from '@prisma/client';
+import { applySalaryExpense } from './salaryService.js';
 
 function isUniqueViolation(err: unknown): boolean {
   return (
@@ -128,6 +129,7 @@ export async function createExpense(input: {
   categoryId: string;
   shiftId?: string | null;
   paidByUserId?: string | null;
+  salaryTargetEmployeeId?: string | null;
   amount: string;
   paymentMethod: PaymentMethod;
   description: string;
@@ -181,6 +183,18 @@ export async function createExpense(input: {
     if (!user) throw new ApiError(400, 'INVALID_PAID_BY', 'Paid-by user does not exist.');
   }
 
+  const isSalaryCategory = category.systemKey === 'SALARY';
+  if (isSalaryCategory) {
+    if (!input.salaryTargetEmployeeId) {
+      throw new ApiError(400, 'EMPLOYEE_REQUIRED', 'Salary expenses must specify the employee.');
+    }
+    const emp = await prisma.employee.findUnique({ where: { id: input.salaryTargetEmployeeId } });
+    if (!emp) throw new ApiError(400, 'INVALID_EMPLOYEE', 'Employee does not exist.');
+    if (!emp.isActive) throw new ApiError(400, 'EMPLOYEE_INACTIVE', 'Employee is not active.');
+  } else if (input.salaryTargetEmployeeId) {
+    throw new ApiError(400, 'EMPLOYEE_NOT_ALLOWED', 'Only salary expenses can target an employee.');
+  }
+
   const isWaiter = input.actor.role === 'WAITER';
 
   // Owner preference: read the flag from the DB so a PATCH to
@@ -221,7 +235,7 @@ export async function createExpense(input: {
 
   const row = await prisma.$transaction(async (tx) => {
     const expenseNumber = await nextExpenseNumber(tx);
-    return tx.expense.create({
+    const created = await tx.expense.create({
       data: {
         expenseNumber,
         businessDate,
@@ -232,6 +246,7 @@ export async function createExpense(input: {
         categoryId: input.categoryId,
         shiftId: input.shiftId ?? null,
         paidByUserId: input.paidByUserId ?? null,
+        salaryTargetEmployeeId: input.salaryTargetEmployeeId ?? null,
         createdBy: input.actor.id,
         amount: toDecimal(input.amount),
         paymentMethod: input.paymentMethod,
@@ -241,6 +256,20 @@ export async function createExpense(input: {
         notes: input.notes ?? null,
       },
     });
+
+    if (isSalaryCategory && initialStatus === 'APPROVED') {
+      await applySalaryExpense(tx, {
+        expenseId: created.id,
+        employeeId: input.salaryTargetEmployeeId!,
+        amount: toDecimal(input.amount),
+        paymentMethod: input.paymentMethod,
+        businessDate,
+        recordedBy: input.actor.id,
+        notes: input.notes ?? null,
+      });
+    }
+
+    return created;
   });
 
   return serialize(row);
@@ -252,6 +281,7 @@ export async function updateExpense(input: {
   categoryId?: string;
   shiftId?: string | null;
   paidByUserId?: string | null;
+  salaryTargetEmployeeId?: string | null;
   amount?: string;
   paymentMethod?: PaymentMethod;
   description?: string;
@@ -375,15 +405,100 @@ export async function approveExpense(input: {
 
   await assertDayNotClosed(existing.businessDate, input.actor.role);
 
-  const row = await prisma.expense.update({
-    where: { id: input.id },
-    data: {
-      status: 'APPROVED',
-      approvedBy: input.actor.id,
-      approvedAt: new Date(),
-    },
+  const row = await prisma.$transaction(async (tx) => {
+    const updated = await tx.expense.update({
+      where: { id: input.id },
+      data: {
+        status: 'APPROVED',
+        approvedBy: input.actor.id,
+        approvedAt: new Date(),
+      },
+    });
+
+    if (updated.salaryTargetEmployeeId) {
+      await applySalaryExpense(tx, {
+        expenseId: updated.id,
+        employeeId: updated.salaryTargetEmployeeId,
+        amount: updated.amount,
+        paymentMethod: updated.paymentMethod,
+        businessDate: updated.businessDate,
+        recordedBy: input.actor.id,
+        notes: updated.notes,
+      });
+    }
+
+    return updated;
   });
   return serialize(row);
+}
+
+export async function bulkApproveExpenses(input: {
+  ids: string[];
+  actor: { id: string; role: Role };
+}) {
+  if (input.actor.role !== 'OWNER' && input.actor.role !== 'MANAGER') {
+    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER or MANAGER can approve expenses.');
+  }
+
+  const rows = await prisma.expense.findMany({
+    where: { id: { in: input.ids } },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const foundIds = new Set(rows.map((r) => r.id));
+  const missing = input.ids.filter((id) => !foundIds.has(id));
+
+  const skipped: Array<{ id: string; reason: string }> = missing.map((id) => ({
+    id,
+    reason: 'NOT_FOUND',
+  }));
+
+  const approvable = rows.filter((r) => {
+    if (r.status !== 'PENDING') {
+      skipped.push({ id: r.id, reason: 'NOT_PENDING' });
+      return false;
+    }
+    if (r.createdBy === input.actor.id && input.actor.role !== 'OWNER') {
+      skipped.push({ id: r.id, reason: 'SELF_APPROVAL' });
+      return false;
+    }
+    return true;
+  });
+
+  if (approvable.length === 0) {
+    return { approved: 0, skipped };
+  }
+
+  for (const r of approvable) {
+    await assertDayNotClosed(r.businessDate, input.actor.role);
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    for (const r of approvable) {
+      const updated = await tx.expense.update({
+        where: { id: r.id },
+        data: {
+          status: 'APPROVED',
+          approvedBy: input.actor.id,
+          approvedAt: now,
+        },
+      });
+      if (updated.salaryTargetEmployeeId) {
+        await applySalaryExpense(tx, {
+          expenseId: updated.id,
+          employeeId: updated.salaryTargetEmployeeId,
+          amount: updated.amount,
+          paymentMethod: updated.paymentMethod,
+          businessDate: updated.businessDate,
+          recordedBy: input.actor.id,
+          notes: updated.notes,
+        });
+      }
+    }
+  });
+
+  return { approved: approvable.length, skipped };
 }
 
 export async function rejectExpense(input: {
