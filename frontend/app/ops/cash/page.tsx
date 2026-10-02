@@ -347,10 +347,10 @@ function SubmitShiftInline({
 
   return (
     <form onSubmit={submit} className='border-t border-slate-100 pt-3 space-y-4'>
-      <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.closeForm.heading')}</h3>
+      <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.submitForm.heading')}</h3>
 
       <div className='rounded-xl bg-blue-50 border border-blue-100 p-3'>
-        <div className='text-xs uppercase tracking-wide text-blue-900 mb-2'>{t('ops.cashFlow.closeForm.shiftHeading')}</div>
+        <div className='text-xs uppercase tracking-wide text-blue-900 mb-2'>{t('ops.cashFlow.submitForm.shiftHeading')}</div>
         <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
           <div>
             <span className='block text-xs text-slate-500'>{t('form.businessDate')}</span>
@@ -361,16 +361,16 @@ function SubmitShiftInline({
             <span className='text-slate-800'>{row.name}</span>
           </div>
           <div>
-            <span className='block text-xs text-slate-500'>{t('ops.cashFlow.closeForm.opening')}</span>
+            <span className='block text-xs text-slate-500'>{t('ops.cashFlow.submitForm.opening')}</span>
             <span className='font-mono text-slate-800'>{row.shift.openingCash ?? '0.00'}</span>
           </div>
         </div>
       </div>
 
       <div className='rounded-xl bg-slate-50 border border-slate-200 p-3'>
-        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.existingHeading')}</div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.submitForm.existingHeading')}</div>
         {existing.length === 0 ? (
-          <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.existingNone')}</div>
+          <div className='text-sm text-slate-400'>{t('ops.cashFlow.submitForm.existingNone')}</div>
         ) : (
           <div className='space-y-1'>
             {Object.entries(byMethod).map(([m, v]) => (
@@ -380,7 +380,7 @@ function SubmitShiftInline({
               </div>
             ))}
             <div className='flex justify-between text-sm font-medium border-t border-slate-200 pt-1'>
-              <span>{t('ops.cashFlow.closeForm.existingTotal')}</span>
+              <span>{t('ops.cashFlow.submitForm.existingTotal')}</span>
               <span className='font-mono'>{existingTotal.toFixed(2)}</span>
             </div>
           </div>
@@ -388,7 +388,7 @@ function SubmitShiftInline({
       </div>
 
       <div>
-        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.additionalHeading')}</div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.submitForm.additionalHeading')}</div>
         <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
           <DecimalField label='Cash' value={cash} onChange={setCash} placeholder='0.00' />
           <DecimalField label='MPesa' value={mpesa} onChange={setMpesa} placeholder='0.00' />
@@ -402,9 +402,9 @@ function SubmitShiftInline({
       </div>
 
       <div>
-        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.expensesHeading')}</div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.submitForm.expensesHeading')}</div>
         {expenses.length === 0 && (
-          <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.noExpenses')}</div>
+          <div className='text-sm text-slate-400'>{t('ops.cashFlow.submitForm.noExpenses')}</div>
         )}
         {expenses.map((row2) => (
           <div key={row2.id} className='grid grid-cols-1 md:grid-cols-12 gap-3 items-end mb-3'>
@@ -440,34 +440,34 @@ function SubmitShiftInline({
             </div>
             <div className='md:col-span-12 flex justify-end'>
               <button type='button' onClick={() => removeExpense(row2.id)} className='text-xs text-red-600 hover:text-red-700'>
-                {t('ops.cashFlow.closeForm.removeExpense')}
+                {t('ops.cashFlow.submitForm.removeExpense')}
               </button>
             </div>
           </div>
         ))}
         <button type='button' onClick={addExpense} className='text-sm text-slate-600 hover:text-slate-900'>
-          {t('ops.cashFlow.closeForm.addExpense')}
+          {t('ops.cashFlow.submitForm.addExpense')}
         </button>
       </div>
 
       <div>
-        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.handoverHeading')}</div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.submitForm.handoverHeading')}</div>
         <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
-          <DecimalField label={t('ops.cashFlow.closeForm.cashHandedOver')} value={cashHandedOver} onChange={setCashHandedOver} placeholder='0.00' />
+          <DecimalField label={t('ops.cashFlow.submitForm.cashHandedOver')} value={cashHandedOver} onChange={setCashHandedOver} placeholder='0.00' />
         </div>
       </div>
 
       <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
 
       <div className='rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm space-y-1'>
-        <div className='text-xs uppercase tracking-wide text-slate-500 mb-1'>{t('ops.cashFlow.closeForm.summaryHeading')}</div>
-        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.opening')}</span><span className='font-mono'>{opening.toFixed(2)}</span></div>
-        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashCollected')}</span><span className='font-mono'>{cashIn.toFixed(2)}</span></div>
-        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashExpenses')}</span><span className='font-mono'>-{cashOut.toFixed(2)}</span></div>
-        <div className='flex justify-between font-medium border-t border-slate-200 pt-1'><span>{t('ops.cashFlow.closeForm.expected')}</span><span className='font-mono'>{expected.toFixed(2)}</span></div>
-        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashHandedOver')}</span><span className='font-mono'>{actual.toFixed(2)}</span></div>
-        <div className={'flex justify-between font-medium ' + (diff === 0 ? 'text-emerald-700' : 'text-amber-700')}><span>{t('ops.cashFlow.closeForm.difference')}</span><span className='font-mono'>{diff.toFixed(2)}</span></div>
-        <div className='flex justify-between text-slate-600 pt-1'><span>{t('ops.cashFlow.closeForm.mobile')}</span><span className='font-mono'>{mobileIn.toFixed(2)}</span></div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-1'>{t('ops.cashFlow.submitForm.summaryHeading')}</div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.submitForm.opening')}</span><span className='font-mono'>{opening.toFixed(2)}</span></div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.submitForm.cashCollected')}</span><span className='font-mono'>{cashIn.toFixed(2)}</span></div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.submitForm.cashExpenses')}</span><span className='font-mono'>-{cashOut.toFixed(2)}</span></div>
+        <div className='flex justify-between font-medium border-t border-slate-200 pt-1'><span>{t('ops.cashFlow.submitForm.expected')}</span><span className='font-mono'>{expected.toFixed(2)}</span></div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.submitForm.cashHandedOver')}</span><span className='font-mono'>{actual.toFixed(2)}</span></div>
+        <div className={'flex justify-between font-medium ' + (diff === 0 ? 'text-emerald-700' : 'text-amber-700')}><span>{t('ops.cashFlow.submitForm.difference')}</span><span className='font-mono'>{diff.toFixed(2)}</span></div>
+        <div className='flex justify-between text-slate-600 pt-1'><span>{t('ops.cashFlow.submitForm.mobile')}</span><span className='font-mono'>{mobileIn.toFixed(2)}</span></div>
       </div>
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
@@ -477,7 +477,7 @@ function SubmitShiftInline({
           {t('action.cancel')}
         </button>
         <button type='submit' disabled={busy} className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-          {busy ? t('ops.cashFlow.closeForm.submitting') : t('ops.cashFlow.closeForm.submit')}
+          {busy ? t('ops.cashFlow.submitForm.submitting') : t('ops.cashFlow.submitForm.submit')}
         </button>
       </div>
     </form>
@@ -797,7 +797,7 @@ export default function CashPage() {
                           <span className='text-xs text-slate-500 font-mono'>{r.shift.businessDate}</span>
                         </div>
                         <div className='mt-0.5 text-xs text-slate-500'>
-                          {t('ops.cashFlow.closeForm.opening')}: <span className='font-mono'>{r.shift.openingCash ?? '0.00'}</span>
+                          {t('ops.cashFlow.submitForm.opening')}: <span className='font-mono'>{r.shift.openingCash ?? '0.00'}</span>
                         </div>
                         <div className='mt-1 text-sm text-slate-600'>
                           {t('ops.cashFlow.row.collected')}: <span className='font-mono'>{r.total}</span>
@@ -842,7 +842,7 @@ export default function CashPage() {
                           <button type='button' onClick={() => setInlineForm({ kind: 'submit-shift', shiftId: r.shift.id })}
                             disabled={isBusyRow}
                             className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                            {t('ops.cashFlow.row.action.close')}
+                            {t('ops.cashFlow.row.action.submit')}
                           </button>
                         </div>
                       )}
