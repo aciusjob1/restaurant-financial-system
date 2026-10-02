@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import Link from 'next/link';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import {
   DateField, DecimalField, SelectField, TextField, TextArea, FormError, SubmitButton,
@@ -11,6 +10,10 @@ import { useT } from '@/lib/i18n/LanguageContext';
 import type { Dict } from '@/lib/i18n/dictionaries';
 
 const STATUS_OPTIONS = ['ALL', 'DRAFT', 'APPROVED', 'PAID'] as const;
+const PAYMENT_METHODS = [
+  'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA',
+  'HALOPESA', 'BANK', 'CARD', 'OTHER',
+] as const;
 
 type Employee = {
   id: string;
@@ -20,6 +23,8 @@ type Employee = {
   fullName?: string;
   isActive?: boolean;
 };
+
+type UnsettledAdvance = { id: string; amount: string; businessDate: string };
 
 type Salary = {
   id: string;
@@ -33,8 +38,27 @@ type Salary = {
   deductions: string;
   netSalary: string;
   status: 'DRAFT' | 'APPROVED' | 'PAID';
+  notes: string | null;
+  createdBy: string;
   approvedBy: string | null;
   approvedAt: string | null;
+  createdAt: string;
+  paidTotal?: string;
+  unsettledAdvances?: UnsettledAdvance[];
+};
+
+type Payment = {
+  id: string;
+  salaryRecordId: string;
+  amount: string;
+  paymentMethod: string;
+  businessDate: string;
+  paidAt: string;
+  reference: string | null;
+  notes: string | null;
+  recordedBy: string;
+  voidedAt: string | null;
+  voidReason: string | null;
 };
 
 function todayISO(): string {
@@ -66,6 +90,14 @@ function salaryStatusFilterKey(s: string): keyof Dict {
   return 'status.draft';
 }
 
+function paidOf(s: Salary): number {
+  return parseFloat(s.paidTotal ?? '0') || 0;
+}
+
+function remainingOf(s: Salary): number {
+  return (parseFloat(s.netSalary) || 0) - paidOf(s);
+}
+
 export default function SalariesPage() {
   const { t, tError } = useT();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -86,6 +118,8 @@ export default function SalariesPage() {
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -140,6 +174,10 @@ export default function SalariesPage() {
 
   function employeeOf(id: string): Employee | undefined {
     return employees.find((e) => e.id === id);
+  }
+
+  function toggleExpand(id: string) {
+    setExpandedId((cur) => (cur === id ? null : id));
   }
 
   return (
@@ -205,49 +243,349 @@ export default function SalariesPage() {
         <SubmitButton busy={busy}>{t('action.createSalary')}</SubmitButton>
       </form>
 
-      <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
+      <div className='rounded-2xl border border-slate-200 bg-white overflow-hidden'>
         <table className='w-full text-sm'>
           <thead className='bg-slate-50'>
             <tr>
+              <th className='w-8' />
               <th className='text-left px-3 py-2 font-medium'>{t('table.salaryNumber')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('table.employee')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('table.period')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('table.label')}</th>
               <th className='text-right px-3 py-2 font-medium'>{t('table.net')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('ops.salaries.paidCol')}</th>
+              <th className='text-right px-3 py-2 font-medium'>{t('ops.salaries.remainingCol')}</th>
               <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
-              <th className='text-left px-3 py-2 font-medium'>{t('table.action')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
+              <tr><td colSpan={9} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
             )}
             {!loading && salaries.length === 0 && (
-              <tr><td colSpan={7} className='px-3 py-6 text-center text-slate-400'>{t('ops.salaries.empty')}</td></tr>
+              <tr><td colSpan={9} className='px-3 py-6 text-center text-slate-400'>{t('ops.salaries.empty')}</td></tr>
             )}
-            {salaries.map((s) => (
-              <tr key={s.id} className='border-t border-slate-100'>
-                <td className='px-3 py-2 font-mono'>{s.salaryNumber}</td>
-                <td className='px-3 py-2'>{employeeName(employeeOf(s.employeeId))}</td>
-                <td className='px-3 py-2 text-slate-600'>{s.periodStart} \u2192 {s.periodEnd}</td>
-                <td className='px-3 py-2 text-slate-600'>{s.label}</td>
-                <td className='px-3 py-2 text-right font-mono'>{s.netSalary}</td>
-                <td className='px-3 py-2'>
-                  <span className='text-xs rounded bg-slate-100 px-2 py-0.5'>{t(salaryStatusKey(s.status))}</span>
-                </td>
-                <td className='px-3 py-2'>
-                  <Link
-                    href={'/ops/salaries/' + s.id}
-                    className='text-xs text-slate-700 underline hover:text-slate-900'
-                  >
-                    {t('action.open')}
-                  </Link>
-                </td>
-              </tr>
-            ))}
+            {salaries.map((s) => {
+              const isOpen = expandedId === s.id;
+              const paid = paidOf(s);
+              const remaining = remainingOf(s);
+              return (
+                <>
+                  <tr key={s.id} className='border-t border-slate-100 hover:bg-slate-50'>
+                    <td className='px-2 py-2 text-center'>
+                      <button
+                        type='button'
+                        onClick={() => toggleExpand(s.id)}
+                        className='text-slate-500 hover:text-slate-900'
+                        aria-label={isOpen ? 'Collapse' : 'Expand'}
+                      >
+                        {isOpen ? '\u2212' : '+'}
+                      </button>
+                    </td>
+                    <td className='px-3 py-2 font-mono'>{s.salaryNumber}</td>
+                    <td className='px-3 py-2'>{employeeName(employeeOf(s.employeeId))}</td>
+                    <td className='px-3 py-2 text-slate-600'>{s.periodStart} \u2192 {s.periodEnd}</td>
+                    <td className='px-3 py-2 text-slate-600'>{s.label}</td>
+                    <td className='px-3 py-2 text-right font-mono'>{s.netSalary}</td>
+                    <td className='px-3 py-2 text-right font-mono'>{paid.toFixed(2)}</td>
+                    <td className='px-3 py-2 text-right font-mono'>{remaining.toFixed(2)}</td>
+                    <td className='px-3 py-2'>
+                      <span className='text-xs rounded bg-slate-100 px-2 py-0.5'>{t(salaryStatusKey(s.status))}</span>
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr key={s.id + '-detail'} className='border-t border-slate-100 bg-slate-50'>
+                      <td colSpan={9} className='p-0'>
+                        <SalaryExpanded record={s} employees={employees} onChanged={load} />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
           </tbody>
         </table>
       </div>
     </OpsShell>
+  );
+}
+
+// ---------- expanded panel ----------
+
+function SalaryExpanded({ record, employees, onChanged }: { record: Salary; employees: Employee[]; onChanged: () => void }) {
+  const { t, tError } = useT();
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(true);
+  const [advances, setAdvances] = useState<UnsettledAdvance[]>([]);
+
+  const [editLabel, setEditLabel] = useState(record.label);
+  const [editStart, setEditStart] = useState(record.periodStart);
+  const [editEnd, setEditEnd] = useState(record.periodEnd);
+  const [editBase, setEditBase] = useState(record.baseSalary);
+  const [editAdj, setEditAdj] = useState(record.adjustments);
+  const [editDed, setEditDed] = useState(record.deductions);
+  const [editNotes, setEditNotes] = useState(record.notes ?? '');
+
+  const [payAmount, setPayAmount] = useState('');
+  const [payMethod, setPayMethod] = useState<string>('CASH');
+  const [payBusinessDate, setPayBusinessDate] = useState(todayISO());
+  const [payReference, setPayReference] = useState('');
+  const [payNotes, setPayNotes] = useState('');
+
+  const [voidId, setVoidId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<{ code: string; message: string } | null>(null);
+
+  const isDraft = record.status === 'DRAFT';
+  const isApproved = record.status === 'APPROVED';
+  const isPaid = record.status === 'PAID';
+  const paidTotal = parseFloat(record.paidTotal ?? '0') || 0;
+  const netNum = parseFloat(record.netSalary) || 0;
+  const remaining = netNum - paidTotal;
+
+  function reloadPayments() {
+    setLoadingPayments(true);
+    apiFetch<{ success: true; payments: Payment[] }>(
+      '/api/v1/salary-payments?salaryRecordId=' + record.id + '&includeVoided=true'
+    )
+      .then((r) => setPayments(r.payments))
+      .catch(() => setPayments([]))
+      .finally(() => setLoadingPayments(false));
+  }
+
+  useEffect(() => { reloadPayments(); }, [record.id]);
+
+  useEffect(() => {
+    apiFetch<{ success: true; salary: Salary }>('/api/v1/salaries/' + record.id)
+      .then((r) => setAdvances(r.salary.unsettledAdvances ?? []))
+      .catch(() => setAdvances([]));
+  }, [record.id]);
+
+  async function saveEdit(e: FormEvent) {
+    e.preventDefault();
+    setErr(null); setBusy(true);
+    try {
+      await apiFetch('/api/v1/salaries/' + record.id, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          label: editLabel,
+          periodStart: editStart,
+          periodEnd: editEnd,
+          baseSalary: editBase,
+          adjustments: editAdj.trim() === '' ? undefined : editAdj.trim(),
+          deductions: editDed.trim() === '' ? undefined : editDed.trim(),
+          notes: editNotes.trim() === '' ? null : editNotes.trim(),
+        }),
+      });
+      onChanged();
+    } catch (e) {
+      setErr(errOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approve() {
+    setErr(null); setBusy(true);
+    try {
+      await apiFetch('/api/v1/salaries/' + record.id + '/approve', {
+        method: 'POST', body: JSON.stringify({}),
+      });
+      onChanged();
+    } catch (e) {
+      setErr(errOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pay(e: FormEvent) {
+    e.preventDefault();
+    setErr(null); setBusy(true);
+    try {
+      await apiFetch('/api/v1/salary-payments', {
+        method: 'POST',
+        body: JSON.stringify({
+          salaryRecordId: record.id,
+          amount: payAmount,
+          paymentMethod: payMethod,
+          businessDate: payBusinessDate,
+          reference: payReference.trim() === '' ? null : payReference.trim(),
+          notes: payNotes.trim() === '' ? null : payNotes.trim(),
+        }),
+      });
+      setPayAmount(''); setPayReference(''); setPayNotes('');
+      reloadPayments();
+      onChanged();
+    } catch (e) {
+      setErr(errOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function voidPayment() {
+    if (!voidId) return;
+    setErr(null); setBusy(true);
+    try {
+      await apiFetch('/api/v1/salary-payments/' + voidId + '/void', {
+        method: 'POST', body: JSON.stringify({ reason: voidReason }),
+      });
+      setVoidId(null); setVoidReason('');
+      reloadPayments();
+      onChanged();
+    } catch (e) {
+      setErr(errOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className='p-5 space-y-4'>
+      {/* Summary */}
+      <div className='rounded-xl border border-slate-200 bg-white p-4 space-y-3'>
+        <h3 className='text-sm font-medium text-slate-700'>{t('ops.salaries.summaryHeading')}</h3>
+        <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
+          <div><span className='text-slate-500'>{t('table.employee')}: </span>{employeeName(employees.find((e) => e.id === record.employeeId))}</div>
+          <div><span className='text-slate-500'>{t('table.period')}: </span>{record.periodStart} \u2192 {record.periodEnd}</div>
+          <div><span className='text-slate-500'>{t('form.label')}: </span>{record.label}</div>
+          <div><span className='text-slate-500'>{t('form.baseSalary')}: </span><span className='font-mono'>{record.baseSalary}</span></div>
+          <div><span className='text-slate-500'>{t('form.adjustments')}: </span><span className='font-mono'>{record.adjustments}</span></div>
+          <div><span className='text-slate-500'>{t('form.deductions')}: </span><span className='font-mono'>{record.deductions}</span></div>
+          <div><span className='text-slate-500'>{t('table.net')}: </span><span className='font-mono font-medium'>{record.netSalary}</span></div>
+          <div><span className='text-slate-500'>{t('ops.salaries.paidCol')}: </span><span className='font-mono'>{paidTotal.toFixed(2)}</span></div>
+          <div><span className='text-slate-500'>{t('ops.salaries.remainingCol')}: </span><span className='font-mono'>{remaining.toFixed(2)}</span></div>
+        </div>
+        {record.notes && <div className='text-sm text-slate-600'>{record.notes}</div>}
+        {record.approvedAt && (
+          <div className='text-xs text-slate-500'>{t('ops.salaries.approvedAtPrefix')}{record.approvedAt}</div>
+        )}
+      </div>
+
+      {/* Unsettled advances */}
+      {advances.length > 0 && (
+        <div className='rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1 text-sm'>
+          <div className='font-medium text-amber-900'>{t('ops.salaries.advanceHeading')}</div>
+          <div className='text-amber-800'>{t('ops.salaries.advanceIntro')}</div>
+          <ul className='font-mono text-amber-900'>
+            {advances.map((a) => (
+              <li key={a.id}>{a.businessDate} \u2014 {a.amount}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Edit form — DRAFT only */}
+      {isDraft && (
+        <form onSubmit={saveEdit} className='rounded-xl border border-slate-200 bg-white p-4 space-y-3'>
+          <h3 className='text-sm font-medium text-slate-700'>{t('ops.salaries.editHeading')}</h3>
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+            <TextField label={t('form.label')} value={editLabel} onChange={setEditLabel} required />
+            <DateField label={t('form.periodStart')} value={editStart} onChange={setEditStart} required />
+            <DateField label={t('form.periodEnd')} value={editEnd} onChange={setEditEnd} required />
+            <DecimalField label={t('form.baseSalary')} value={editBase} onChange={setEditBase} required />
+            <DecimalField label={t('form.adjustments')} value={editAdj} onChange={setEditAdj} />
+            <DecimalField label={t('form.deductions')} value={editDed} onChange={setEditDed} />
+          </div>
+          <TextArea label={t('form.notesOptional')} value={editNotes} onChange={setEditNotes} rows={2} />
+          <div className='flex flex-wrap gap-2'>
+            <button type='submit' disabled={busy} className='rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'>
+              {busy ? t('ops.salaries.saving') : t('ops.salaries.saveChanges')}
+            </button>
+            <button type='button' onClick={approve} disabled={busy} className='rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'>
+              {t('ops.salaries.approve')}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Record payment — APPROVED only */}
+      {isApproved && (
+        <form onSubmit={pay} className='rounded-xl border border-slate-200 bg-white p-4 space-y-3'>
+          <h3 className='text-sm font-medium text-slate-700'>{t('ops.salaries.recordPaymentHeading')}</h3>
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+            <DecimalField label={t('form.amount')} value={payAmount} onChange={setPayAmount} required placeholder='0.00' />
+            <SelectField
+              label={t('form.paymentMethod')}
+              value={payMethod}
+              onChange={setPayMethod}
+              required
+              options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
+            />
+            <DateField label={t('form.businessDate')} value={payBusinessDate} onChange={setPayBusinessDate} required />
+            <TextField label={t('form.referenceOptional')} value={payReference} onChange={setPayReference} />
+          </div>
+          <TextArea label={t('form.notesOptional')} value={payNotes} onChange={setPayNotes} rows={2} />
+          <button type='submit' disabled={busy} className='rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'>
+            {busy ? t('ops.salaries.recordingPayment') : t('ops.salaries.recordPayment')}
+          </button>
+        </form>
+      )}
+
+      {/* Payments table */}
+      <div className='rounded-xl border border-slate-200 bg-white p-4 space-y-2'>
+        <h3 className='text-sm font-medium text-slate-700'>{t('ops.salaries.paymentsHeading')}</h3>
+        {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+        {loadingPayments ? (
+          <div className='text-sm text-slate-400'>{t('common.loading')}</div>
+        ) : (
+          <div className='overflow-x-auto'>
+            <table className='w-full text-sm'>
+              <thead className='bg-slate-50'>
+                <tr>
+                  <th className='text-left px-2 py-2 font-medium'>{t('table.date')}</th>
+                  <th className='text-left px-2 py-2 font-medium'>{t('table.method')}</th>
+                  <th className='text-right px-2 py-2 font-medium w-32'>{t('form.amount')}</th>
+                  <th className='text-left px-2 py-2 font-medium'>{t('form.referenceOptional')}</th>
+                  <th className='text-left px-2 py-2 font-medium'>{t('table.status')}</th>
+                  <th className='w-24' />
+                </tr>
+              </thead>
+              <tbody>
+                {payments.length === 0 && (
+                  <tr><td colSpan={6} className='px-2 py-4 text-center text-slate-400'>{t('ops.salaries.noPayments')}</td></tr>
+                )}
+                {payments.map((p) => (
+                  <tr key={p.id} className='border-t border-slate-100'>
+                    <td className='px-2 py-2'>{p.businessDate}</td>
+                    <td className='px-2 py-2'>{p.paymentMethod}</td>
+                    <td className='px-2 py-2 text-right font-mono'>{p.amount}</td>
+                    <td className='px-2 py-2 text-slate-500'>{p.reference ?? '\u2014'}</td>
+                    <td className='px-2 py-2'>
+                      {p.voidedAt
+                        ? <span className='text-xs rounded bg-red-100 text-red-700 px-2 py-0.5'>{t('status.voided')}</span>
+                        : <span className='text-xs rounded bg-emerald-100 text-emerald-700 px-2 py-0.5'>{t('status.active')}</span>}
+                    </td>
+                    <td className='px-2 py-2 text-right'>
+                      {!p.voidedAt && !isPaid && (
+                        voidId === p.id ? (
+                          <div className='space-y-1'>
+                            <input
+                              className='w-full rounded border border-slate-300 px-2 py-1 text-xs'
+                              placeholder={t('ops.salaries.voidReasonPlaceholder')}
+                              value={voidReason}
+                              onChange={(e) => setVoidReason(e.target.value)}
+                            />
+                            <div className='flex gap-1 justify-end'>
+                              <button type='button' onClick={voidPayment} disabled={voidReason.trim().length < 3 || busy} className='text-xs rounded bg-red-600 text-white px-2 py-1 disabled:opacity-60'>{t('ops.salaries.void')}</button>
+                              <button type='button' onClick={() => { setVoidId(null); setVoidReason(''); }} className='text-xs text-slate-600'>{t('action.cancel')}</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type='button' onClick={() => { setVoidId(p.id); setVoidReason(''); }} className='text-xs text-red-600 hover:text-red-800'>{t('ops.salaries.void')}</button>
+                        )
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
