@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { FormError } from '@/components/ops/Form';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, API_BASE } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
 import { useT } from '@/lib/i18n/LanguageContext';
 
@@ -104,6 +104,10 @@ export default function BackupSettingsPage() {
   const [cronExpr, setCronExpr] = useState('');
   const [retention, setRetention] = useState('0');
   const [customPath, setCustomPath] = useState('');
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreFile, setRestoreFile] = useState('');
+  const [restoreReason, setRestoreReason] = useState('');
+  const [restoreConfirm, setRestoreConfirm] = useState('');
 
   function load() {
     setLoading(true);
@@ -176,6 +180,44 @@ export default function BackupSettingsPage() {
     } finally { setBusy(false); }
   }
 
+  function openRestore(filename: string) {
+    setRestoreOpen(true);
+    setRestoreFile(filename);
+    setRestoreReason('');
+    setRestoreConfirm('');
+    setErr(null); setFlash(null);
+  }
+
+  async function doRestore() {
+    if (restoreConfirm !== 'RESTORE') {
+      setErr({ code: 'CONFIRM', message: t('ops.settings.backup.restoreConfirmHint') });
+      return;
+    }
+    if (restoreReason.trim().length < 5) {
+      setErr({ code: 'REASON', message: t('ops.settings.backup.restoreReasonHint') });
+      return;
+    }
+    setBusy(true); setErr(null); setFlash(null);
+    try {
+      const res = await apiFetch<{ success: true; result: { rowCount: number; preRestoreBackup: string } }>(
+        OPS_PATHS.backups + '/' + encodeURIComponent(restoreFile) + '/restore',
+        {
+          method: 'POST',
+          body: JSON.stringify({ confirm: 'RESTORE', reason: restoreReason.trim() }),
+        }
+      );
+      setFlash(t('ops.settings.backup.restoreDone')
+        .replace('{rows}', String(res.result.rowCount))
+        .replace('{pre}', res.result.preRestoreBackup));
+      setRestoreOpen(false);
+      load();
+    } catch (e) {
+      if (e instanceof ApiError) setErr({ code: e.code, message: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <OpsShell>
       <OpsHeader
@@ -220,6 +262,7 @@ export default function BackupSettingsPage() {
                   <th className='text-left px-3 py-2 font-medium'>{t('ops.settings.backup.colGenerated')}</th>
                   <th className='text-right px-3 py-2 font-medium'>{t('ops.settings.backup.colRows')}</th>
                   <th className='text-right px-3 py-2 font-medium'>{t('ops.settings.backup.colSize')}</th>
+                  <th className='text-right px-3 py-2 font-medium'>{t('ops.settings.backup.colAction')}</th>
                 </tr>
               </thead>
               <tbody className='divide-y divide-slate-100'>
@@ -229,6 +272,23 @@ export default function BackupSettingsPage() {
                     <td className='px-3 py-2 text-slate-600'>{formatWhen(b.generatedAt)}</td>
                     <td className='px-3 py-2 text-right font-mono text-slate-600'>{b.rowCount ?? '\u2014'}</td>
                     <td className='px-3 py-2 text-right font-mono text-slate-600'>{formatSize(b.sizeBytes)}</td>
+                    <td className='px-3 py-2 text-right text-xs space-x-3 whitespace-nowrap'>
+                      <a
+                        href={API_BASE + OPS_PATHS.backups + '/' + encodeURIComponent(b.filename) + '/download'}
+                        className='text-blue-600 hover:text-blue-700'
+                      >
+                        {t('ops.settings.backup.actionDownload')}
+                      </a>
+                      {canWrite && (
+                        <button
+                          type='button'
+                          onClick={() => openRestore(b.filename)}
+                          className='text-red-600 hover:text-red-700'
+                        >
+                          {t('ops.settings.backup.actionRestore')}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -333,6 +393,52 @@ export default function BackupSettingsPage() {
           <div className='text-sm text-slate-500'>{t('ops.settings.backup.never')}</div>
         )}
       </section>
+
+      {restoreOpen && (
+        <div className='fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50'>
+          <div className='bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4'>
+            <h3 className='text-lg font-medium text-red-700'>{t('ops.settings.backup.restoreTitle')}</h3>
+            <p className='text-sm text-slate-600'>
+              {t('ops.settings.backup.restoreBody').replace('{name}', restoreFile)}
+            </p>
+            <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800'>
+              {t('ops.settings.backup.restoreWarning')}
+            </div>
+            <input
+              type='text'
+              placeholder={t('ops.settings.backup.restoreReason')}
+              value={restoreReason}
+              onChange={(e) => setRestoreReason(e.target.value)}
+              className='w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
+            />
+            <input
+              type='text'
+              placeholder={t('ops.settings.backup.restoreType')}
+              value={restoreConfirm}
+              onChange={(e) => setRestoreConfirm(e.target.value)}
+              className='w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono'
+            />
+            <div className='flex justify-end gap-2 pt-2'>
+              <button
+                type='button'
+                onClick={() => setRestoreOpen(false)}
+                disabled={busy}
+                className='rounded-lg border border-slate-300 px-4 py-2 text-sm'
+              >
+                {t('ops.settings.backup.cancel')}
+              </button>
+              <button
+                type='button'
+                onClick={doRestore}
+                disabled={busy || restoreConfirm !== 'RESTORE' || restoreReason.trim().length < 5}
+                className='rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
+              >
+                {busy ? t('ops.settings.backup.restoreRunning') : t('ops.settings.backup.restoreButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </OpsShell>
   );
 }

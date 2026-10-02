@@ -41,3 +41,15 @@ backupRouter.post(
   requireRole('OWNER'),
   asyncHandler(backupController.updateSchedule)
 );
+
+backupRouter.get(
+  '/:filename/download',
+  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  asyncHandler(backupController.downloadBackup)
+);
+
+backupRouter.post(
+  '/:filename/restore',
+  requireRole('OWNER'),
+  asyncHandler(backupController.restoreBackup)
+);
