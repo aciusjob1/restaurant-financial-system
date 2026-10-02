@@ -10,6 +10,8 @@ import { OPS_PATHS } from '@/lib/ops';
 import { useT } from '@/lib/i18n/LanguageContext';
 import type { Dict } from '@/lib/i18n/dictionaries';
 
+// ============================================================ Types
+
 type Shift = {
   id: string;
   userId?: string;
@@ -55,10 +57,10 @@ type Expense = {
 };
 
 type ExpenseCategory = { id: string; name: string; isActive: boolean };
-
 type User = { id: string; fullName: string; role: string };
+type Closing = { id: string; businessDate: string; status: string };
 
-type CloseExpense = {
+type DraftExpense = {
   id: string;
   categoryId: string;
   amount: string;
@@ -66,12 +68,37 @@ type CloseExpense = {
   description: string;
   paidByUserId: string;
 };
-type Closing = { id: string; businessDate: string; status: string };
+
+type InlineForm =
+  | { kind: 'add-collection'; shiftId: string }
+  | { kind: 'submit-shift'; shiftId: string }
+  | null;
+
+type SubDialog =
+  | { kind: 'send-back'; reconId: string }
+  | { kind: 'confirm-handover'; handoverId: string }
+  | { kind: 'close-shift'; shiftId: string; status: string }
+  | null;
+
+type Row = {
+  shift: Shift;
+  total: string;
+  collectionCount: number;
+  expenseTotal: number;
+  state: FlowState;
+  name: string;
+  recon: Reconciliation | undefined;
+  handover: Handover | undefined;
+};
+
+// ============================================================ Constants & helpers
 
 const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA',
   'HALOPESA', 'BANK', 'CARD', 'OTHER',
 ] as const;
+
+const MOBILE_METHODS = new Set(['MPESA', 'AIRTEL_MONEY', 'TIGO_PESA', 'HALOPESA']);
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -121,6 +148,8 @@ function statePillClass(s: FlowState): string {
   return 'bg-blue-50 text-blue-700';
 }
 
+// ============================================================ Presentational
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className='rounded-2xl border border-slate-200 bg-white p-4'>
@@ -130,15 +159,507 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-type Row = {
+function MethodLabel({ m }: { m: string }) {
+  return <span>{m.replace(/_/g, ' ')}</span>;
+}
+
+// ============================================================ Add collection inline
+
+function AddCollectionInline({
+  shift,
+  onDone,
+  onCancel,
+}: {
   shift: Shift;
-  total: string;
-  expenseTotal: number;
-  state: FlowState;
-  name: string;
-  recon: Reconciliation | undefined;
-  handover: Handover | undefined;
-};
+  onDone: (msg: string) => void;
+  onCancel: () => void;
+}) {
+  const { t, tError } = useT();
+  const [method, setMethod] = useState<string>('CASH');
+  const [amount, setAmount] = useState('');
+  const [mobileRef, setMobileRef] = useState('');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<{ code: string; message: string } | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (!amount.trim()) {
+      setErr({ code: 'AMOUNT_REQUIRED', message: 'Amount is required.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiFetch('/api/v1/collections', {
+        method: 'POST',
+        body: JSON.stringify({
+          shiftId: shift.id,
+          paymentMethod: method,
+          amount: amount.trim(),
+          mobileReference: mobileRef.trim() === '' ? null : mobileRef.trim(),
+          notes: notes.trim() === '' ? null : notes.trim(),
+          onBehalfOfUserId: shift.userId,
+        }),
+      });
+      onDone(t('ops.cashFlow.flash.collectionRecorded'));
+    } catch (e2) {
+      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className='border-t border-slate-100 pt-3 space-y-3'>
+      <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.row.collectionFormHeading')}</h3>
+      <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+        <SelectField
+          label={t('form.paymentMethod')}
+          value={method}
+          onChange={setMethod}
+          options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
+        />
+        <DecimalField label={t('form.amount')} value={amount} onChange={setAmount} placeholder='0.00' required />
+        <TextField label={t('ops.collections.mobileReferenceOptional')} value={mobileRef} onChange={setMobileRef} />
+      </div>
+      <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
+      {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+      <div className='flex gap-2 justify-end'>
+        <button type='button' onClick={onCancel} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+          {t('action.cancel')}
+        </button>
+        <button type='submit' disabled={busy} className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+          {busy ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.collectionSubmit')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ============================================================ Submit shift inline
+
+function SubmitShiftInline({
+  row,
+  collections,
+  categories,
+  users,
+  myId,
+  onDone,
+  onCancel,
+}: {
+  row: Row;
+  collections: Collection[];
+  categories: ExpenseCategory[];
+  users: User[];
+  myId: string;
+  onDone: (msg: string) => void;
+  onCancel: () => void;
+}) {
+  const { t, tError } = useT();
+  const [cash, setCash] = useState('');
+  const [mpesa, setMpesa] = useState('');
+  const [airtel, setAirtel] = useState('');
+  const [tigo, setTigo] = useState('');
+  const [halo, setHalo] = useState('');
+  const [bank, setBank] = useState('');
+  const [card, setCard] = useState('');
+  const [other, setOther] = useState('');
+  const [expenses, setExpenses] = useState<DraftExpense[]>([]);
+  const [cashHandedOver, setCashHandedOver] = useState('');
+  const [receivedByUserId, setReceivedByUserId] = useState(myId);
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<{ code: string; message: string } | null>(null);
+
+  const existing = collections.filter((c) => c.shiftId === row.shift.id && !c.voidedAt);
+  const byMethod: Record<string, number> = {};
+  for (const c of existing) {
+    byMethod[c.paymentMethod] = (byMethod[c.paymentMethod] ?? 0) + (parseFloat(c.amount) || 0);
+  }
+  const existingTotal = Object.values(byMethod).reduce((a, b) => a + b, 0);
+  const existingCash = byMethod['CASH'] ?? 0;
+  const existingMobile = Array.from(MOBILE_METHODS).reduce((a, m) => a + (byMethod[m] ?? 0), 0);
+
+  const opening = parseFloat(row.shift.openingCash ?? '0') || 0;
+  const cashIn = existingCash + (parseFloat(cash) || 0);
+  const mobileIn = existingMobile + (parseFloat(mpesa) || 0) + (parseFloat(airtel) || 0) + (parseFloat(tigo) || 0) + (parseFloat(halo) || 0);
+  const cashOut = expenses.reduce((a, e) => e.paymentMethod === 'CASH' ? a + (parseFloat(e.amount) || 0) : a, 0);
+  const expected = opening + cashIn - cashOut;
+  const actual = parseFloat(cashHandedOver) || 0;
+  const diff = actual - expected;
+
+  function addExpense() {
+    setExpenses((prev) => [...prev, {
+      id: 'e' + Date.now() + Math.random().toString(36).slice(2, 8),
+      categoryId: categories.length > 0 ? categories[0].id : '',
+      amount: '',
+      paymentMethod: 'CASH',
+      description: '',
+      paidByUserId: row.shift.userId ?? '',
+    }]);
+  }
+
+  function updateExpense(id: string, patch: Partial<DraftExpense>) {
+    setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, ...patch } : e));
+  }
+
+  function removeExpense(id: string) {
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (!receivedByUserId) {
+      setErr({ code: 'RECEIVER_REQUIRED', message: 'Select who received the cash.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const collPayload: Record<string, string> = {};
+      if (cash.trim()) collPayload.cash = cash.trim();
+      if (mpesa.trim()) collPayload.mpesa = mpesa.trim();
+      if (airtel.trim()) collPayload.airtelMoney = airtel.trim();
+      if (tigo.trim()) collPayload.tigoPesa = tigo.trim();
+      if (halo.trim()) collPayload.halopesa = halo.trim();
+      if (bank.trim()) collPayload.bank = bank.trim();
+      if (card.trim()) collPayload.card = card.trim();
+      if (other.trim()) collPayload.other = other.trim();
+      const expensesPayload = expenses
+        .filter((r) => r.categoryId && r.amount.trim() && r.description.trim())
+        .map((r) => ({
+          categoryId: r.categoryId,
+          amount: r.amount.trim(),
+          paymentMethod: r.paymentMethod,
+          description: r.description.trim(),
+          paidByUserId: r.paidByUserId || null,
+        }));
+      await apiFetch('/api/v1/shifts/' + row.shift.id + '/submit', {
+        method: 'POST',
+        body: JSON.stringify({
+          collections: collPayload,
+          expenses: expensesPayload,
+          cashHandedOver: cashHandedOver.trim() || '0.00',
+          receivedByUserId,
+          notes: notes.trim() || null,
+        }),
+      });
+      onDone(t('ops.cashFlow.flash.shiftClosed'));
+    } catch (e2) {
+      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className='border-t border-slate-100 pt-3 space-y-4'>
+      <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.closeForm.heading')}</h3>
+
+      <div className='rounded-xl bg-blue-50 border border-blue-100 p-3'>
+        <div className='text-xs uppercase tracking-wide text-blue-900 mb-2'>{t('ops.cashFlow.closeForm.shiftHeading')}</div>
+        <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
+          <div>
+            <span className='block text-xs text-slate-500'>{t('form.businessDate')}</span>
+            <span className='font-mono text-slate-800'>{row.shift.businessDate}</span>
+          </div>
+          <div>
+            <span className='block text-xs text-slate-500'>{t('table.waiter')}</span>
+            <span className='text-slate-800'>{row.name}</span>
+          </div>
+          <div>
+            <span className='block text-xs text-slate-500'>{t('ops.cashFlow.closeForm.opening')}</span>
+            <span className='font-mono text-slate-800'>{row.shift.openingCash ?? '0.00'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className='rounded-xl bg-slate-50 border border-slate-200 p-3'>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.existingHeading')}</div>
+        {existing.length === 0 ? (
+          <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.existingNone')}</div>
+        ) : (
+          <div className='space-y-1'>
+            {Object.entries(byMethod).map(([m, v]) => (
+              <div key={m} className='flex justify-between text-sm'>
+                <MethodLabel m={m} />
+                <span className='font-mono'>{v.toFixed(2)}</span>
+              </div>
+            ))}
+            <div className='flex justify-between text-sm font-medium border-t border-slate-200 pt-1'>
+              <span>{t('ops.cashFlow.closeForm.existingTotal')}</span>
+              <span className='font-mono'>{existingTotal.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.additionalHeading')}</div>
+        <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
+          <DecimalField label='Cash' value={cash} onChange={setCash} placeholder='0.00' />
+          <DecimalField label='MPesa' value={mpesa} onChange={setMpesa} placeholder='0.00' />
+          <DecimalField label='Airtel Money' value={airtel} onChange={setAirtel} placeholder='0.00' />
+          <DecimalField label='Tigo Pesa' value={tigo} onChange={setTigo} placeholder='0.00' />
+          <DecimalField label='HaloPesa' value={halo} onChange={setHalo} placeholder='0.00' />
+          <DecimalField label='Bank' value={bank} onChange={setBank} placeholder='0.00' />
+          <DecimalField label='Card' value={card} onChange={setCard} placeholder='0.00' />
+          <DecimalField label='Other' value={other} onChange={setOther} placeholder='0.00' />
+        </div>
+      </div>
+
+      <div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.expensesHeading')}</div>
+        {expenses.length === 0 && (
+          <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.noExpenses')}</div>
+        )}
+        {expenses.map((row2) => (
+          <div key={row2.id} className='grid grid-cols-1 md:grid-cols-12 gap-3 items-end mb-3'>
+            <div className='md:col-span-3'>
+              <SelectField
+                label={t('form.category')}
+                value={row2.categoryId}
+                onChange={(v) => updateExpense(row2.id, { categoryId: v })}
+                options={categories.map((c) => ({ value: c.id, label: c.name }))}
+              />
+            </div>
+            <div className='md:col-span-2'>
+              <DecimalField label={t('form.amount')} value={row2.amount} onChange={(v) => updateExpense(row2.id, { amount: v })} placeholder='0.00' />
+            </div>
+            <div className='md:col-span-2'>
+              <SelectField
+                label={t('form.paymentMethod')}
+                value={row2.paymentMethod}
+                onChange={(v) => updateExpense(row2.id, { paymentMethod: v })}
+                options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
+              />
+            </div>
+            <div className='md:col-span-3'>
+              <TextField label={t('form.description')} value={row2.description} onChange={(v) => updateExpense(row2.id, { description: v })} />
+            </div>
+            <div className='md:col-span-2'>
+              <SelectField
+                label={t('form.paidBy')}
+                value={row2.paidByUserId}
+                onChange={(v) => updateExpense(row2.id, { paidByUserId: v })}
+                options={[{ value: '', label: t('common.notSpecified') }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
+              />
+            </div>
+            <div className='md:col-span-12 flex justify-end'>
+              <button type='button' onClick={() => removeExpense(row2.id)} className='text-xs text-red-600 hover:text-red-700'>
+                {t('ops.cashFlow.closeForm.removeExpense')}
+              </button>
+            </div>
+          </div>
+        ))}
+        <button type='button' onClick={addExpense} className='text-sm text-slate-600 hover:text-slate-900'>
+          {t('ops.cashFlow.closeForm.addExpense')}
+        </button>
+      </div>
+
+      <div>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.handoverHeading')}</div>
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+          <DecimalField label={t('ops.cashFlow.closeForm.cashHandedOver')} value={cashHandedOver} onChange={setCashHandedOver} placeholder='0.00' />
+          <SelectField
+            label={t('form.receiver')}
+            value={receivedByUserId}
+            onChange={setReceivedByUserId}
+            options={[{ value: '', label: t('form.selectPlaceholder') }, ...users.filter((u) => u.role === 'MANAGER' || u.role === 'OWNER').map((u) => ({ value: u.id, label: u.fullName }))]}
+          />
+        </div>
+      </div>
+
+      <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
+
+      <div className='rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm space-y-1'>
+        <div className='text-xs uppercase tracking-wide text-slate-500 mb-1'>{t('ops.cashFlow.closeForm.summaryHeading')}</div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.opening')}</span><span className='font-mono'>{opening.toFixed(2)}</span></div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashCollected')}</span><span className='font-mono'>{cashIn.toFixed(2)}</span></div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashExpenses')}</span><span className='font-mono'>-{cashOut.toFixed(2)}</span></div>
+        <div className='flex justify-between font-medium border-t border-slate-200 pt-1'><span>{t('ops.cashFlow.closeForm.expected')}</span><span className='font-mono'>{expected.toFixed(2)}</span></div>
+        <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashHandedOver')}</span><span className='font-mono'>{actual.toFixed(2)}</span></div>
+        <div className={'flex justify-between font-medium ' + (diff === 0 ? 'text-emerald-700' : 'text-amber-700')}><span>{t('ops.cashFlow.closeForm.difference')}</span><span className='font-mono'>{diff.toFixed(2)}</span></div>
+        <div className='flex justify-between text-slate-600 pt-1'><span>{t('ops.cashFlow.closeForm.mobile')}</span><span className='font-mono'>{mobileIn.toFixed(2)}</span></div>
+      </div>
+
+      {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+
+      <div className='flex gap-2 justify-end'>
+        <button type='button' onClick={onCancel} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+          {t('action.cancel')}
+        </button>
+        <button type='submit' disabled={busy} className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+          {busy ? t('ops.cashFlow.closeForm.submitting') : t('ops.cashFlow.closeForm.submit')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ============================================================ Small inline sub-dialogs
+
+function SendBackInline({
+  onConfirm,
+  onCancel,
+  busy,
+}: { onConfirm: (reason: string) => void; onCancel: () => void; busy: boolean }) {
+  const { t } = useT();
+  const [reason, setReason] = useState('');
+  return (
+    <div className='border-t border-slate-100 pt-3 space-y-2'>
+      <input
+        className='w-full rounded border border-slate-300 px-3 py-2 text-sm'
+        placeholder={t('ops.cashFlow.row.sendBackPlaceholder')}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <div className='flex gap-2 justify-end'>
+        <button type='button' onClick={() => onConfirm(reason)} disabled={reason.trim().length < 3 || busy}
+          className='rounded-lg bg-amber-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+          {busy ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.sendBack')}
+        </button>
+        <button type='button' onClick={onCancel} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+          {t('action.cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmHandoverInline({
+  onConfirm,
+  onCancel,
+  busy,
+}: { onConfirm: (notes: string) => void; onCancel: () => void; busy: boolean }) {
+  const { t } = useT();
+  const [notes, setNotes] = useState('');
+  return (
+    <div className='border-t border-slate-100 pt-3 space-y-2'>
+      <input
+        className='w-full rounded border border-slate-300 px-3 py-2 text-sm'
+        placeholder={t('ops.handovers.confirmNotesPlaceholder')}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+      />
+      <div className='flex gap-2 justify-end'>
+        <button type='button' onClick={() => onConfirm(notes)} disabled={busy}
+          className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+          {busy ? t('ops.shiftsDetail.working') : t('action.confirm')}
+        </button>
+        <button type='button' onClick={onCancel} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+          {t('action.cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CloseShiftInline({
+  onConfirm,
+  onCancel,
+  busy,
+}: { onConfirm: () => void; onCancel: () => void; busy: boolean }) {
+  const { t } = useT();
+  return (
+    <div className='border-t border-slate-100 pt-3 space-y-2'>
+      <div className='text-sm text-slate-700'>{t('ops.cashFlow.row.closeConfirmPrompt')}</div>
+      <div className='flex gap-2 justify-end'>
+        <button type='button' onClick={onConfirm} disabled={busy}
+          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+          {busy ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.close')}
+        </button>
+        <button type='button' onClick={onCancel} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+          {t('action.cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================ Open shift dialog
+
+function OpenShiftDialog({
+  waiters,
+  onClose,
+  onDone,
+}: {
+  waiters: User[];
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const { t, tError } = useT();
+  const [businessDate, setBusinessDate] = useState(todayISO());
+  const [openingCash, setOpeningCash] = useState('');
+  const [notes, setNotes] = useState('');
+  const [waiterId, setWaiterId] = useState(waiters.length > 0 ? waiters[0].id : '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<{ code: string; message: string } | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (!waiterId) {
+      setErr({ code: 'WAITER_REQUIRED', message: 'Select a waiter.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiFetch('/api/v1/shifts', {
+        method: 'POST',
+        body: JSON.stringify({
+          businessDate,
+          openingCash: openingCash.trim() || undefined,
+          notes: notes.trim() === '' ? null : notes.trim(),
+          onBehalfOfUserId: waiterId,
+        }),
+      });
+      onDone(t('ops.cashFlow.flash.shiftOpened'));
+    } catch (e2) {
+      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
+      <div className='w-full max-w-lg rounded-2xl bg-white p-6 space-y-4'>
+        <h3 className='text-lg font-medium text-slate-900'>{t('ops.cashFlow.startDialog.title')}</h3>
+        {waiters.length === 0 ? (
+          <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800'>
+            {t('ops.cashFlow.startDialog.noWaiters')}
+          </div>
+        ) : (
+          <form onSubmit={submit} className='space-y-4'>
+            <SelectField
+              label={t('ops.cashFlow.startDialog.waiter')}
+              value={waiterId}
+              onChange={setWaiterId}
+              required
+              options={waiters.map((u) => ({ value: u.id, label: u.fullName }))}
+            />
+            <DateField label={t('form.businessDate')} value={businessDate} onChange={setBusinessDate} required />
+            <DecimalField label={t('ops.shifts.openingCashOptional')} value={openingCash} onChange={setOpeningCash} placeholder='0.00' />
+            <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
+            {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
+            <div className='flex justify-end gap-2'>
+              <button type='button' onClick={onClose} disabled={busy} className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+                {t('action.cancel')}
+              </button>
+              <button type='submit' disabled={busy} className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+                {busy ? t('ops.cashFlow.startDialog.submitting') : t('action.startShift')}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================ Main page
 
 export default function CashPage() {
   const { t, tError } = useT();
@@ -152,48 +673,15 @@ export default function CashPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [myId, setMyId] = useState<string>('');
-  const [myRole, setMyRole] = useState<string>('');
+  const [myId, setMyId] = useState('');
+  const [myRole, setMyRole] = useState('');
   const [todayClosing, setTodayClosing] = useState<Closing | null>(null);
+
+  const [inlineForm, setInlineForm] = useState<InlineForm>(null);
+  const [subDialog, setSubDialog] = useState<SubDialog>(null);
   const [startOpen, setStartOpen] = useState(false);
-  const [startBusinessDate, setStartBusinessDate] = useState(todayISO());
-  const [startOpeningCash, setStartOpeningCash] = useState('');
-  const [startNotes, setStartNotes] = useState('');
-  const [startWaiterId, setStartWaiterId] = useState('');
-  const [startBusy, setStartBusy] = useState(false);
-  const [startErr, setStartErr] = useState<{ code: string; message: string } | null>(null);
-
-  // inline collection form state
-  const [collShiftId, setCollShiftId] = useState<string | null>(null);
-  const [collMethod, setCollMethod] = useState<string>('CASH');
-  const [collAmount, setCollAmount] = useState('');
-  const [collMobileRef, setCollMobileRef] = useState('');
-  const [collNotes, setCollNotes] = useState('');
-  const [collBusy, setCollBusy] = useState(false);
-
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [confirmHandoverId, setConfirmHandoverId] = useState<string | null>(null);
-  const [confirmHandoverNotes, setConfirmHandoverNotes] = useState('');
-  const [sendBackReconId, setSendBackReconId] = useState<string | null>(null);
-  const [sendBackReason, setSendBackReason] = useState('');
-  const [closeShiftId, setCloseShiftId] = useState<string | null>(null);
   const [closeDayConfirming, setCloseDayConfirming] = useState(false);
-
-  // close-shift form state
-  const [closeFormShiftId, setCloseFormShiftId] = useState<string | null>(null);
-  const [closeCash, setCloseCash] = useState('');
-  const [closeMpesa, setCloseMpesa] = useState('');
-  const [closeAirtel, setCloseAirtel] = useState('');
-  const [closeTigo, setCloseTigo] = useState('');
-  const [closeHalo, setCloseHalo] = useState('');
-  const [closeBank, setCloseBank] = useState('');
-  const [closeCard, setCloseCard] = useState('');
-  const [closeOther, setCloseOther] = useState('');
-  const [closeExpenses, setCloseExpenses] = useState<CloseExpense[]>([]);
-  const [closeCashHandedOver, setCloseCashHandedOver] = useState('');
-  const [closeReceivedByUserId, setCloseReceivedByUserId] = useState('');
-  const [closeNotes, setCloseNotes] = useState('');
-  const [closeBusy, setCloseBusy] = useState(false);
 
   function load() {
     setLoading(true);
@@ -236,10 +724,17 @@ export default function CashPage() {
       const recon = recons.find((r) => r.shiftId === s.id);
       const handover = recon ? handovers.find((h) => h.reconciliationId === recon.id) : undefined;
       const state = deriveState(s, recon, handover);
-      const name =
-        users.find((u) => u.id === s.userId)?.fullName ??
-        (s.userId ? s.userId.slice(0, 8) : '\u2014');
-      return { shift: s, total: total.toFixed(2), expenseTotal, state, name, recon, handover };
+      const name = users.find((u) => u.id === s.userId)?.fullName ?? (s.userId ? s.userId.slice(0, 8) : '\\u2014');
+      return {
+        shift: s,
+        total: total.toFixed(2),
+        collectionCount: coll.length,
+        expenseTotal,
+        state,
+        name,
+        recon,
+        handover,
+      };
     });
   }, [shifts, collections, recons, handovers, expenses, users]);
 
@@ -255,175 +750,46 @@ export default function CashPage() {
   }, [rows]);
 
   const isManager = myRole === 'MANAGER' || myRole === 'OWNER';
-  const isOwner = myRole === 'OWNER';
   const allClosed = rows.length > 0 && rows.every((r) => r.state === 'closed');
+  const WAITERS = users.filter((u) => u.role === 'WAITER');
 
-  function openCollectionForm(shift: Shift) {
-    setErr(null); setFlash(null);
-    setCloseFormShiftId(null);
-    setCollShiftId(shift.id);
-    setCollMethod('CASH');
-    setCollAmount('');
-    setCollMobileRef('');
-    setCollNotes('');
-  }
-
-  async function submitCollection(e: FormEvent, shift: Shift) {
-    e.preventDefault();
-    setErr(null); setFlash(null);
-    if (!collAmount.trim()) {
-      setErr({ code: 'AMOUNT_REQUIRED', message: 'Amount is required.' });
-      return;
-    }
-    setCollBusy(true);
-    try {
-      await apiFetch('/api/v1/collections', {
-        method: 'POST',
-        body: JSON.stringify({
-          shiftId: shift.id,
-          paymentMethod: collMethod,
-          amount: collAmount.trim(),
-          mobileReference: collMobileRef.trim() === '' ? null : collMobileRef.trim(),
-          notes: collNotes.trim() === '' ? null : collNotes.trim(),
-          onBehalfOfUserId: shift.userId,
-        }),
-      });
-      setFlash(t('ops.cashFlow.flash.collectionRecorded'));
-      setCollShiftId(null);
-      load();
-    } catch (e2) {
-      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
-    } finally {
-      setCollBusy(false);
-    }
-  }
-
-  function clearInline() {
-    setConfirmHandoverId(null); setConfirmHandoverNotes('');
-    setSendBackReconId(null); setSendBackReason('');
-    setCloseShiftId(null); setCloseDayConfirming(false);
-    setCollShiftId(null);
-    setCloseFormShiftId(null);
-    setCloseCash(''); setCloseMpesa(''); setCloseAirtel(''); setCloseTigo('');
-    setCloseHalo(''); setCloseBank(''); setCloseCard(''); setCloseOther('');
-    setCloseExpenses([]);
-    setCloseCashHandedOver(''); setCloseReceivedByUserId(''); setCloseNotes('');
-  }
-
-  function openCloseForm(shift: Shift) {
-    setErr(null); setFlash(null);
-    setCollShiftId(null);
-    setCloseFormShiftId(shift.id);
-    setCloseCash(''); setCloseMpesa(''); setCloseAirtel(''); setCloseTigo('');
-    setCloseHalo(''); setCloseBank(''); setCloseCard(''); setCloseOther('');
-    setCloseExpenses([]);
-    setCloseCashHandedOver('');
-    setCloseReceivedByUserId(myId);
-    setCloseNotes('');
-  }
-
-  function addCloseExpense(ownerId: string) {
-    setCloseExpenses((prev) => [
-      ...prev,
-      {
-        id: 'e' + Date.now() + Math.random().toString(36).slice(2, 8),
-        categoryId: categories.length > 0 ? categories[0].id : '',
-        amount: '',
-        paymentMethod: 'CASH',
-        description: '',
-        paidByUserId: ownerId,
-      },
-    ]);
-  }
-
-  function updateCloseExpense(id: string, patch: Partial<CloseExpense>) {
-    setCloseExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-  }
-
-  function removeCloseExpense(id: string) {
-    setCloseExpenses((prev) => prev.filter((e) => e.id !== id));
-  }
-
-  async function submitCloseForm(e: FormEvent, shift: Shift) {
-    e.preventDefault();
-    setErr(null); setFlash(null);
-    if (!closeReceivedByUserId) {
-      setErr({ code: 'RECEIVER_REQUIRED', message: 'Select who received the cash.' });
-      return;
-    }
-    setCloseBusy(true);
-    try {
-      const collections: Record<string, string> = {};
-      if (closeCash.trim()) collections.cash = closeCash.trim();
-      if (closeMpesa.trim()) collections.mpesa = closeMpesa.trim();
-      if (closeAirtel.trim()) collections.airtelMoney = closeAirtel.trim();
-      if (closeTigo.trim()) collections.tigoPesa = closeTigo.trim();
-      if (closeHalo.trim()) collections.halopesa = closeHalo.trim();
-      if (closeBank.trim()) collections.bank = closeBank.trim();
-      if (closeCard.trim()) collections.card = closeCard.trim();
-      if (closeOther.trim()) collections.other = closeOther.trim();
-      const expensesPayload = closeExpenses
-        .filter((row) => row.categoryId && row.amount.trim() && row.description.trim())
-        .map((row) => ({
-          categoryId: row.categoryId,
-          amount: row.amount.trim(),
-          paymentMethod: row.paymentMethod,
-          description: row.description.trim(),
-          paidByUserId: row.paidByUserId || null,
-        }));
-      await apiFetch('/api/v1/shifts/' + shift.id + '/submit', {
-        method: 'POST',
-        body: JSON.stringify({
-          collections,
-          expenses: expensesPayload,
-          cashHandedOver: closeCashHandedOver.trim() || '0.00',
-          receivedByUserId: closeReceivedByUserId,
-          notes: closeNotes.trim() || null,
-        }),
-      });
-      setFlash(t('ops.cashFlow.flash.shiftClosed'));
-      clearInline();
-      load();
-    } catch (e2) {
-      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
-    } finally {
-      setCloseBusy(false);
-    }
-  }
-
-  async function doConfirmHandover(hid: string) {
-    setErr(null); setBusyKey('ho:' + hid);
-    try {
-      await apiFetch('/api/v1/handovers/' + hid + '/confirm', {
-        method: 'POST',
-        body: JSON.stringify({ confirmedNotes: confirmHandoverNotes.trim() === '' ? undefined : confirmHandoverNotes.trim() }),
-      });
-      clearInline(); load();
-    } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
-    finally { setBusyKey(null); }
+  function clearAndReload(msg?: string) {
+    if (msg) setFlash(msg);
+    setInlineForm(null);
+    setSubDialog(null);
+    load();
   }
 
   async function doApprove(reconId: string) {
     setErr(null); setBusyKey('rv:' + reconId);
     try {
       await apiFetch('/api/v1/reconciliations/' + reconId + '/review', {
-        method: 'POST',
-        body: JSON.stringify({ decision: 'APPROVE' }),
+        method: 'POST', body: JSON.stringify({ decision: 'APPROVE' }),
       });
       load();
     } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
     finally { setBusyKey(null); }
   }
 
-  async function doSendBack(reconId: string) {
-    if (sendBackReason.trim().length < 3) return;
+  async function doSendBack(reconId: string, reason: string) {
     setErr(null); setBusyKey('sb:' + reconId);
     try {
       await apiFetch('/api/v1/reconciliations/' + reconId + '/review', {
-        method: 'POST',
-        body: JSON.stringify({ decision: 'SEND_BACK', reviewNotes: sendBackReason.trim() }),
+        method: 'POST', body: JSON.stringify({ decision: 'SEND_BACK', reviewNotes: reason.trim() }),
       });
-      clearInline(); load();
+      clearAndReload();
+    } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
+    finally { setBusyKey(null); }
+  }
+
+  async function doConfirmHandover(handoverId: string, notes: string) {
+    setErr(null); setBusyKey('ho:' + handoverId);
+    try {
+      await apiFetch('/api/v1/handovers/' + handoverId + '/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ confirmedNotes: notes.trim() === '' ? undefined : notes.trim() }),
+      });
+      clearAndReload();
     } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
     finally { setBusyKey(null); }
   }
@@ -439,7 +805,7 @@ export default function CashPage() {
       await apiFetch('/api/v1/shifts/' + shiftId + '/transition', {
         method: 'POST', body: JSON.stringify({ to: 'CLOSED' }),
       });
-      clearInline(); load();
+      clearAndReload();
     } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
     finally { setBusyKey(null); }
   }
@@ -450,72 +816,25 @@ export default function CashPage() {
       await apiFetch('/api/v1/daily-closings', {
         method: 'POST', body: JSON.stringify({ businessDate: todayISO() }),
       });
-      clearInline(); load();
+      clearAndReload();
     } catch (e) { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); }
     finally { setBusyKey(null); }
   }
 
-  const WAITERS = users.filter((u) => u.role === 'WAITER');
-
-  function openStartDialog() {
-    setStartBusinessDate(todayISO());
-    setStartOpeningCash('');
-    setStartNotes('');
-    setStartWaiterId(WAITERS.length > 0 ? WAITERS[0].id : '');
-    setStartErr(null);
-    setStartOpen(true);
-  }
-
-  async function submitStartShift(e: FormEvent) {
-    e.preventDefault();
-    setStartErr(null);
-    if (!startWaiterId) {
-      setStartErr({ code: 'WAITER_REQUIRED', message: 'Select a waiter.' });
-      return;
-    }
-    setStartBusy(true);
-    try {
-      await apiFetch('/api/v1/shifts', {
-        method: 'POST',
-        body: JSON.stringify({
-          businessDate: startBusinessDate,
-          openingCash: startOpeningCash.trim() || undefined,
-          notes: startNotes.trim() === '' ? null : startNotes.trim(),
-          onBehalfOfUserId: startWaiterId,
-        }),
-      });
-      setStartOpen(false);
-      setFlash(t('ops.cashFlow.flash.shiftOpened'));
-      load();
-    } catch (e2) {
-      if (e2 instanceof ApiError) setStartErr({ code: e2.code, message: e2.message });
-    } finally {
-      setStartBusy(false);
-    }
-  }
-
   return (
     <OpsShell>
-      <OpsHeader
-        title={t('ops.cashFlow.title')}
-        subtitle={t('ops.cashFlow.subtitle')}
-      />
+      <OpsHeader title={t('ops.cashFlow.title')} subtitle={t('ops.cashFlow.subtitle')} />
 
       <div className='flex justify-end'>
-        <button
-          type='button'
-          onClick={openStartDialog}
-          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium'
-        >
+        <button type='button' onClick={() => setStartOpen(true)}
+          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium'>
           {t('ops.cashFlow.startShiftButton')}
         </button>
       </div>
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
       {flash && (
-        <div className='rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800'>
-          {flash}
-        </div>
+        <div className='rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800'>{flash}</div>
       )}
 
       {loading ? (
@@ -543,6 +862,14 @@ export default function CashPage() {
                   busyKey === 'sb:' + (r.recon?.id ?? '') ||
                   busyKey === 'cs:' + r.shift.id;
                 const isOpenShift = r.shift.status === 'OPEN';
+                const inline = inlineForm?.shiftId === r.shift.id ? inlineForm : null;
+                const dialogForThisRow =
+                  (subDialog?.kind === 'send-back' && subDialog.reconId === r.recon?.id) ||
+                  (subDialog?.kind === 'confirm-handover' && subDialog.handoverId === r.handover?.id) ||
+                  (subDialog?.kind === 'close-shift' && subDialog.shiftId === r.shift.id)
+                    ? subDialog
+                    : null;
+
                 return (
                   <div key={r.shift.id} className='rounded-2xl border border-slate-200 bg-white p-4 space-y-3'>
                     <div className='flex items-center gap-4'>
@@ -570,12 +897,12 @@ export default function CashPage() {
                             <div className='mt-0.5 text-sm text-slate-600'>
                               {t('ops.cashFlow.row.expected')}: <span className='font-mono'>{r.recon.expectedCash}</span>
                             </div>
-                            {r.recon.actualCash !== null && r.recon.actualCash !== undefined && (
+                            {r.recon.actualCash != null && (
                               <div className='mt-0.5 text-sm text-slate-600'>
                                 {t('ops.cashFlow.row.handover')}: <span className='font-mono'>{r.recon.actualCash}</span>
                               </div>
                             )}
-                            {r.recon.cashDifference !== null && r.recon.cashDifference !== undefined && (
+                            {r.recon.cashDifference != null && (
                               <div className={'mt-0.5 text-sm ' + (r.recon.cashDifference === '0.00' ? 'text-emerald-700' : 'text-amber-700')}>
                                 {t('ops.cashFlow.row.difference')}: <span className='font-mono'>{r.recon.cashDifference}</span>
                               </div>
@@ -586,20 +913,14 @@ export default function CashPage() {
 
                       {isManager && isOpenShift && (
                         <div className='flex gap-2'>
-                          <button
-                            type='button'
-                            onClick={() => openCollectionForm(r.shift)}
+                          <button type='button' onClick={() => setInlineForm({ kind: 'add-collection', shiftId: r.shift.id })}
                             disabled={isBusyRow}
-                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60'
-                          >
+                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60'>
                             {t('ops.cashFlow.row.addCollectionButton')}
                           </button>
-                          <button
-                            type='button'
-                            onClick={() => openCloseForm(r.shift)}
+                          <button type='button' onClick={() => setInlineForm({ kind: 'submit-shift', shiftId: r.shift.id })}
                             disabled={isBusyRow}
-                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                          >
+                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
                             {t('ops.cashFlow.row.action.close')}
                           </button>
                         </div>
@@ -607,351 +928,74 @@ export default function CashPage() {
 
                       {isManager && r.state === 'awaiting_review' && r.recon && (
                         <div className='flex gap-2'>
-                          <button
-                            type='button'
-                            onClick={() => doApprove(r.recon!.id)}
-                            disabled={isBusyRow}
-                            className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                          >
+                          <button type='button' onClick={() => doApprove(r.recon!.id)} disabled={isBusyRow}
+                            className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
                             {busyKey === 'rv:' + r.recon!.id ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.approve')}
                           </button>
-                          <button
-                            type='button'
-                            onClick={() => { setSendBackReconId(r.recon!.id); setSendBackReason(''); }}
-                            disabled={isBusyRow}
-                            className='rounded-lg border border-amber-300 text-amber-800 px-3 py-1.5 text-sm disabled:opacity-60'
-                          >
+                          <button type='button' onClick={() => setSubDialog({ kind: 'send-back', reconId: r.recon!.id })} disabled={isBusyRow}
+                            className='rounded-lg border border-amber-300 text-amber-800 px-3 py-1.5 text-sm disabled:opacity-60'>
                             {t('ops.cashFlow.row.action.sendBack')}
                           </button>
                         </div>
                       )}
 
                       {isManager && r.state === 'awaiting_confirm' && r.handover && (
-                        <button
-                          type='button'
-                          onClick={() => { setConfirmHandoverId(r.handover!.id); setConfirmHandoverNotes(''); }}
-                          disabled={isBusyRow}
-                          className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                        >
+                        <button type='button' onClick={() => setSubDialog({ kind: 'confirm-handover', handoverId: r.handover!.id })} disabled={isBusyRow}
+                          className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
                           {t('ops.cashFlow.row.action.confirm')}
                         </button>
                       )}
 
                       {isManager && (r.state === 'ready_to_close' || r.state === 'awaiting_close_mid') && (
-                        <button
-                          type='button'
-                          onClick={() => setCloseShiftId(r.shift.id)}
-                          disabled={isBusyRow}
-                          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                        >
+                        <button type='button' onClick={() => setSubDialog({ kind: 'close-shift', shiftId: r.shift.id, status: r.shift.status })} disabled={isBusyRow}
+                          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
                           {busyKey === 'cs:' + r.shift.id ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.close')}
                         </button>
                       )}
                     </div>
 
-                    {collShiftId === r.shift.id && (
-                      <form onSubmit={(e) => submitCollection(e, r.shift)} className='border-t border-slate-100 pt-3 space-y-3'>
-                        <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.row.collectionFormHeading')}</h3>
-                        <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
-                          <SelectField
-                            label={t('form.paymentMethod')}
-                            value={collMethod}
-                            onChange={setCollMethod}
-                            options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
-                          />
-                          <DecimalField
-                            label={t('form.amount')}
-                            value={collAmount}
-                            onChange={setCollAmount}
-                            placeholder='0.00'
-                            required
-                          />
-                          <TextField
-                            label={t('ops.collections.mobileReferenceOptional')}
-                            value={collMobileRef}
-                            onChange={setCollMobileRef}
-                          />
-                        </div>
-                        <TextArea label={t('form.notesOptional')} value={collNotes} onChange={setCollNotes} rows={2} />
-                        <div className='flex gap-2 justify-end'>
-                          <button
-                            type='button'
-                            onClick={() => setCollShiftId(null)}
-                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'
-                          >
-                            {t('action.cancel')}
-                          </button>
-                          <button
-                            type='submit'
-                            disabled={collBusy}
-                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                          >
-                            {collBusy ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.collectionSubmit')}
-                          </button>
-                        </div>
-                      </form>
+                    {inline?.kind === 'add-collection' && (
+                      <AddCollectionInline
+                        shift={r.shift}
+                        onCancel={() => setInlineForm(null)}
+                        onDone={(msg) => clearAndReload(msg)}
+                      />
                     )}
 
-                    {closeFormShiftId === r.shift.id && (
-                      <form onSubmit={(e) => submitCloseForm(e, r.shift)} className='border-t border-slate-100 pt-3 space-y-4'>
-                        <h3 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.closeForm.heading')}</h3>
-
-                        <div className='rounded-xl bg-blue-50 border border-blue-100 p-3'>
-                          <div className='text-xs uppercase tracking-wide text-blue-900 mb-2'>{t('ops.cashFlow.closeForm.shiftHeading')}</div>
-                          <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
-                            <div>
-                              <span className='block text-xs text-slate-500'>{t('form.businessDate')}</span>
-                              <span className='font-mono text-slate-800'>{r.shift.businessDate}</span>
-                            </div>
-                            <div>
-                              <span className='block text-xs text-slate-500'>{t('table.waiter')}</span>
-                              <span className='text-slate-800'>{r.name}</span>
-                            </div>
-                            <div>
-                              <span className='block text-xs text-slate-500'>{t('ops.cashFlow.closeForm.opening')}</span>
-                              <span className='font-mono text-slate-800'>{r.shift.openingCash ?? '0.00'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className='rounded-xl bg-slate-50 border border-slate-200 p-3'>
-                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.existingHeading')}</div>
-                          {(() => {
-                            const existing = collections.filter((c) => c.shiftId === r.shift.id && !c.voidedAt);
-                            if (existing.length === 0) {
-                              return <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.existingNone')}</div>;
-                            }
-                            const byMethod: Record<string, number> = {};
-                            for (const c of existing) {
-                              byMethod[c.paymentMethod] = (byMethod[c.paymentMethod] ?? 0) + (parseFloat(c.amount) || 0);
-                            }
-                            let sum = 0;
-                            const rows = Object.keys(byMethod).map((m) => {
-                              sum += byMethod[m];
-                              return (
-                                <div key={m} className='flex justify-between text-sm'>
-                                  <span>{m.replace(/_/g, ' ')}</span>
-                                  <span className='font-mono'>{byMethod[m].toFixed(2)}</span>
-                                </div>
-                              );
-                            });
-                            return (
-                              <div className='space-y-1'>
-                                {rows}
-                                <div className='flex justify-between text-sm font-medium border-t border-slate-200 pt-1'>
-                                  <span>{t('ops.cashFlow.closeForm.existingTotal')}</span>
-                                  <span className='font-mono'>{sum.toFixed(2)}</span>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        <div>
-                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.additionalHeading')}</div>
-                          <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-                            <DecimalField label='Cash' value={closeCash} onChange={setCloseCash} placeholder='0.00' />
-                            <DecimalField label='MPesa' value={closeMpesa} onChange={setCloseMpesa} placeholder='0.00' />
-                            <DecimalField label='Airtel Money' value={closeAirtel} onChange={setCloseAirtel} placeholder='0.00' />
-                            <DecimalField label='Tigo Pesa' value={closeTigo} onChange={setCloseTigo} placeholder='0.00' />
-                            <DecimalField label='HaloPesa' value={closeHalo} onChange={setCloseHalo} placeholder='0.00' />
-                            <DecimalField label='Bank' value={closeBank} onChange={setCloseBank} placeholder='0.00' />
-                            <DecimalField label='Card' value={closeCard} onChange={setCloseCard} placeholder='0.00' />
-                            <DecimalField label='Other' value={closeOther} onChange={setCloseOther} placeholder='0.00' />
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.expensesHeading')}</div>
-                          {closeExpenses.length === 0 && (
-                            <div className='text-sm text-slate-400'>{t('ops.cashFlow.closeForm.noExpenses')}</div>
-                          )}
-                          {closeExpenses.map((row) => (
-                            <div key={row.id} className='grid grid-cols-1 md:grid-cols-12 gap-3 items-end mb-3'>
-                              <div className='md:col-span-3'>
-                                <SelectField
-                                  label={t('form.category')}
-                                  value={row.categoryId}
-                                  onChange={(v) => updateCloseExpense(row.id, { categoryId: v })}
-                                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
-                                />
-                              </div>
-                              <div className='md:col-span-2'>
-                                <DecimalField
-                                  label={t('form.amount')}
-                                  value={row.amount}
-                                  onChange={(v) => updateCloseExpense(row.id, { amount: v })}
-                                  placeholder='0.00'
-                                />
-                              </div>
-                              <div className='md:col-span-2'>
-                                <SelectField
-                                  label={t('form.paymentMethod')}
-                                  value={row.paymentMethod}
-                                  onChange={(v) => updateCloseExpense(row.id, { paymentMethod: v })}
-                                  options={PAYMENT_METHODS.map((m) => ({ value: m, label: m.replace(/_/g, ' ') }))}
-                                />
-                              </div>
-                              <div className='md:col-span-3'>
-                                <TextField
-                                  label={t('form.description')}
-                                  value={row.description}
-                                  onChange={(v) => updateCloseExpense(row.id, { description: v })}
-                                />
-                              </div>
-                              <div className='md:col-span-2'>
-                                <SelectField
-                                  label={t('form.paidBy')}
-                                  value={row.paidByUserId}
-                                  onChange={(v) => updateCloseExpense(row.id, { paidByUserId: v })}
-                                  options={[{ value: '', label: t('common.notSpecified') }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]}
-                                />
-                              </div>
-                              <div className='md:col-span-12 flex justify-end'>
-                                <button
-                                  type='button'
-                                  onClick={() => removeCloseExpense(row.id)}
-                                  className='text-xs text-red-600 hover:text-red-700'
-                                >
-                                  {t('ops.cashFlow.closeForm.removeExpense')}
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                          <button
-                            type='button'
-                            onClick={() => addCloseExpense(r.shift.userId ?? '')}
-                            className='text-sm text-slate-600 hover:text-slate-900'
-                          >
-                            {t('ops.cashFlow.closeForm.addExpense')}
-                          </button>
-                        </div>
-
-                        <div>
-                          <div className='text-xs uppercase tracking-wide text-slate-500 mb-2'>{t('ops.cashFlow.closeForm.handoverHeading')}</div>
-                          <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
-                            <DecimalField
-                              label={t('ops.cashFlow.closeForm.cashHandedOver')}
-                              value={closeCashHandedOver}
-                              onChange={setCloseCashHandedOver}
-                              placeholder='0.00'
-                            />
-                            <SelectField
-                              label={t('form.receiver')}
-                              value={closeReceivedByUserId}
-                              onChange={setCloseReceivedByUserId}
-                              options={[{ value: '', label: t('form.selectPlaceholder') }, ...users.filter((u) => u.role === 'MANAGER' || u.role === 'OWNER').map((u) => ({ value: u.id, label: u.fullName }))]}
-                            />
-                          </div>
-                        </div>
-
-                        <TextArea
-                          label={t('form.notesOptional')}
-                          value={closeNotes}
-                          onChange={setCloseNotes}
-                          rows={2}
-                        />
-
-                        {(() => {
-                          const existing = collections.filter((c) => c.shiftId === r.shift.id && !c.voidedAt);
-                          const existingCash = existing.filter((c) => c.paymentMethod === 'CASH').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
-                          const existingMobile = existing.filter((c) => c.paymentMethod === 'MPESA' || c.paymentMethod === 'AIRTEL_MONEY' || c.paymentMethod === 'TIGO_PESA' || c.paymentMethod === 'HALOPESA').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
-                          const opening = parseFloat(r.shift.openingCash ?? '0') || 0;
-                          const cashIn = existingCash + (parseFloat(closeCash) || 0);
-                          const mobileIn = existingMobile + (parseFloat(closeMpesa) || 0) + (parseFloat(closeAirtel) || 0) + (parseFloat(closeTigo) || 0) + (parseFloat(closeHalo) || 0);
-                          const cashOut = closeExpenses.reduce((acc, e) => e.paymentMethod === 'CASH' ? acc + (parseFloat(e.amount) || 0) : acc, 0);
-                          const expected = opening + cashIn - cashOut;
-                          const actual = parseFloat(closeCashHandedOver) || 0;
-                          const diff = actual - expected;
-                          return (
-                            <div className='rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm space-y-1'>
-                              <div className='text-xs uppercase tracking-wide text-slate-500 mb-1'>{t('ops.cashFlow.closeForm.summaryHeading')}</div>
-                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.opening')}</span><span className='font-mono'>{opening.toFixed(2)}</span></div>
-                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashCollected')}</span><span className='font-mono'>{cashIn.toFixed(2)}</span></div>
-                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashExpenses')}</span><span className='font-mono'>-{cashOut.toFixed(2)}</span></div>
-                              <div className='flex justify-between font-medium border-t border-slate-200 pt-1'><span>{t('ops.cashFlow.closeForm.expected')}</span><span className='font-mono'>{expected.toFixed(2)}</span></div>
-                              <div className='flex justify-between'><span>{t('ops.cashFlow.closeForm.cashHandedOver')}</span><span className='font-mono'>{actual.toFixed(2)}</span></div>
-                              <div className={'flex justify-between font-medium ' + (diff === 0 ? 'text-emerald-700' : 'text-amber-700')}><span>{t('ops.cashFlow.closeForm.difference')}</span><span className='font-mono'>{diff.toFixed(2)}</span></div>
-                              <div className='flex justify-between text-slate-600 pt-1'><span>{t('ops.cashFlow.closeForm.mobile')}</span><span className='font-mono'>{mobileIn.toFixed(2)}</span></div>
-                            </div>
-                          );
-                        })()}
-
-                        <div className='flex gap-2 justify-end'>
-                          <button
-                            type='button'
-                            onClick={() => { setCloseFormShiftId(null); setCloseExpenses([]); }}
-                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'
-                          >
-                            {t('action.cancel')}
-                          </button>
-                          <button
-                            type='submit'
-                            disabled={closeBusy}
-                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                          >
-                            {closeBusy ? t('ops.cashFlow.closeForm.submitting') : t('ops.cashFlow.closeForm.submit')}
-                          </button>
-                        </div>
-                      </form>
+                    {inline?.kind === 'submit-shift' && (
+                      <SubmitShiftInline
+                        row={r}
+                        collections={collections}
+                        categories={categories}
+                        users={users}
+                        myId={myId}
+                        onCancel={() => setInlineForm(null)}
+                        onDone={(msg) => clearAndReload(msg)}
+                      />
                     )}
 
-                    {sendBackReconId === r.recon?.id && (
-                      <div className='border-t border-slate-100 pt-3 space-y-2'>
-                        <input
-                          className='w-full rounded border border-slate-300 px-3 py-2 text-sm'
-                          placeholder={t('ops.cashFlow.row.sendBackPlaceholder')}
-                          value={sendBackReason}
-                          onChange={(e) => setSendBackReason(e.target.value)}
-                        />
-                        <div className='flex gap-2 justify-end'>
-                          <button type='button' onClick={() => doSendBack(r.recon!.id)} disabled={sendBackReason.trim().length < 3 || busyKey === 'sb:' + r.recon!.id}
-                            className='rounded-lg bg-amber-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                            {busyKey === 'sb:' + r.recon!.id ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.sendBack')}
-                          </button>
-                          <button type='button' onClick={() => { setSendBackReconId(null); setSendBackReason(''); }}
-                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'>
-                            {t('action.cancel')}
-                          </button>
-                        </div>
-                      </div>
+                    {dialogForThisRow?.kind === 'send-back' && (
+                      <SendBackInline
+                        busy={busyKey === 'sb:' + dialogForThisRow.reconId}
+                        onCancel={() => setSubDialog(null)}
+                        onConfirm={(reason) => doSendBack(dialogForThisRow.reconId, reason)}
+                      />
                     )}
 
-                    {confirmHandoverId === r.handover?.id && (
-                      <div className='border-t border-slate-100 pt-3 space-y-2'>
-                        <input
-                          className='w-full rounded border border-slate-300 px-3 py-2 text-sm'
-                          placeholder={t('ops.handovers.confirmNotesPlaceholder')}
-                          value={confirmHandoverNotes}
-                          onChange={(e) => setConfirmHandoverNotes(e.target.value)}
-                        />
-                        <div className='flex gap-2 justify-end'>
-                          <button type='button' onClick={() => doConfirmHandover(r.handover!.id)} disabled={busyKey === 'ho:' + r.handover!.id}
-                            className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                            {busyKey === 'ho:' + r.handover!.id ? t('ops.shiftsDetail.working') : t('action.confirm')}
-                          </button>
-                          <button type='button' onClick={() => { setConfirmHandoverId(null); setConfirmHandoverNotes(''); }}
-                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'>
-                            {t('action.cancel')}
-                          </button>
-                        </div>
-                      </div>
+                    {dialogForThisRow?.kind === 'confirm-handover' && (
+                      <ConfirmHandoverInline
+                        busy={busyKey === 'ho:' + dialogForThisRow.handoverId}
+                        onCancel={() => setSubDialog(null)}
+                        onConfirm={(notes) => doConfirmHandover(dialogForThisRow.handoverId, notes)}
+                      />
                     )}
 
-                    {closeShiftId === r.shift.id && (
-                      <div className='border-t border-slate-100 pt-3 space-y-2'>
-                        <div className='text-sm text-slate-700'>{t('ops.cashFlow.row.closeConfirmPrompt')}</div>
-                        <div className='flex gap-2 justify-end'>
-                          <button type='button' onClick={() => doCloseShift(r.shift.id, r.shift.status)} disabled={busyKey === 'cs:' + r.shift.id}
-                            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                            {busyKey === 'cs:' + r.shift.id ? t('ops.shiftsDetail.working') : t('ops.cashFlow.row.action.close')}
-                          </button>
-                          <button type='button' onClick={() => setCloseShiftId(null)}
-                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm'>
-                            {t('action.cancel')}
-                          </button>
-                        </div>
-                      </div>
+                    {dialogForThisRow?.kind === 'close-shift' && (
+                      <CloseShiftInline
+                        busy={busyKey === 'cs:' + dialogForThisRow.shiftId}
+                        onCancel={() => setSubDialog(null)}
+                        onConfirm={() => doCloseShift(dialogForThisRow.shiftId, dialogForThisRow.status)}
+                      />
                     )}
                   </div>
                 );
@@ -988,67 +1032,15 @@ export default function CashPage() {
               <div className='text-sm text-slate-500'>{t('ops.cashFlow.closeToday.notReady')}</div>
             )}
           </section>
-
         </>
       )}
 
       {startOpen && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
-          <div className='w-full max-w-lg rounded-2xl bg-white p-6 space-y-4'>
-            <h3 className='text-lg font-medium text-slate-900'>{t('ops.cashFlow.startDialog.title')}</h3>
-            {WAITERS.length === 0 ? (
-              <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800'>
-                {t('ops.cashFlow.startDialog.noWaiters')}
-              </div>
-            ) : (
-              <form onSubmit={submitStartShift} className='space-y-4'>
-                <SelectField
-                  label={t('ops.cashFlow.startDialog.waiter')}
-                  value={startWaiterId}
-                  onChange={setStartWaiterId}
-                  required
-                  options={WAITERS.map((u) => ({ value: u.id, label: u.fullName }))}
-                />
-                <DateField
-                  label={t('form.businessDate')}
-                  value={startBusinessDate}
-                  onChange={setStartBusinessDate}
-                  required
-                />
-                <DecimalField
-                  label={t('ops.shifts.openingCashOptional')}
-                  value={startOpeningCash}
-                  onChange={setStartOpeningCash}
-                  placeholder='0.00'
-                />
-                <TextArea
-                  label={t('form.notesOptional')}
-                  value={startNotes}
-                  onChange={setStartNotes}
-                  rows={2}
-                />
-                {startErr && <FormError code={startErr.code} message={tError(startErr.code, startErr.message)} />}
-                <div className='flex justify-end gap-2'>
-                  <button
-                    type='button'
-                    onClick={() => setStartOpen(false)}
-                    disabled={startBusy}
-                    className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'
-                  >
-                    {t('action.cancel')}
-                  </button>
-                  <button
-                    type='submit'
-                    disabled={startBusy}
-                    className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
-                  >
-                    {startBusy ? t('ops.cashFlow.startDialog.submitting') : t('action.startShift')}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
+        <OpenShiftDialog
+          waiters={WAITERS}
+          onClose={() => setStartOpen(false)}
+          onDone={(msg) => { setStartOpen(false); clearAndReload(msg); }}
+        />
       )}
     </OpsShell>
   );
