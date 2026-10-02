@@ -122,7 +122,7 @@ export default function InventoryPage() {
   const materialOptions = useMemo(
     () => stockRows.map((r) => ({
       value: r.materialId,
-      label: r.name + ' \\u2014 ' + r.currentStock + ' ' + r.unit,
+      label: r.name + ' ' + '\u2014' + ' ' + r.currentStock + ' ' + r.unit,
     })),
     [stockRows]
   );
@@ -353,8 +353,8 @@ export default function InventoryPage() {
                         <td className='px-3 py-2 text-slate-600'>{m.type}</td>
                         <td className='px-3 py-2'>{m.direction}</td>
                         <td className='px-3 py-2 text-right font-mono'>{m.quantity}</td>
-                        <td className='px-3 py-2 text-right font-mono'>{m.unitCost ?? '\\u2014'}</td>
-                        <td className='px-3 py-2 text-slate-500'>{m.reference ?? '\\u2014'}</td>
+                        <td className='px-3 py-2 text-right font-mono'>{m.unitCost ?? '\u2014'}</td>
+                        <td className='px-3 py-2 text-slate-500'>{m.reference ?? '\u2014'}</td>
                       </tr>
                     );
                   })}

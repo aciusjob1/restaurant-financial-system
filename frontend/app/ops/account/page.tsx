@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { TextField, FormError, SubmitButton } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
 
 type Me = {
   id: string;
@@ -25,6 +26,7 @@ function errOf(e: unknown): { code: string; message: string } {
 
 export default function AccountPage() {
   const router = useRouter();
+  const { t } = useT();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -114,7 +116,7 @@ export default function AccountPage() {
     e.preventDefault();
     setPwErr(null);
     if (newPassword !== confirmPassword) {
-      setPwErr({ code: 'MISMATCH', message: 'New password and confirmation do not match.' });
+      setPwErr({ code: 'MISMATCH', message: t('ops.account.pwMismatch') });
       return;
     }
     setPwBusy(true);
@@ -138,35 +140,35 @@ export default function AccountPage() {
 
   return (
     <OpsShell>
-      <OpsHeader title="Account" subtitle="Your profile, password, and session." />
+      <OpsHeader title={t('ops.account.title')} subtitle={t('ops.account.subtitle')} />
 
       {loading ? (
-        <div className="text-slate-500">Loading...</div>
+        <div className="text-slate-500">{t('common.loading')}</div>
       ) : (
         <>
           <form onSubmit={saveProfile} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-            <h2 className="text-base font-medium text-slate-900">Profile</h2>
+            <h2 className="text-base font-medium text-slate-900">{t('ops.account.profileHeading')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <TextField label="Full name" value={fullName} onChange={setFullName} required />
-              <TextField label="Phone (optional)" value={phone} onChange={setPhone} autoComplete="tel" />
-              <TextField label="Username" value={me?.username ?? ''} onChange={() => {}} disabled />
-              <TextField label="Role" value={me?.role ?? ''} onChange={() => {}} disabled />
+              <TextField label={t('ops.account.fullName')} value={fullName} onChange={setFullName} required />
+              <TextField label={t('ops.account.phoneOptional')} value={phone} onChange={setPhone} autoComplete="tel" />
+              <TextField label={t('ops.account.username')} value={me?.username ?? ''} onChange={() => {}} disabled />
+              <TextField label={t('ops.account.role')} value={me?.role ?? ''} onChange={() => {}} disabled />
             </div>
             {profileErr && <FormError code={profileErr.code} message={profileErr.message} />}
             {profileOk && (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                Profile saved.
+                {t('ops.account.profileSaved')}
               </div>
             )}
-            <SubmitButton busy={profileBusy}>Save profile</SubmitButton>
+            <SubmitButton busy={profileBusy}>{t('ops.account.saveProfile')}</SubmitButton>
           </form>
 
           {me?.role === 'OWNER' && (
             <form onSubmit={savePreferences} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
               <div>
-                <h2 className="text-base font-medium text-slate-900">Auto-approval preferences</h2>
+                <h2 className="text-base font-medium text-slate-900">{t('ops.account.prefsHeading')}</h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  These only affect records you create. Managers are unaffected.
+                  {t('ops.account.prefsIntro')}
                 </p>
               </div>
               <div className="space-y-2">
@@ -177,7 +179,7 @@ export default function AccountPage() {
                     onChange={(e) => setPrefAutoApproveExpenses(e.target.checked)}
                     className="h-4 w-4"
                   />
-                  Auto-approve my expenses
+                  {t('ops.account.prefApproveExpenses')}
                 </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -186,7 +188,7 @@ export default function AccountPage() {
                     onChange={(e) => setPrefAutoReviewReconciliations(e.target.checked)}
                     className="h-4 w-4"
                   />
-                  Auto-review my reconciliations
+                  {t('ops.account.prefReviewRecons')}
                 </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -195,43 +197,43 @@ export default function AccountPage() {
                     onChange={(e) => setPrefAutoConfirmHandovers(e.target.checked)}
                     className="h-4 w-4"
                   />
-                  Auto-confirm my handovers
+                  {t('ops.account.prefConfirmHandovers')}
                 </label>
               </div>
               {prefErr && <FormError code={prefErr.code} message={prefErr.message} />}
               {prefOk && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                  Preferences saved.
+                  {t('ops.account.prefsSaved')}
                 </div>
               )}
-              <SubmitButton busy={prefBusy}>Save preferences</SubmitButton>
+              <SubmitButton busy={prefBusy}>{t('ops.account.savePrefs')}</SubmitButton>
             </form>
           )}
 
           <form onSubmit={changePassword} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-            <h2 className="text-base font-medium text-slate-900">Change password</h2>
+            <h2 className="text-base font-medium text-slate-900">{t('ops.account.changePwHeading')}</h2>
             <p className="text-xs text-slate-500">
-              Minimum 12 characters. You will be signed out everywhere on success.
+              {t('ops.account.changePwHint')}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <TextField label="Current password" type="password" value={currentPassword} onChange={setCurrentPassword} required autoComplete="current-password" />
-              <TextField label="New password" type="password" value={newPassword} onChange={setNewPassword} required autoComplete="new-password" />
-              <TextField label="Confirm new password" type="password" value={confirmPassword} onChange={setConfirmPassword} required autoComplete="new-password" />
+              <TextField label={t('ops.account.currentPassword')} type="password" value={currentPassword} onChange={setCurrentPassword} required autoComplete="current-password" />
+              <TextField label={t('ops.account.newPassword')} type="password" value={newPassword} onChange={setNewPassword} required autoComplete="new-password" />
+              <TextField label={t('ops.account.confirmPassword')} type="password" value={confirmPassword} onChange={setConfirmPassword} required autoComplete="new-password" />
             </div>
             {pwErr && <FormError code={pwErr.code} message={pwErr.message} />}
-            <SubmitButton busy={pwBusy}>Change password</SubmitButton>
+            <SubmitButton busy={pwBusy}>{t('ops.account.changePw')}</SubmitButton>
           </form>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
-            <h2 className="text-base font-medium text-slate-900">Session</h2>
-            <p className="text-sm text-slate-500">Sign out of this browser.</p>
+            <h2 className="text-base font-medium text-slate-900">{t('ops.account.sessionHeading')}</h2>
+            <p className="text-sm text-slate-500">{t('ops.account.signOutHint')}</p>
             <button
               type="button"
               onClick={signOut}
               disabled={signOutBusy}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
             >
-              {signOutBusy ? 'Signing out...' : 'Sign out'}
+              {signOutBusy ? t('ops.account.signingOut') : t('ops.account.signOut')}
             </button>
           </div>
         </>

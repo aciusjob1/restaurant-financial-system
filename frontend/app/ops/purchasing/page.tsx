@@ -12,6 +12,33 @@ import { useT } from '@/lib/i18n/LanguageContext';
 type Supplier = { id: string; supplierNumber: string; name: string; isActive: boolean };
 type Material = { id: string; materialNumber: string; name: string; isActive: boolean };
 type Invoice = { id: string; invoiceNumber: string; total: string; businessDate: string };
+type InvoiceFull = {
+  id: string;
+  invoiceNumber: string;
+  supplierId: string;
+  date: string;
+  total: string;
+  status: 'DRAFT' | 'POSTED' | 'CANCELLED';
+};
+type Payment = {
+  id: string;
+  paymentNumber: string;
+  supplierId: string;
+  businessDate: string;
+  amount: string;
+  voidedAt: string | null;
+};
+type PanelKey = 'purchase' | 'pay' | 'activity';
+type ActivityRow = {
+  id: string;
+  kind: 'purchase' | 'payment';
+  date: string;
+  reference: string;
+  supplierId: string;
+  amount: string;
+  status: string;
+  href: string | null;
+};
 
 const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA',
@@ -85,8 +112,9 @@ export default function PurchasingPage() {
   const [flash, setFlash] = useState<string | null>(null);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
 
-  const [purchaseOpen, setPurchaseOpen] = useState(true);
-  const [payOpen, setPayOpen] = useState(false);
+  const [openPanel, setOpenPanel] = useState<PanelKey | null>('purchase');
+  const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   // record purchase state
   const [supplierId, setSupplierId] = useState('');
@@ -131,6 +159,44 @@ export default function PurchasingPage() {
   }
 
   useEffect(() => { loadFixtures(); }, []);
+
+  function loadActivity() {
+    setActivityLoading(true);
+    Promise.all([
+      apiFetch<{ success: true; invoices: InvoiceFull[] }>('/api/v1/purchase-invoices'),
+      apiFetch<{ success: true; payments: Payment[] }>('/api/v1/supplier-payments?includeVoided=true'),
+    ])
+      .then(([invRes, payRes]) => {
+        const purchases: ActivityRow[] = invRes.invoices.map((inv) => ({
+          id: 'p:' + inv.id,
+          kind: 'purchase' as const,
+          date: inv.date,
+          reference: inv.invoiceNumber,
+          supplierId: inv.supplierId,
+          amount: inv.total,
+          status: inv.status,
+          href: null,
+        }));
+        const payments: ActivityRow[] = payRes.payments.map((p) => ({
+          id: 'y:' + p.id,
+          kind: 'payment' as const,
+          date: p.businessDate,
+          reference: p.paymentNumber,
+          supplierId: p.supplierId,
+          amount: p.amount,
+          status: p.voidedAt ? 'VOIDED' : 'ACTIVE',
+          href: null,
+        }));
+        const merged = [...purchases, ...payments]
+          .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+          .slice(0, 15);
+        setActivity(merged);
+      })
+      .catch(() => setActivity([]))
+      .finally(() => setActivityLoading(false));
+  }
+
+  useEffect(() => { loadActivity(); }, []);
 
   useEffect(() => {
     if (!paySupplierId) { setOutstanding([]); return; }
@@ -197,6 +263,7 @@ export default function PurchasingPage() {
       });
       resetPurchaseForm();
       setFlash(postNow ? t('ops.purchasing.flash.purchasePosted') : t('ops.purchasing.flash.purchaseDraft'));
+      loadActivity();
     } catch (e2) {
       setErr(errOf(e2));
     } finally {
@@ -271,6 +338,7 @@ export default function PurchasingPage() {
       setPayNotes('');
       setManualInvoiceIds([]);
       setFlash(t('ops.purchasing.flash.paymentRecorded'));
+      loadActivity();
       const res = await apiFetch<{ success: true; invoices: Invoice[] }>(
         '/api/v1/purchase-invoices?supplierId=' + paySupplierId + '&status=POSTED&unpaidOnly=true'
       );
@@ -301,8 +369,8 @@ export default function PurchasingPage() {
       ) : (
         <>
           <CollapsibleSection
-            open={purchaseOpen}
-            onToggle={() => setPurchaseOpen((v) => !v)}
+            open={openPanel === 'purchase'}
+            onToggle={() => setOpenPanel((v) => (v === 'purchase' ? null : 'purchase'))}
             heading={t('ops.purchasing.recordHeading')}
             intro={t('ops.purchasing.purchaseIntro')}
           >
@@ -436,7 +504,7 @@ export default function PurchasingPage() {
                               onClick={() => removeItem(idx)}
                               className='text-xs text-red-600 hover:text-red-800'
                             >
-                              \u2715
+                              {'\u2715'}
                             </button>
                           </td>
                         </tr>
@@ -473,8 +541,8 @@ export default function PurchasingPage() {
           </CollapsibleSection>
 
           <CollapsibleSection
-            open={payOpen}
-            onToggle={() => setPayOpen((v) => !v)}
+            open={openPanel === 'pay'}
+            onToggle={() => setOpenPanel((v) => (v === 'pay' ? null : 'pay'))}
             heading={t('ops.purchasing.payHeading')}
             intro={t('ops.purchasing.payIntro')}
           >
@@ -564,14 +632,53 @@ export default function PurchasingPage() {
             </form>
           </CollapsibleSection>
 
-          <section className='flex flex-wrap gap-3 text-sm'>
-            <Link href='/ops/purchase-invoices' className='text-slate-600 underline hover:text-slate-900'>
-              {t('ops.purchasing.viewHistoryInvoices')}
-            </Link>
-            <Link href='/ops/supplier-payments' className='text-slate-600 underline hover:text-slate-900'>
-              {t('ops.purchasing.viewHistoryPayments')}
-            </Link>
-          </section>
+          <CollapsibleSection
+            open={openPanel === 'activity'}
+            onToggle={() => setOpenPanel((v) => (v === 'activity' ? null : 'activity'))}
+            heading={t('ops.purchasing.activityHeading')}
+            intro={t('ops.purchasing.activityIntro')}
+          >
+            <div className='overflow-x-auto'>
+              <table className='w-full text-sm'>
+                <thead className='bg-slate-50 text-slate-600'>
+                  <tr>
+                    <th className='text-left px-3 py-2 font-medium'>{t('table.date')}</th>
+                    <th className='text-left px-3 py-2 font-medium'>{t('ops.purchasing.activity.typeCol')}</th>
+                    <th className='text-left px-3 py-2 font-medium'>{t('ops.purchasing.activity.refCol')}</th>
+                    <th className='text-left px-3 py-2 font-medium'>{t('table.supplier')}</th>
+                    <th className='text-right px-3 py-2 font-medium'>{t('table.amount')}</th>
+                    <th className='text-left px-3 py-2 font-medium'>{t('table.status')}</th>
+                  </tr>
+                </thead>
+                <tbody className='divide-y divide-slate-100'>
+                  {activityLoading && (
+                    <tr><td colSpan={6} className='px-3 py-6 text-center text-slate-400'>{t('common.loading')}</td></tr>
+                  )}
+                  {!activityLoading && activity.length === 0 && (
+                    <tr><td colSpan={6} className='px-3 py-6 text-center text-slate-400'>{t('ops.purchasing.activity.empty')}</td></tr>
+                  )}
+                  {activity.map((a) => (
+                    <tr key={a.id} className='hover:bg-slate-50'>
+                      <td className='px-3 py-2 text-slate-700'>{a.date}</td>
+                      <td className='px-3 py-2 text-slate-600'>
+                        {a.kind === 'purchase'
+                          ? t('ops.purchasing.activity.typePurchase')
+                          : t('ops.purchasing.activity.typePayment')}
+                      </td>
+                      <td className='px-3 py-2 font-mono text-xs text-slate-600'>{a.reference}</td>
+                      <td className='px-3 py-2 text-slate-700'>
+                        {suppliers.find((su) => su.id === a.supplierId)?.name ?? '\\u2014'}
+                      </td>
+                      <td className='px-3 py-2 text-right font-mono text-slate-700'>{a.amount}</td>
+                      <td className='px-3 py-2'>
+                        <span className='text-xs rounded bg-slate-100 px-2 py-0.5'>{a.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CollapsibleSection>
         </>
       )}
     </OpsShell>
