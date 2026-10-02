@@ -62,3 +62,9 @@ shiftRouter.post(
   validateBody(SubmitShiftSchema),
   asyncHandler(shiftCloseController.submitShift)
 );
+
+shiftRouter.post(
+  '/:id/finalize',
+  requireRole('OWNER', 'MANAGER'),
+  asyncHandler(shiftCloseController.finalizeShift)
+);

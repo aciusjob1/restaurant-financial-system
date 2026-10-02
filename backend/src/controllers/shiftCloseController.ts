@@ -64,3 +64,11 @@ export async function submitShift(req: Request, res: Response) {
   });
   res.status(201).json({ success: true, ...result });
 }
+
+export async function finalizeShift(req: Request, res: Response) {
+  const result = await service.finalizeShift({
+    actor: { id: req.user!.id, role: req.user!.role as Role },
+    shiftId: req.params.id!,
+  });
+  res.json({ success: true, ...result });
+}

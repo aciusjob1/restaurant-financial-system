@@ -3,7 +3,7 @@ import { ApiError } from '../errors/ApiError.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
 import { nextExpenseNumber } from './expenseService.js';
-import type { PaymentMethod, Role } from '@prisma/client';
+import type { PaymentMethod, Role, Prisma } from '@prisma/client';
 
 const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
   'MPESA',
@@ -362,4 +362,107 @@ export async function submitShift(input: {
   notes?: string | null;
 }) {
   return runShiftClose(input, 'submit');
+}
+
+export async function finalizeShift(input: {
+  actor: { id: string; role: Role };
+  shiftId: string;
+}) {
+  if (input.actor.role !== 'OWNER' && input.actor.role !== 'MANAGER') {
+    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER or MANAGER can finalize a shift.');
+  }
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: input.shiftId },
+    include: {
+      reconciliation: true,
+      cashHandovers: {
+        where: { voidedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  });
+  if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+  if (shift.status === 'CLOSED') {
+    throw new ApiError(409, 'SHIFT_ALREADY_CLOSED', 'Shift is already closed.');
+  }
+  if (shift.status === 'OPEN') {
+    throw new ApiError(
+      409,
+      'SHIFT_NOT_SUBMITTED',
+      'Shift has not been submitted yet.'
+    );
+  }
+
+  await assertDayNotClosed(shift.businessDate, input.actor.role);
+
+  const recon = shift.reconciliation;
+  const handover = shift.cashHandovers[0] ?? null;
+
+  // Self-review guard: a MANAGER cannot review their own submission.
+  if (
+    input.actor.role === 'MANAGER' &&
+    recon &&
+    recon.status === 'SUBMITTED' &&
+    recon.createdBy === input.actor.id
+  ) {
+    throw new ApiError(
+      403,
+      'SELF_REVIEW_FORBIDDEN',
+      'A manager cannot review their own submission. Ask an owner to review.'
+    );
+  }
+
+  const now = new Date();
+  let reviewPerformed = false;
+  let handoverConfirmed = false;
+
+  await prisma.$transaction(async (tx) => {
+    if (recon && recon.status === 'SUBMITTED') {
+      await tx.reconciliation.update({
+        where: { id: recon.id },
+        data: {
+          status: 'REVIEWED',
+          reviewedBy: input.actor.id,
+          reviewedAt: now,
+        },
+      });
+      reviewPerformed = true;
+    }
+
+    if (handover && handover.status === 'PENDING') {
+      await tx.cashHandover.update({
+        where: { id: handover.id },
+        data: {
+          status: 'CONFIRMED',
+          confirmedAt: now,
+        },
+      });
+      handoverConfirmed = true;
+    }
+
+    const shiftData: Prisma.ShiftUpdateInput = {
+      status: 'CLOSED',
+      closedBy: input.actor.id,
+      closedAt: now,
+      endedAt: now,
+    };
+    if (shift.status === 'SUBMITTED') {
+      shiftData.reviewedBy = input.actor.id;
+      shiftData.reviewedAt = now;
+    }
+    await tx.shift.update({ where: { id: shift.id }, data: shiftData });
+  });
+
+  const updated = await prisma.shift.findUnique({ where: { id: shift.id } });
+  return {
+    shift: {
+      id: updated!.id,
+      status: updated!.status,
+      closedAt: updated!.closedAt ? updated!.closedAt.toISOString() : null,
+    },
+    reviewPerformed,
+    handoverConfirmed,
+  };
 }

@@ -34,8 +34,14 @@ const WAITER23 = { username: 'phase19j4b-waiter23', password: 'WaiterPassword!23
 const WAITER24 = { username: 'phase19j4b-waiter24', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter24', role: 'WAITER' as const };
 const WAITER25 = { username: 'phase19j4b-waiter25', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter25', role: 'WAITER' as const };
 const WAITER26 = { username: 'phase19j4b-waiter26', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter26', role: 'WAITER' as const };
+const WAITER27 = { username: 'phase19j4b-waiter27', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter27', role: 'WAITER' as const };
+const WAITER28 = { username: 'phase19j4b-waiter28', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter28', role: 'WAITER' as const };
+const WAITER29 = { username: 'phase19j4b-waiter29', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter29', role: 'WAITER' as const };
+const WAITER30 = { username: 'phase19j4b-waiter30', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter30', role: 'WAITER' as const };
+const WAITER31 = { username: 'phase19j4b-waiter31', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter31', role: 'WAITER' as const };
+const WAITER32 = { username: 'phase19j4b-waiter32', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter32', role: 'WAITER' as const };
 const MANAGER2 = { username: 'phase19j4b-manager2', password: 'ManagerPassword!234', fullName: 'Phase19j4b Manager2', role: 'MANAGER' as const };
-const ALL = [OWNER, MANAGER, MANAGER2, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7, WAITER8, WAITER9, WAITER10, WAITER11, WAITER12, WAITER13, WAITER14, WAITER15, WAITER16, WAITER17, WAITER18, WAITER19, WAITER20, WAITER21, WAITER22, WAITER23, WAITER24, WAITER25, WAITER26];
+const ALL = [OWNER, MANAGER, MANAGER2, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7, WAITER8, WAITER9, WAITER10, WAITER11, WAITER12, WAITER13, WAITER14, WAITER15, WAITER16, WAITER17, WAITER18, WAITER19, WAITER20, WAITER21, WAITER22, WAITER23, WAITER24, WAITER25, WAITER26, WAITER27, WAITER28, WAITER29, WAITER30, WAITER31, WAITER32];
 
 const D_HAPPY      = '2099-09-01';
 const D_COLLECTION = '2099-09-02';
@@ -63,7 +69,13 @@ const D_SUB5 = '2099-09-23';
 const D_SUB6 = '2099-09-24';
 const D_SUB7 = '2099-09-25';
 const D_SUB8 = '2099-09-26';
-const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY, D_COMPLETE, D_NOCOLL, D_SELFREV_M, D_SELFREV_O, D_OTHERREV, D_AUTO_CS, D_AUTO_CS2, D_MGR_FLAGS, D_AUTO_HAND_OFF, D_AUTO_HAND_ON, D_MGR_HAND, D_SUB1, D_SUB2, D_SUB3, D_SUB4, D_SUB5, D_SUB6, D_SUB7, D_SUB8];
+const D_FIN1 = '2099-10-01';
+const D_FIN2 = '2099-10-02';
+const D_FIN3 = '2099-10-03';
+const D_FIN4 = '2099-10-04';
+const D_FIN5 = '2099-10-05';
+const D_FIN6 = '2099-10-06';
+const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY, D_COMPLETE, D_NOCOLL, D_SELFREV_M, D_SELFREV_O, D_OTHERREV, D_AUTO_CS, D_AUTO_CS2, D_MGR_FLAGS, D_AUTO_HAND_OFF, D_AUTO_HAND_ON, D_MGR_HAND, D_SUB1, D_SUB2, D_SUB3, D_SUB4, D_SUB5, D_SUB6, D_SUB7, D_SUB8, D_FIN1, D_FIN2, D_FIN3, D_FIN4, D_FIN5, D_FIN6];
 
 const TEST_CATEGORY = 'Phase19j4b Test Category';
 
@@ -677,5 +689,121 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
     expect(res.body.handover).toBeNull();
     const exps = await prisma.expense.findMany({ where: { shiftId } });
     expect(exps[0].status).toBe('PENDING');
+  });
+});
+
+describe('POST /shifts/:id/finalize', () => {
+  it('MANAGER submits, OWNER finalizes: reviews recon, closes shift, no handover', async () => {
+    const shiftId = await openShift(D_FIN1, WAITER27);
+    const m = await loginAs(MANAGER);
+    const o = await loginAs(OWNER);
+    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '500.00' },
+      cashHandedOver: '1500.00',
+      receivedByUserId: managerId,
+    });
+    expect(submit.status).toBe(201);
+
+    const fin = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
+    expect(fin.status).toBe(200);
+    expect(fin.body.shift.status).toBe('CLOSED');
+    expect(fin.body.reviewPerformed).toBe(true);
+    expect(fin.body.handoverConfirmed).toBe(false);
+
+    const recon = await prisma.reconciliation.findUnique({ where: { shiftId } });
+    expect(recon!.status).toBe('REVIEWED');
+    expect(recon!.reviewedBy).toBe(ownerId);
+    const handoverCount = await prisma.cashHandover.count({ where: { shiftId } });
+    expect(handoverCount).toBe(0);
+  });
+
+  it('finalize confirms a PENDING handover', async () => {
+    const shiftId = await openShift(D_FIN2, WAITER28);
+    const m = await loginAs(MANAGER);
+    const o = await loginAs(OWNER);
+    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '500.00' },
+      cashHandedOver: '1500.00',
+      receivedByUserId: managerId,
+    });
+    expect(submit.status).toBe(201);
+    const reconId = submit.body.reconciliation.id;
+
+    const waiterUser = await prisma.user.findUnique({ where: { username: WAITER28.username } });
+    await prisma.cashHandover.create({
+      data: {
+        shiftId,
+        reconciliationId: reconId,
+        fromUserId: waiterUser!.id,
+        toUserId: managerId,
+        createdById: managerId,
+        amount: '1500.00',
+        status: 'PENDING',
+        notes: null,
+      },
+    });
+
+    const fin = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
+    expect(fin.status).toBe(200);
+    expect(fin.body.handoverConfirmed).toBe(true);
+
+    const h = await prisma.cashHandover.findFirst({ where: { shiftId } });
+    expect(h!.status).toBe('CONFIRMED');
+    expect(h!.confirmedAt).not.toBeNull();
+  });
+
+  it('finalize on already CLOSED shift -> 409 SHIFT_ALREADY_CLOSED', async () => {
+    const shiftId = await openShift(D_FIN3, WAITER29);
+    const m = await loginAs(MANAGER);
+    const o = await loginAs(OWNER);
+    await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '500.00' },
+      cashHandedOver: '1500.00',
+      receivedByUserId: managerId,
+    });
+    const first = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
+    expect(first.status).toBe(200);
+
+    const second = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
+    expect(second.status).toBe(409);
+    expect(second.body.code).toBe('SHIFT_ALREADY_CLOSED');
+  });
+
+  it('finalize on OPEN shift -> 409 SHIFT_NOT_SUBMITTED', async () => {
+    const shiftId = await openShift(D_FIN4, WAITER30);
+    const o = await loginAs(OWNER);
+    const fin = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
+    expect(fin.status).toBe(409);
+    expect(fin.body.code).toBe('SHIFT_NOT_SUBMITTED');
+  });
+
+  it('MANAGER cannot finalize their own submission (403 SELF_REVIEW_FORBIDDEN)', async () => {
+    const shiftId = await openShift(D_FIN5, WAITER31);
+    const m = await loginAs(MANAGER);
+    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '500.00' },
+      cashHandedOver: '1500.00',
+      receivedByUserId: managerId,
+    });
+    expect(submit.status).toBe(201);
+
+    const fin = await m.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
+    expect(fin.status).toBe(403);
+    expect(fin.body.code).toBe('SELF_REVIEW_FORBIDDEN');
+  });
+
+  it('OWNER can finalize their own submission (self-review allowed)', async () => {
+    const shiftId = await openShift(D_FIN6, WAITER32);
+    const o = await loginAs(OWNER);
+    const submit = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
+      collections: { cash: '500.00' },
+      cashHandedOver: '1500.00',
+      receivedByUserId: managerId,
+    });
+    expect(submit.status).toBe(201);
+
+    const fin = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
+    expect(fin.status).toBe(200);
+    expect(fin.body.shift.status).toBe('CLOSED');
   });
 });
