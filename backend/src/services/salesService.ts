@@ -3,7 +3,8 @@ import { ApiError } from '../errors/ApiError.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import { parseBusinessDate, toDateOnly } from '../utils/businessDate.js';
 import { parseSalesCsv } from './posImporter.js';
-import type { PaymentMethod, Prisma } from '@prisma/client';
+import { assertDayNotClosed } from './closedDayGuard.js';
+import type { PaymentMethod, Prisma, Role } from '@prisma/client';
 
 const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
   'MPESA',
@@ -48,11 +49,11 @@ function serializeSummary(s: {
   businessDate: Date;
   source: 'EXISTING_POS' | 'MANUAL' | 'IMPORT' | 'FUTURE_API';
   sourceReference: string;
-  status: 'DRAFT' | 'VERIFIED';
   totalSales: Prisma.Decimal;
   cashSales: Prisma.Decimal;
   mobileSales: Prisma.Decimal;
   otherSales: Prisma.Decimal;
+  userId: string | null;
   enteredBy: string | null;
   verifiedBy: string | null;
   verifiedAt: Date | null;
@@ -70,7 +71,7 @@ function serializeSummary(s: {
     businessDate: toDateOnly(s.businessDate),
     source: s.source,
     sourceReference: s.sourceReference,
-    status: s.status,
+    userId: s.userId,
     totalSales: toMoneyString(s.totalSales),
     cashSales: toMoneyString(s.cashSales),
     mobileSales: toMoneyString(s.mobileSales),
@@ -138,6 +139,7 @@ async function upsertSummary(opts: {
   businessDate: Date;
   source: 'EXISTING_POS' | 'MANUAL' | 'IMPORT' | 'FUTURE_API';
   sourceReference: string;
+  userId: string | null;
   enteredBy: string;
   notes: string | null;
   lines: LineInput[];
@@ -147,13 +149,12 @@ async function upsertSummary(opts: {
   const totals = summarize(opts.lines);
 
   const result = await prisma.$transaction(async (tx) => {
-    const existing = await tx.salesSummary.findUnique({
+    const existing = await tx.salesSummary.findFirst({
       where: {
-        source_businessDate_sourceReference: {
-          source: opts.source,
-          businessDate: opts.businessDate,
-          sourceReference: opts.sourceReference,
-        },
+        source: opts.source,
+        businessDate: opts.businessDate,
+        sourceReference: opts.sourceReference,
+        userId: opts.userId,
       },
       include: INCLUDE_LINES,
     });
@@ -189,6 +190,7 @@ async function upsertSummary(opts: {
         businessDate: opts.businessDate,
         source: opts.source,
         sourceReference: opts.sourceReference,
+        userId: opts.userId,
         enteredBy: opts.enteredBy,
         notes: opts.notes,
         totalSales: totals.total,
@@ -214,15 +216,19 @@ async function upsertSummary(opts: {
 export async function createManualSummary(input: {
   businessDate: string;
   sourceReference: string;
+  userId: string | null;
   notes: string | null;
   lines: Array<{ paymentMethod: PaymentMethod; amount: string; notes?: string | null }>;
   enteredBy: string;
+  actorRole: Role;
 }) {
   const businessDate = parseBusinessDate(input.businessDate);
+  await assertDayNotClosed(businessDate, input.actorRole);
   const { summary } = await upsertSummary({
     businessDate,
     source: 'MANUAL',
     sourceReference: input.sourceReference,
+    userId: input.userId,
     enteredBy: input.enteredBy,
     notes: input.notes,
     lines: input.lines.map((l) => ({
@@ -247,6 +253,7 @@ export async function importFromCsv(input: { csv: string; enteredBy: string }) {
       businessDate,
       source: 'EXISTING_POS',
       sourceReference: p.sourceReference,
+      userId: null,
       enteredBy: input.enteredBy,
       notes: p.notes,
       lines: p.lines.map((l) => ({

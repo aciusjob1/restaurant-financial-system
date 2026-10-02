@@ -26,6 +26,7 @@ export async function createManualSummary(req: Request, res: Response) {
   const summary = await salesService.createManualSummary({
     businessDate: input.businessDate,
     sourceReference: input.sourceReference ?? '',
+    userId: input.userId ?? null,
     notes: input.notes ?? null,
     lines: input.lines.map((l) => ({
       paymentMethod: l.paymentMethod as PaymentMethod,
@@ -33,6 +34,7 @@ export async function createManualSummary(req: Request, res: Response) {
       notes: l.notes ?? null,
     })),
     enteredBy: req.user!.id,
+    actorRole: req.user!.role,
   });
   res.status(201).json({ success: true, summary });
 }

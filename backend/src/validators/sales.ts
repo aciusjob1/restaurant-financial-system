@@ -23,6 +23,7 @@ const DateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const ManualSalesSummarySchema = z.object({
   businessDate: DateOnly,
   sourceReference: z.string().trim().max(128).optional().default(''),
+  userId: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
   lines: z
     .array(
