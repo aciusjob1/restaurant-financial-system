@@ -3,6 +3,7 @@ import { ApiError } from '../errors/ApiError.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import { parseBusinessDate, toDateOnly } from '../utils/businessDate.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
+import { nextExpenseNumber } from '../utils/expenseNumber.js';
 import type { PaymentMethod, Prisma, Role, SalaryStatus } from '@prisma/client';
 
 function isUniqueViolation(err: unknown): boolean {
@@ -44,7 +45,7 @@ function serializeRecord(r: {
   approvedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-}) {
+}, aggregates?: { paidTotal?: Prisma.Decimal; unsettledAdvances?: Array<{ id: string; amount: Prisma.Decimal; businessDate: Date }> }) {
   return {
     id: r.id,
     salaryNumber: r.salaryNumber,
@@ -63,6 +64,14 @@ function serializeRecord(r: {
     approvedAt: r.approvedAt ? r.approvedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    paidTotal: aggregates?.paidTotal ? toMoneyString(aggregates.paidTotal) : undefined,
+    unsettledAdvances: aggregates?.unsettledAdvances
+      ? aggregates.unsettledAdvances.map((a) => ({
+          id: a.id,
+          amount: toMoneyString(a.amount),
+          businessDate: toDateOnly(a.businessDate),
+        }))
+      : undefined,
   };
 }
 
@@ -166,14 +175,37 @@ export async function listSalaries(opts: {
     where,
     orderBy: [{ periodEnd: 'desc' }, { createdAt: 'desc' }],
     take: 200,
+    include: {
+      payments: { where: { voidedAt: null }, select: { amount: true } },
+    },
   });
-  return rows.map(serializeRecord);
+  return rows.map((row) => {
+    const paidTotal = row.payments.reduce((acc, p) => acc.plus(p.amount), toDecimal('0'));
+    return serializeRecord(row, { paidTotal });
+  });
 }
 
 export async function getSalaryById(id: string) {
-  const row = await prisma.salaryRecord.findUnique({ where: { id } });
+  const row = await prisma.salaryRecord.findUnique({
+    where: { id },
+    include: {
+      payments: { where: { voidedAt: null }, select: { amount: true } },
+      employee: {
+        select: {
+          salaryAdvances: {
+            where: { settledById: null },
+            select: { id: true, amount: true, businessDate: true },
+          },
+        },
+      },
+    },
+  });
   if (!row) throw new ApiError(404, 'NOT_FOUND', 'Salary record not found.');
-  return serializeRecord(row);
+  const paidTotal = row.payments.reduce((acc, p) => acc.plus(p.amount), toDecimal('0'));
+  return serializeRecord(row, {
+    paidTotal,
+    unsettledAdvances: row.employee.salaryAdvances,
+  });
 }
 
 export async function createSalaryRecord(input: {
@@ -514,6 +546,17 @@ export async function createSalaryPayment(input: {
           },
         });
 
+        await createLinkedSalaryExpense(tx, {
+          salaryPaymentId: created.id,
+          employeeId: record.employeeId,
+          amount,
+          paymentMethod: input.paymentMethod,
+          businessDate,
+          recordedBy: input.actor.id,
+          notes: input.notes ?? null,
+          salaryNumber: record.salaryNumber,
+        });
+
         const nextStatus = statusFromPaid(newTotal, record.netSalary, record.status);
         const updated =
           nextStatus === record.status
@@ -575,6 +618,21 @@ export async function voidSalaryPayment(input: {
             voidReason: input.reason,
           },
         });
+
+        const linked = await tx.expense.findUnique({
+          where: { salaryPaymentId: existing.id },
+        });
+        if (linked && linked.status !== 'VOID') {
+          await tx.expense.update({
+            where: { id: linked.id },
+            data: {
+              status: 'VOID',
+              voidedAt: new Date(),
+              voidedBy: input.actor.id,
+              voidReason: input.reason,
+            },
+          });
+        }
 
         const newTotal = await sumActivePaid(tx, parent.id);
         const nextStatus = statusFromPaid(newTotal, parent.netSalary, parent.status);
@@ -673,4 +731,44 @@ export async function applySalaryExpense(tx: Prisma.TransactionClient, input: {
   }
 
   return { paymentId, advanceId };
+}
+
+async function createLinkedSalaryExpense(
+  tx: Prisma.TransactionClient,
+  input: {
+    salaryPaymentId: string;
+    employeeId: string;
+    amount: Prisma.Decimal;
+    paymentMethod: PaymentMethod;
+    businessDate: Date;
+    recordedBy: string;
+    notes: string | null;
+    salaryNumber: string;
+  }
+) {
+  const category = await tx.expenseCategory.findUnique({ where: { systemKey: 'SALARY' } });
+  if (!category) {
+    throw new ApiError(409, 'NO_SALARY_CATEGORY', 'Salary expense category is missing.');
+  }
+  const expenseNumber = await nextExpenseNumber(tx);
+  const now = new Date();
+  return tx.expense.create({
+    data: {
+      expenseNumber,
+      businessDate: input.businessDate,
+      categoryId: category.id,
+      shiftId: null,
+      salaryTargetEmployeeId: input.employeeId,
+      salaryPaymentId: input.salaryPaymentId,
+      createdBy: input.recordedBy,
+      approvedBy: input.recordedBy,
+      approvedAt: now,
+      paidByUserId: input.recordedBy,
+      amount: input.amount,
+      paymentMethod: input.paymentMethod,
+      description: 'Salary payment ' + input.salaryNumber,
+      status: 'APPROVED',
+      notes: input.notes,
+    },
+  });
 }

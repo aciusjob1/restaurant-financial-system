@@ -47,6 +47,8 @@ function serialize(c: {
   shiftCount: number;
   reconciliationCount: number;
   pendingReviewCount: number;
+  totalExpenses: Prisma.Decimal;
+  totalCashExpenses: Prisma.Decimal;
   snapshotJson: Prisma.JsonValue;
   closedBy: string;
   closedAt: Date;
@@ -83,6 +85,8 @@ function serialize(c: {
     shiftCount: c.shiftCount,
     reconciliationCount: c.reconciliationCount,
     pendingReviewCount: c.pendingReviewCount,
+    totalExpenses: toMoneyString(c.totalExpenses),
+    totalCashExpenses: toMoneyString(c.totalCashExpenses),
     snapshotJson: c.snapshotJson,
     closedBy: c.closedBy,
     closedAt: c.closedAt.toISOString(),
@@ -117,6 +121,8 @@ interface ComputeResult {
   shiftCount: number;
   reconciliationCount: number;
   pendingReviewCount: number;
+  totalExpenses: Prisma.Decimal;
+  totalCashExpenses: Prisma.Decimal;
   snapshotJson: Record<string, unknown>;
 }
 
@@ -238,6 +244,22 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
     }
   }
 
+  // 5b. Expense totals for the day (approved, not voided).
+  const expenseRows = await prisma.expense.findMany({
+    where: {
+      businessDate,
+      status: 'APPROVED',
+      voidedAt: null,
+    },
+    select: { amount: true, paymentMethod: true },
+  });
+  let totalExpenses = toDecimal('0');
+  let totalCashExpenses = toDecimal('0');
+  for (const e of expenseRows) {
+    totalExpenses = totalExpenses.plus(e.amount);
+    if (e.paymentMethod === 'CASH') totalCashExpenses = totalCashExpenses.plus(e.amount);
+  }
+
   // 6. Discrepancies between the POS view and the waiter view.
   const cashSalesDiscrepancy = ssCash.minus(expCash);
   const mobileSalesDiscrepancy = ssMobile.minus(expMobile);
@@ -294,6 +316,8 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
     shiftCount,
     reconciliationCount,
     pendingReviewCount,
+    totalExpenses,
+    totalCashExpenses,
     snapshotJson,
   };
 }

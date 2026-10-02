@@ -68,6 +68,7 @@ enum ExpenseStatus {
   PENDING
   APPROVED
   REJECTED
+  VOID
 }
 
 enum SalaryStatus {
@@ -117,6 +118,7 @@ model User {
   expensesCreated         Expense[]          @relation("ExpenseCreatedBy")
   paidExpenses    Expense[]       @relation("ExpensePaidBy")
   expensesApproved        Expense[]          @relation("ExpenseApprovedBy")
+  expensesVoided          Expense[]          @relation("ExpenseVoidedBy")
   salariesCreated         SalaryRecord[]     @relation("SalaryCreatedBy")
   salariesApproved        SalaryRecord[]     @relation("SalaryApprovedBy")
   salaryPayments          SalaryPayment[]    @relation("SalaryPaymentRecordedBy")
@@ -460,6 +462,7 @@ model Expense {
   categoryId      String
   shiftId         String?
   salaryTargetEmployeeId String?
+  salaryPaymentId String?        @unique
   createdBy       String
   approvedBy      String?
   paidByUserId    String?
@@ -478,6 +481,10 @@ model Expense {
   submittedAt     DateTime?
   approvedAt      DateTime?
 
+  voidedAt        DateTime?
+  voidedBy        String?
+  voidReason      String?
+
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -487,6 +494,8 @@ model Expense {
   approvedByUser  User?           @relation("ExpenseApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
   paidByUser      User?           @relation("ExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: Restrict)
   salaryTargetEmployee Employee?  @relation("SalaryExpenseTarget", fields: [salaryTargetEmployeeId], references: [id], onDelete: Restrict)
+  salaryPayment   SalaryPayment? @relation(fields: [salaryPaymentId], references: [id], onDelete: SetNull)
+  voidedByUser    User?          @relation("ExpenseVoidedBy", fields: [voidedBy], references: [id], onDelete: SetNull)
   salaryAdvances  SalaryAdvance[]
 
   @@index([businessDate])
@@ -496,6 +505,8 @@ model Expense {
   @@index([paymentMethod])
   @@index([createdBy])
   @@index([salaryTargetEmployeeId])
+  @@index([salaryPaymentId])
+  @@index([voidedAt])
   @@index([businessDate, status])
 }
 
@@ -560,6 +571,7 @@ model SalaryPayment {
   salaryRecord    SalaryRecord  @relation(fields: [salaryRecordId], references: [id], onDelete: Restrict)
   recordedByUser  User          @relation("SalaryPaymentRecordedBy", fields: [recordedBy], references: [id], onDelete: Restrict)
   voidedByUser    User?         @relation("SalaryPaymentVoidedBy", fields: [voidedBy], references: [id], onDelete: SetNull)
+  expense         Expense?
 
   @@index([salaryRecordId])
   @@index([businessDate])

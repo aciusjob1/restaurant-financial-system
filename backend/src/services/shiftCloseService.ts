@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../errors/ApiError.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
-import { nextExpenseNumber } from './expenseService.js';
+import { nextExpenseNumber } from '../utils/expenseNumber.js';
 import { applySalaryExpense } from './salaryService.js';
 import type { PaymentMethod, Role, Prisma } from '@prisma/client';
 
