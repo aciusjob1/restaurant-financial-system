@@ -22,4 +22,6 @@ export const OPS_PATHS = {
   salaryPayments: '/api/v1/salary-payments',
   shifts: '/api/v1/shifts',
   dailyClosings: '/api/v1/daily-closings',
+  settings: '/api/v1/settings',
+  backups: '/api/v1/backups',
 } as const;

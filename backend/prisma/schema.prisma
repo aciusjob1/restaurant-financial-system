@@ -840,3 +840,11 @@ model SalaryAdvance {
   @@index([settledById])
   @@index([employeeId, settledById])
 }
+
+model Setting {
+  key        String   @id
+  value      String
+  updatedAt  DateTime @updatedAt
+
+  @@index([updatedAt])
+}

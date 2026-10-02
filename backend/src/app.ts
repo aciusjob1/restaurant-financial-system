@@ -26,6 +26,8 @@ import {
   materialCategoryRouter,
 } from './routes/materialRoutes.js';
 import { reportsRouter } from './routes/reportsRoutes.js';
+import { settingsRouter } from './routes/settingsRoutes.js';
+import { backupRouter } from './routes/backupRoutes.js';
 import { stockMovementRouter } from './routes/stockMovementRoutes.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
@@ -71,6 +73,8 @@ export function createApp() {
   app.use('/api/v1/materials', materialRouter);
 app.use('/api/v1/stock-movements', stockMovementRouter);
 app.use('/api/v1/reports', reportsRouter);
+  app.use('/api/v1/settings', settingsRouter);
+  app.use('/api/v1/backups', backupRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

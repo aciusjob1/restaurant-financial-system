@@ -11,6 +11,16 @@ export default function SettingsPage() {
   const { t } = useT();
   const cards: Card[] = [
     {
+      href: '/ops/settings/restaurant',
+      titleKey: 'ops.settings.restaurant.title',
+      descKey: 'ops.settings.restaurant.subtitle',
+    },
+    {
+      href: '/ops/settings/backup',
+      titleKey: 'ops.settings.backup.title',
+      descKey: 'ops.settings.backup.subtitle',
+    },
+    {
       href: '/ops/settings/positions',
       titleKey: 'ops.positions.title',
       descKey: 'ops.positions.subtitle',
