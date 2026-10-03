@@ -37,7 +37,15 @@ export function createApp() {
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
-  app.use(helmet());
+  app.use(
+  helmet({
+    // Allow cross-origin subresource loads. In dev the frontend runs
+    // on :3000 and the API on :4000, so any browser-subresource load
+    // (like the restaurant logo <img>) would otherwise be blocked by
+    // helmet's default Cross-Origin-Resource-Policy: same-origin.
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
   app.use(
     cors({
       origin: env.CORS_ORIGIN.split(',').map((s) => s.trim()),

@@ -4,6 +4,7 @@ import { z } from 'zod';
 // 400 INVALID_SETTING_KEY. Add a key here when a new setting ships.
 export const SETTING_KEYS = [
   'restaurant.name',
+  'restaurant.logoPath',
   'backup.destination',
   'backup.schedule.cron',
   'backup.schedule.preset',
