@@ -59,8 +59,7 @@ function StockMovementsContent() {
   const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
-    <ReportShell>
-      <ReportHeader
+    <ReportShell printTitle={t('reports.cards.stockMovements.title')}>       <ReportHeader
         title={t('reports.cards.stockMovements.title')}
         subtitle={t('reports.stockMovements.subtitle')}
       />

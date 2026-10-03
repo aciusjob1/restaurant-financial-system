@@ -61,8 +61,7 @@ function ReconciliationsContent() {
   const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
-    <ReportShell>
-      <ReportHeader
+    <ReportShell printTitle={t('reports.cards.reconciliations.title')}>       <ReportHeader
         title={t('reports.cards.reconciliations.title')}
         subtitle={t('reports.reconciliations.subtitle')}
       />

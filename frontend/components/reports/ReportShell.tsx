@@ -18,6 +18,8 @@ import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
 import { UserMenu } from '@/components/ops/UserMenu';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
+import { useRestaurantName } from '@/hooks/useRestaurantName';
+import { PrintHeader, PrintFooter } from './PrintChrome';
 import type { Dict } from '@/lib/i18n/dictionaries';
 
 type MeResponse = {
@@ -46,11 +48,20 @@ const LINKS: LinkSpec[] = [
   { href: '/reports/stock-movements',     labelKey: 'nav.reports.stockMovements',     icon: Warehouse },
 ];
 
-export function ReportShell({ children }: { children: ReactNode }) {
+export function ReportShell({
+  children,
+  printTitle,
+  printPeriod,
+}: {
+  children: ReactNode;
+  printTitle?: string;
+  printPeriod?: string;
+}) {
   const router = useRouter();
   const { t } = useT();
   const [me, setMe] = useState<MeResponse['user'] | null>(null);
   const [denied, setDenied] = useState(false);
+  const restaurantName = useRestaurantName();
 
   const links = useMemo<NavLink[]>(
     () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), section: l.sectionKey ? t(l.sectionKey) : undefined, icon: l.icon })),
@@ -106,11 +117,41 @@ export function ReportShell({ children }: { children: ReactNode }) {
       storageKey='reports-shell-collapsed'
       me={me}
     >
-      <div className='flex justify-end items-center gap-3 px-4 pt-4'>
-        <LanguagePicker />
-        {me && <UserMenu fullName={me.fullName} role={me.role} />}
+      <div className='flex justify-between items-center gap-3 px-4 pt-4 print:hidden min-h-[3rem]'>
+        {restaurantName && (
+          <div className='text-base font-semibold uppercase tracking-[0.16em] text-slate-600 truncate'>
+            {restaurantName}
+          </div>
+        )}
+        <div className='flex items-center gap-3 shrink-0'>
+          <LanguagePicker />
+          {me && <UserMenu fullName={me.fullName} role={me.role} />}
+        </div>
       </div>
-      {children}
+
+      {printTitle && (
+        <div className='flex justify-end px-4 print:hidden'>
+          <button
+            type='button'
+            onClick={() => window.print()}
+            className='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50'
+          >
+            {t('print.printButton')}
+          </button>
+        </div>
+      )}
+      {printTitle && (
+        <PrintHeader
+          title={printTitle}
+          generatedBy={me.fullName}
+          generatedByRole={me.role}
+          period={printPeriod}
+        />
+      )}
+      <div className='print:px-0'>
+        {children}
+      </div>
+      <PrintFooter />
     </AppSidebar>
   );
 }

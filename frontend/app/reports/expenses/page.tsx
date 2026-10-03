@@ -55,8 +55,7 @@ function ExpensesContent() {
   const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
-    <ReportShell>
-      <ReportHeader
+    <ReportShell printTitle={t('reports.cards.expenses.title')}>       <ReportHeader
         title={t('reports.cards.expenses.title')}
         subtitle={t('reports.expenses.subtitle')}
       />

@@ -62,8 +62,7 @@ function HandoversContent() {
   const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
-    <ReportShell>
-      <ReportHeader
+    <ReportShell printTitle={t('reports.cards.handovers.title')}>       <ReportHeader
         title={t('reports.cards.handovers.title')}
         subtitle={t('reports.handovers.subtitle')}
       />

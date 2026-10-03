@@ -53,8 +53,7 @@ function SupplierBalancesContent() {
   const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
-    <ReportShell>
-      <ReportHeader
+    <ReportShell printTitle={t('reports.cards.supplierBalances.title')}>       <ReportHeader
         title={t('reports.cards.supplierBalances.title')}
         subtitle={t('reports.supplierBalances.subtitle')}
       />

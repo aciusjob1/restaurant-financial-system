@@ -67,8 +67,7 @@ function DailySalesContent() {
   const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
-    <ReportShell>
-      <ReportHeader
+    <ReportShell printTitle={t('reports.cards.dailySales.title')}>       <ReportHeader
         title={t('reports.cards.dailySales.title')}
         subtitle={t('reports.dailySales.subtitle')}
       />

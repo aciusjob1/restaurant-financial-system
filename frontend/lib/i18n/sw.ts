@@ -300,6 +300,13 @@ export const sw: Dict = {
   'ops.domains.dailyClosing.title': 'Kufunga kwa Siku',
   'ops.domains.dailyClosing.description': 'Funga siku ya biashara; fungua tena kama OWNER ikihitajika.',
 
+  'print.printButton': 'Chapisha',
+  'print.generatedBy': 'Imetengenezwa na',
+  'print.generatedAt': 'Imetengenezwa',
+  'print.printedAt': 'Ilichapishwa',
+  'print.reportId': 'Namba ya ripoti',
+  'print.confidential': 'Hati ya biashara ya siri',
+  'print.systemName': 'Mfumo wa Fedha wa Mgahawa',
   'reports.header.title': 'Ripoti',
   'reports.header.subtitle': 'Ripoti za uendeshaji na kifedha. Mahesabu yote hufanyika upande wa seva; UI huonyesha tu maadili yaliyorudishwa.',
 

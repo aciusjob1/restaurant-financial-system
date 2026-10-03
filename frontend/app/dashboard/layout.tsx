@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { BarChart3, Cog, LayoutDashboard } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
+import { useRestaurantName } from '@/hooks/useRestaurantName';
 import { UserMenu } from '@/components/ops/UserMenu';
 import { apiFetch, ApiError } from '@/lib/api';
 
@@ -26,6 +27,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [me, setMe] = useState<MeResponse['user'] | null>(null);
   const [denied, setDenied] = useState(false);
+  const restaurantName = useRestaurantName();
 
   useEffect(() => {
     let cancelled = false;
@@ -77,9 +79,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       storageKey="dashboard-shell-collapsed"
       me={me}
     >
-      <div className="flex justify-end items-center gap-3 px-4 pt-4">
-        <LanguagePicker />
-        {me && <UserMenu fullName={me.fullName} role={me.role} />}
+      <div className="flex justify-between items-center gap-3 px-4 pt-4 min-h-[3.5rem]">
+        {restaurantName && (
+          <div className="text-base font-semibold uppercase tracking-[0.16em] text-slate-600 truncate">
+            {restaurantName}
+          </div>
+        )}
+        <div className="flex items-center gap-3 shrink-0">
+          <LanguagePicker />
+          {me && <UserMenu fullName={me.fullName} role={me.role} />}
+        </div>
       </div>
       {children}
     </AppSidebar>

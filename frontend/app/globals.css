@@ -4,3 +4,29 @@
 
 html, body { height: 100%; }
 body { @apply bg-slate-50 text-slate-900; }
+
+/* Print rules for report pages. The ReportShell renders a print-only
+   header above and footer below the report body; the sidebar and top-
+   right controls are hidden. Page size is A4, margins 12mm, and
+   tables repeat their header on page breaks. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  html, body {
+    background: #fff !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    break-inside: avoid;
+  }
+  .rounded-2xl, .rounded-lg {
+    border-radius: 0 !important;
+  }
+  .shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl {
+    box-shadow: none !important;
+  }
+}

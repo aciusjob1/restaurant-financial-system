@@ -157,7 +157,7 @@ export function AppSidebar({
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Mobile top bar */}
-      <div className="lg:hidden sticky top-0 z-20 border-b border-slate-200 bg-white">
+      <div className="lg:hidden sticky top-0 z-20 border-b border-slate-200 bg-white print:hidden">
         <div className="px-4 py-3 flex items-center gap-3">
           <button
             type="button"
@@ -185,6 +185,7 @@ export function AppSidebar({
       <aside
         className={[
           'fixed inset-y-0 left-0 z-40 bg-white border-r border-slate-200 flex flex-col',
+          'print:hidden',
           'w-60',
           widthCls,
           'transition-[transform,width] duration-200 ease-out',
@@ -281,7 +282,7 @@ export function AppSidebar({
       </aside>
 
       {/* Main content */}
-      <main className={['transition-[padding] duration-200', padCls].join(' ')}>
+      <main className={['transition-[padding] duration-200 print:!pl-0', padCls].join(' ')}>
         <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">{children}</div>
       </main>
     </div>
