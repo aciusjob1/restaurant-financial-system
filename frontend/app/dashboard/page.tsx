@@ -18,8 +18,18 @@ import {
   ExpensesByCategoryChart,
   TopSuppliersChart,
 } from '@/components/ops/DashboardCharts';
+import { OpenShiftDialog } from '@/components/ops/OpenShiftDialog';
 
 type Period = 'daily' | 'weekly' | 'monthly' | 'annual';
+type ShiftInfo = {
+  id: string;
+  businessDate: string;
+  status: 'OPEN' | 'SUBMITTED' | 'RECONCILING' | 'CLOSED';
+  openingCash: string | null;
+  startedAt: string;
+};
+
+type MeInfo = { id: string; role: string } | null;
 
 type Stats = {
   rangeFrom: string;
@@ -161,6 +171,11 @@ export default function DashboardPage() {
   const [fetching, setFetching] = useState(false);
   const [anchorDate, setAnchorDate] = useState<string>(() => localISO(new Date()));
   const [period, setPeriod] = useState<Period>('daily');
+  const [me, setMe] = useState<MeInfo>(null);
+  const [todayShift, setTodayShift] = useState<ShiftInfo | null>(null);
+  const [shiftLoading, setShiftLoading] = useState(true);
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [shiftFlash, setShiftFlash] = useState<string | null>(null);
 
   const range = useMemo(() => computeRange(anchorDate, period), [anchorDate, period]);
 
@@ -213,6 +228,28 @@ export default function DashboardPage() {
     return () => { cancelled = true; };
   }, [range.from, range.to, router]);
 
+  async function loadShift() {
+    setShiftLoading(true);
+    try {
+      const meRes = await apiFetch<{ success: true; user: { id: string; role: string } }>('/api/v1/auth/me');
+      setMe({ id: meRes.user.id, role: meRes.user.role });
+      const iso = localISO(new Date());
+      const sRes = await apiFetch<{ success: true; shifts: ShiftInfo[] }>(`/api/v1/shifts?businessDate=${iso}`);
+      const found = (sRes.shifts || []).find((sh) => sh.businessDate === iso) || null;
+      setTodayShift(found);
+    } catch {
+      setMe(null);
+      setTodayShift(null);
+    } finally {
+      setShiftLoading(false);
+    }
+  }
+
+  useEffect(() => { loadShift(); }, []);
+
+  const canManage = me?.role === 'OWNER' || me?.role === 'MANAGER';
+  const isTodayOpen = todayShift?.status === 'OPEN';
+
   function resetToToday() {
     setAnchorDate(localISO(new Date()));
   }
@@ -222,6 +259,48 @@ export default function DashboardPage() {
       <header>
         <h1 className="text-2xl font-semibold">{t('dashboard.title')}</h1>
       </header>
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1">
+            <div className="text-xs uppercase tracking-wide text-slate-500">
+              {t('dashboard.todayShift.label')}
+            </div>
+            <div className="mt-1 text-sm text-slate-900">
+              {shiftLoading ? t('common.loading')
+                : !me ? t('dashboard.todayShift.unknown')
+                : todayShift
+                  ? `${t('dashboard.todayShift.statusPrefix')} ${t(('shiftStatus.' + todayShift.status.toLowerCase()) as never)}`
+                  : t('dashboard.todayShift.none')}
+            </div>
+          </div>
+          {!shiftLoading && !todayShift && canManage && (
+            <button
+              type="button"
+              onClick={() => { setShiftFlash(null); setShiftOpen(true); }}
+              className="rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium"
+            >
+              {t('ops.cashFlow.startShiftButton')}
+            </button>
+          )}
+          {!shiftLoading && !canManage && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+              {t('ops.cashFlow.startShiftRestricted')}
+            </div>
+          )}
+        </div>
+        {shiftFlash && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+            {shiftFlash}
+          </div>
+        )}
+      </section>
+
+      {shiftOpen && canManage && (
+        <OpenShiftDialog
+          onClose={() => setShiftOpen(false)}
+          onDone={(msg) => { setShiftOpen(false); setShiftFlash(msg); loadShift(); }}
+        />
+      )}
 
       <section className="space-y-3">
         {/* Filter bar */}

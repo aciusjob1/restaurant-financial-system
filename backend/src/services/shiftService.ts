@@ -97,8 +97,8 @@ export async function startShift(input: {
     ? parseBusinessDate(input.businessDate)
     : todayBusinessDate();
 
-  // The waiter may only start their own shift.
-  // MANAGER/OWNER may open on behalf of a specific WAITER.
+  // MANAGER/OWNER opens the day's shift, optionally on behalf of a WAITER.
+  // Route-level requireRole blocks WAITER entirely.
   let userId = input.actor.id;
   if (input.onBehalfOfUserId !== undefined) {
     if (input.actor.role !== 'MANAGER' && input.actor.role !== 'OWNER') {
@@ -124,15 +124,16 @@ export async function startShift(input: {
     userId = input.onBehalfOfUserId;
   }
 
-  // Friendly pre-check. The DB has a partial unique index that backstops this.
+  // One shift per business date, system-wide. Enforced here in the service
+  // layer (single-user dev app — no concurrent-opener race to worry about).
   const existing = await prisma.shift.findFirst({
-    where: { userId, status: { in: ACTIVE_STATUSES } },
+    where: { businessDate },
   });
   if (existing) {
     throw new ApiError(
       409,
       'SHIFT_ALREADY_OPEN',
-      'You already have an open shift. Close it before starting another.'
+      'A shift already exists for this business date. Close it before starting another.'
     );
   }
 
@@ -154,7 +155,7 @@ export async function startShift(input: {
       throw new ApiError(
         409,
         'SHIFT_ALREADY_OPEN',
-        'You already have an open shift. Close it before starting another.'
+        'A shift already exists for this business date. Close it before starting another.'
       );
     }
     throw err;

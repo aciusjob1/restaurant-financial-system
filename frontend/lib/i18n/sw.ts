@@ -326,6 +326,10 @@ export const sw: Dict = {
   'reports.cards.stockMovements.description': 'Rejista inayoongezwa tu ya kila mwenendo wa bidhaa katika kipindi kilichochaguliwa.',
 
   'dashboard.title': 'Dashibodi',
+  'dashboard.todayShift.label': 'Zamu ya leo',
+  'dashboard.todayShift.none': 'Hakuna zamu ya leo bado. Fungua moja kuanza siku.',
+  'dashboard.todayShift.statusPrefix': 'Hali:',
+  'dashboard.todayShift.unknown': 'Imeshindwa kupata hali ya zamu.',
   'dashboard.date.label': 'Tarehe',
   'dashboard.today': 'Leo',
   'dashboard.refreshing': 'Inasasisha...',
@@ -914,6 +918,7 @@ export const sw: Dict = {
   'ops.cashFlow.row.collectionSubmit': 'Rekodi mkusanyo',
   'ops.cashFlow.flash.collectionRecorded': 'Mkusanyo umerekodiwa kwenye zamu.',
   'ops.cashFlow.startShiftButton': 'Fungua zamu',
+  'ops.cashFlow.startShiftRestricted': 'Ni mmiliki au meneja tu anayeweza kufungua zamu.',
   'ops.cashFlow.startDialog.title': 'Fungua zamu mpya',
   'ops.cashFlow.startDialog.waiter': 'Mhudumu',
   'ops.cashFlow.startDialog.noWaiters': 'Hakuna wahudumu hai.',

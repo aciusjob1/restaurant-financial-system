@@ -20,7 +20,7 @@ shiftRouter.get('/:id', asyncHandler(shiftController.getShift));
 // WAITER cannot start a shift for anyone else; enforced in service.
 shiftRouter.post(
   '/',
-  requireRole('WAITER', 'MANAGER', 'OWNER'),
+  requireRole('OWNER', 'MANAGER'),
   validateBody(StartShiftSchema),
   asyncHandler(shiftController.startShift)
 );

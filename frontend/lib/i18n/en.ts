@@ -324,6 +324,10 @@ export const en = {
   'reports.cards.stockMovements.description': 'Append-only ledger of every stock movement across the selected range.',
 
   'dashboard.title': 'Dashboard',
+  'dashboard.todayShift.label': "Today's shift",
+  'dashboard.todayShift.none': 'No shift yet for today. Open one to start the day.',
+  'dashboard.todayShift.statusPrefix': 'Status:',
+  'dashboard.todayShift.unknown': 'Could not load shift status.',
   'dashboard.date.label': 'Date',
   'dashboard.today': 'Today',
   'dashboard.refreshing': 'Refreshing...',
@@ -913,6 +917,7 @@ export const en = {
   'ops.cashFlow.row.collectionSubmit': 'Record collection',
   'ops.cashFlow.flash.collectionRecorded': 'Collection recorded on shift.',
   'ops.cashFlow.startShiftButton': 'Open shift',
+  'ops.cashFlow.startShiftRestricted': 'Only the owner or a manager can open the shift.',
   'ops.cashFlow.startDialog.title': 'Open a shift',
   'ops.cashFlow.startDialog.waiter': 'Waiter',
   'ops.cashFlow.startDialog.noWaiters': 'No active waiters available.',

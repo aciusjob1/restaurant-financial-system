@@ -6,7 +6,7 @@ import * as schedulerService from './services/schedulerService.js';
 async function main() {
   const app = createApp();
 
-  const server = app.listen(env.PORT, () => {
+  const server = app.listen(env.PORT, '0.0.0.0', () => {
     console.log(`[rfs] Backend listening on http://localhost:${env.PORT}`);
   });
 

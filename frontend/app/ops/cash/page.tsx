@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
+import { OpenShiftDialog } from '@/components/ops/OpenShiftDialog';
 import { DecimalField, SelectField, TextField, TextArea, DateField, FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
@@ -383,71 +384,6 @@ function SendBackInline({ onConfirm, onCancel, busy }: {
   );
 }
 
-// ---------- open shift ----------
-
-function OpenShiftDialog({ waiters, onClose, onDone }: {
-  waiters: User[]; onClose: () => void; onDone: (msg: string) => void;
-}) {
-  const { t, tError } = useT();
-  const [businessDate, setBusinessDate] = useState(todayISO());
-  const [openingCash, setOpeningCash] = useState('');
-  const [notes, setNotes] = useState('');
-  const [waiterId, setWaiterId] = useState(waiters.length > 0 ? waiters[0].id : '');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<{ code: string; message: string } | null>(null);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    if (!waiterId) { setErr({ code: 'WAITER_REQUIRED', message: 'Select a waiter.' }); return; }
-    setBusy(true);
-    try {
-      await apiFetch('/api/v1/shifts', {
-        method: 'POST',
-        body: JSON.stringify({
-          businessDate,
-          openingCash: openingCash.trim() || '0.00',
-          notes: notes.trim() || null,
-          onBehalfOfUserId: waiterId,
-        }),
-      });
-      onDone(t('ops.cashFlow.flash.shiftOpened'));
-    } catch (e2) {
-      if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });
-    } finally { setBusy(false); }
-  }
-
-  return (
-    <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
-      <div className='w-full max-w-lg rounded-2xl bg-white p-6 space-y-4'>
-        <h3 className='text-lg font-medium text-slate-900'>{t('ops.cashFlow.startDialog.title')}</h3>
-        {waiters.length === 0 ? (
-          <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800'>
-            {t('ops.cashFlow.startDialog.noWaiters')}
-          </div>
-        ) : (
-          <form onSubmit={submit} className='space-y-4'>
-            <SelectField label={t('ops.cashFlow.startDialog.waiter')} value={waiterId} onChange={setWaiterId}
-              required options={waiters.map((u) => ({ value: u.id, label: u.fullName }))} />
-            <DateField label={t('form.businessDate')} value={businessDate} onChange={setBusinessDate} required />
-            <DecimalField label={t('ops.shifts.openingCashOptional')} value={openingCash} onChange={setOpeningCash} placeholder='0.00' />
-            <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
-            {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
-            <div className='flex justify-end gap-2'>
-              <button type='button' onClick={onClose} disabled={busy}
-                className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>{t('action.cancel')}</button>
-              <button type='submit' disabled={busy}
-                className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                {busy ? t('ops.cashFlow.startDialog.submitting') : t('action.startShift')}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ---------- shift row ----------
 
 function ShiftRowCard({ row, isManager, busyKey, inline, dialog, collections, categories, users, onOpenInline, onCloseInline, onOpenDialog, onCloseDialog, onFinalize, onSendBack, onDone }: {
@@ -771,10 +707,16 @@ export default function CashPage() {
       <OpsHeader title={t('ops.cashFlow.title')} subtitle={t('ops.cashFlow.subtitle')} />
 
       <div className='flex justify-end'>
-        <button type='button' onClick={() => setStartOpen(true)}
-          className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium'>
-          {t('ops.cashFlow.startShiftButton')}
-        </button>
+        {isManager ? (
+          <button type='button' onClick={() => setStartOpen(true)}
+            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium'>
+            {t('ops.cashFlow.startShiftButton')}
+          </button>
+        ) : (
+          <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600'>
+            {t('ops.cashFlow.startShiftRestricted')}
+          </div>
+        )}
       </div>
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
@@ -836,8 +778,8 @@ export default function CashPage() {
         </>
       )}
 
-      {startOpen && (
-        <OpenShiftDialog waiters={waiters} onClose={() => setStartOpen(false)}
+      {startOpen && isManager && (
+        <OpenShiftDialog onClose={() => setStartOpen(false)}
           onDone={(msg) => { setStartOpen(false); clearAndReload(msg); }} />
       )}
     </OpsShell>
