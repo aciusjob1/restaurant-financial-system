@@ -3,3 +3,6 @@ packages:
   - "frontend"
   - "electron"
   - "shared"
+
+onlyBuiltDependencies:
+  - electron
