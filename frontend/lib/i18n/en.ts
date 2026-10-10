@@ -3,6 +3,8 @@ export const en = {
   'login.subtitle': 'Restaurant Financial System',
   'login.username': 'Username',
   'login.password': 'Password',
+  'login.showPassword': 'Show password',
+  'login.hidePassword': 'Hide password',
   'login.submit': 'Sign in',
   'login.submitting': 'Signing in...',
   'login.errorFallback': 'Unable to sign in.',
@@ -66,8 +68,7 @@ export const en = {
   'kiosk.home.loadingSubtitle': 'Loading your shift...',
   'kiosk.home.subtitle': 'Follow the steps below. The system will show the next action.',
 
-  'kiosk.noShift.heading': 'Start your shift',
-  'kiosk.noShift.startButton': 'Start shift',
+  'kiosk.noShift.autoOpenBody': 'Nothing recorded yet today. Your first collection opens your shift automatically.',
 
   'kiosk.dayDone.heading': 'Day complete.',
   'kiosk.dayDone.body': 'Your shift for today is closed. Sign out when ready for the next person.',
@@ -325,6 +326,7 @@ export const en = {
 
   'dashboard.title': 'Dashboard',
   'dashboard.todayShift.label': "Today's shift",
+  'dashboard.todayShift.autoOpen': 'Opens automatically on first entry.',
   'dashboard.todayShift.none': 'No shift yet for today. Open one to start the day.',
   'dashboard.todayShift.statusPrefix': 'Status:',
   'dashboard.todayShift.unknown': 'Could not load shift status.',
@@ -917,6 +919,7 @@ export const en = {
   'ops.cashFlow.row.collectionSubmit': 'Record collection',
   'ops.cashFlow.flash.collectionRecorded': 'Collection recorded on shift.',
   'ops.cashFlow.startShiftButton': 'Open shift',
+  'ops.cashFlow.autoOpenNotice': 'Your shift opens automatically on first entry.',
   'ops.cashFlow.startShiftRestricted': 'Only the owner or a manager can open the shift.',
   'ops.cashFlow.startDialog.title': 'Open a shift',
   'ops.cashFlow.startDialog.waiter': 'Waiter',

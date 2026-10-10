@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
-import { OpenShiftDialog } from '@/components/ops/OpenShiftDialog';
 import { DecimalField, SelectField, TextField, TextArea, DateField, FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
@@ -576,7 +575,6 @@ export default function CashPage() {
 
   const [inlineForm, setInlineForm] = useState<InlineForm>(null);
   const [subDialog, setSubDialog] = useState<SubDialog>(null);
-  const [startOpen, setStartOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [closeDayConfirming, setCloseDayConfirming] = useState(false);
 
@@ -660,7 +658,6 @@ export default function CashPage() {
 
   const isManager = myRole === 'MANAGER' || myRole === 'OWNER';
   const allClosed = rows.length > 0 && rows.every((r) => r.state === 'closed');
-  const waiters = users.filter((u) => u.role === 'WAITER');
 
   function clearAndReload(msg?: string) {
     if (msg) setFlash(msg);
@@ -707,16 +704,9 @@ export default function CashPage() {
       <OpsHeader title={t('ops.cashFlow.title')} subtitle={t('ops.cashFlow.subtitle')} />
 
       <div className='flex justify-end'>
-        {isManager ? (
-          <button type='button' onClick={() => setStartOpen(true)}
-            className='rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium'>
-            {t('ops.cashFlow.startShiftButton')}
-          </button>
-        ) : (
-          <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600'>
-            {t('ops.cashFlow.startShiftRestricted')}
-          </div>
-        )}
+        <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600'>
+          {t('ops.cashFlow.autoOpenNotice')}
+        </div>
       </div>
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
@@ -778,10 +768,7 @@ export default function CashPage() {
         </>
       )}
 
-      {startOpen && isManager && (
-        <OpenShiftDialog onClose={() => setStartOpen(false)}
-          onDone={(msg) => { setStartOpen(false); clearAndReload(msg); }} />
-      )}
+
     </OpsShell>
   );
 }

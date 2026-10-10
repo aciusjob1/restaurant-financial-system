@@ -18,7 +18,6 @@ import {
   ExpensesByCategoryChart,
   TopSuppliersChart,
 } from '@/components/ops/DashboardCharts';
-import { OpenShiftDialog } from '@/components/ops/OpenShiftDialog';
 
 type Period = 'daily' | 'weekly' | 'monthly' | 'annual';
 type ShiftInfo = {
@@ -174,7 +173,6 @@ export default function DashboardPage() {
   const [me, setMe] = useState<MeInfo>(null);
   const [todayShift, setTodayShift] = useState<ShiftInfo | null>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
-  const [shiftOpen, setShiftOpen] = useState(false);
   const [shiftFlash, setShiftFlash] = useState<string | null>(null);
 
   const range = useMemo(() => computeRange(anchorDate, period), [anchorDate, period]);
@@ -273,18 +271,9 @@ export default function DashboardPage() {
                   : t('dashboard.todayShift.none')}
             </div>
           </div>
-          {!shiftLoading && !todayShift && canManage && (
-            <button
-              type="button"
-              onClick={() => { setShiftFlash(null); setShiftOpen(true); }}
-              className="rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium"
-            >
-              {t('ops.cashFlow.startShiftButton')}
-            </button>
-          )}
-          {!shiftLoading && !canManage && (
+          {!shiftLoading && !todayShift && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-              {t('ops.cashFlow.startShiftRestricted')}
+              {t('dashboard.todayShift.autoOpen')}
             </div>
           )}
         </div>
@@ -295,12 +284,7 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {shiftOpen && canManage && (
-        <OpenShiftDialog
-          onClose={() => setShiftOpen(false)}
-          onDone={(msg) => { setShiftOpen(false); setShiftFlash(msg); loadShift(); }}
-        />
-      )}
+
 
       <section className="space-y-3">
         {/* Filter bar */}

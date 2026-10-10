@@ -81,10 +81,6 @@ export default function KioskPage() {
   const [receivers, setReceivers] = useState<Receiver[]>([]);
   const [closedToday, setClosedToday] = useState(false);
 
-  const [businessDate, setBusinessDate] = useState(todayISO());
-  const [openingCash, setOpeningCash] = useState('');
-  const [shiftNotes, setShiftNotes] = useState('');
-
   const [paymentMethod, setPaymentMethod] = useState<string>('CASH');
   const [amount, setAmount] = useState('');
   const [mobileReference, setMobileReference] = useState('');
@@ -187,39 +183,17 @@ export default function KioskPage() {
     return { kind: 'handover-confirmed' };
   })();
 
-  async function startShift(e: FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    setBusy(true);
-    try {
-      await apiFetch('/api/v1/shifts', {
-        method: 'POST',
-        body: JSON.stringify({
-          businessDate,
-          openingCash: openingCash.trim(),
-          notes: shiftNotes.trim() === '' ? null : shiftNotes.trim(),
-        }),
-      });
-      setOpeningCash('');
-      setShiftNotes('');
-      await refresh();
-    } catch (e) {
-      setErr(errOf(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+
 
   async function addCollection(e: FormEvent) {
     e.preventDefault();
-    if (!shift) return;
     setErr(null);
     setBusy(true);
     try {
       await apiFetch('/api/v1/collections', {
         method: 'POST',
         body: JSON.stringify({
-          shiftId: shift.id,
+          ...(shift ? { shiftId: shift.id } : {}),
           paymentMethod,
           amount,
           mobileReference: mobileReference.trim() === '' ? null : mobileReference.trim(),
@@ -366,36 +340,6 @@ export default function KioskPage() {
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
 
-      {state.kind === 'no-shift' && (
-        <form onSubmit={startShift} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
-          <h2 className='text-base font-medium text-slate-900'>
-            {t('kiosk.noShift.heading')}
-          </h2>
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-            <DateField
-              label={t('form.businessDate')}
-              value={businessDate}
-              onChange={setBusinessDate}
-              required
-            />
-            <DecimalField
-              label={t('form.openingCash')}
-              value={openingCash}
-              onChange={setOpeningCash}
-              placeholder='0.00'
-              required
-            />
-          </div>
-          <TextArea
-            label={t('form.notesOptional')}
-            value={shiftNotes}
-            onChange={setShiftNotes}
-            rows={2}
-          />
-          <SubmitButton busy={busy}>{t('kiosk.noShift.startButton')}</SubmitButton>
-        </form>
-      )}
-
       {state.kind === 'day-done' && (
         <div className='rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-emerald-900 space-y-2'>
           <div className='text-lg font-medium'>{t('kiosk.dayDone.heading')}</div>
@@ -403,32 +347,40 @@ export default function KioskPage() {
         </div>
       )}
 
-      {state.kind === 'shift-open' && shift && (
+      {(state.kind === 'shift-open' || state.kind === 'no-shift') && (
         <>
-          <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-2'>
-            <div className='flex items-center justify-between'>
-              <h2 className='text-base font-medium text-slate-900'>
-                {t('kiosk.shiftOpen.heading')}
-              </h2>
-              <span className='text-xs text-slate-500'>
-                {t('kiosk.shiftOpen.startedPrefix')}{shift.startedAt}
-              </span>
+          {shift ? (
+            <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-2'>
+              <div className='flex items-center justify-between'>
+                <h2 className='text-base font-medium text-slate-900'>
+                  {t('kiosk.shiftOpen.heading')}
+                </h2>
+                <span className='text-xs text-slate-500'>
+                  {t('kiosk.shiftOpen.startedPrefix')}{shift.startedAt}
+                </span>
+              </div>
+              <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
+                <div>
+                  <span className='text-slate-500'>{t('kiosk.shiftOpen.dateLabel')}</span>
+                  {shift.businessDate}
+                </div>
+                <div>
+                  <span className='text-slate-500'>{t('kiosk.shiftOpen.openingCashLabel')}</span>
+                  <span className='font-mono'>{shift.openingCash ?? '\u2014'}</span>
+                </div>
+                <div>
+                  <span className='text-slate-500'>{t('kiosk.shiftOpen.collectionsTotalLabel')}</span>
+                  <span className='font-mono'>{collectionsTotal.toFixed(2)}</span>
+                </div>
+              </div>
             </div>
-            <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
-              <div>
-                <span className='text-slate-500'>{t('kiosk.shiftOpen.dateLabel')}</span>
-                {shift.businessDate}
-              </div>
-              <div>
-                <span className='text-slate-500'>{t('kiosk.shiftOpen.openingCashLabel')}</span>
-                <span className='font-mono'>{shift.openingCash ?? '\u2014'}</span>
-              </div>
-              <div>
-                <span className='text-slate-500'>{t('kiosk.shiftOpen.collectionsTotalLabel')}</span>
-                <span className='font-mono'>{collectionsTotal.toFixed(2)}</span>
-              </div>
+          ) : (
+            <div className='rounded-2xl border border-slate-200 bg-slate-50 p-5'>
+              <p className='text-sm text-slate-600'>
+                {t('kiosk.noShift.autoOpenBody')}
+              </p>
             </div>
-          </div>
+          )}
 
           <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-3'>
             <h2 className='text-base font-medium text-slate-900'>
@@ -516,29 +468,31 @@ export default function KioskPage() {
             </form>
           </div>
 
-          <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-3'>
-            <h2 className='text-base font-medium text-slate-900'>
-              {t('kiosk.readyToFinish.heading')}
-            </h2>
-            <div className='text-sm text-slate-600'>
-              {t('kiosk.readyToFinish.body')}
-            </div>
-            {shift.openingCash === null && (
-              <div className='text-xs text-amber-700'>
-                {t('kiosk.readyToFinish.openingCashWarning')}
+          {shift && (
+            <div className='rounded-2xl border border-slate-200 bg-white p-5 space-y-3'>
+              <h2 className='text-base font-medium text-slate-900'>
+                {t('kiosk.readyToFinish.heading')}
+              </h2>
+              <div className='text-sm text-slate-600'>
+                {t('kiosk.readyToFinish.body')}
               </div>
-            )}
-            <button
-              type='button'
-              onClick={submitShift}
-              disabled={busy}
-              className='rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
-            >
-              {busy
-                ? t('kiosk.readyToFinish.submittingButton')
-                : t('kiosk.readyToFinish.submitButton')}
-            </button>
-          </div>
+              {shift.openingCash === null && (
+                <div className='text-xs text-amber-700'>
+                  {t('kiosk.readyToFinish.openingCashWarning')}
+                </div>
+              )}
+              <button
+                type='button'
+                onClick={submitShift}
+                disabled={busy}
+                className='rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'
+              >
+                {busy
+                  ? t('kiosk.readyToFinish.submittingButton')
+                  : t('kiosk.readyToFinish.submitButton')}
+              </button>
+            </div>
+          )}
         </>
       )}
 

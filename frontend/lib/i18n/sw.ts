@@ -5,6 +5,8 @@ export const sw: Dict = {
   'login.subtitle': 'Mfumo wa Fedha wa Mgahawa',
   'login.username': 'Jina la mtumiaji',
   'login.password': 'Nenosiri',
+  'login.showPassword': 'Onyesha nenosiri',
+  'login.hidePassword': 'Ficha nenosiri',
   'login.submit': 'Ingia',
   'login.submitting': 'Inaingia...',
   'login.errorFallback': 'Imeshindwa kuingia.',
@@ -68,8 +70,7 @@ export const sw: Dict = {
   'kiosk.home.loadingSubtitle': 'Inapakia zamu yako...',
   'kiosk.home.subtitle': 'Fuata hatua zilizo hapa chini. Mfumo utaonyesha hatua inayofuata.',
 
-  'kiosk.noShift.heading': 'Anza zamu yako',
-  'kiosk.noShift.startButton': 'Anza zamu',
+  'kiosk.noShift.autoOpenBody': 'Hakuna kilichorekodiwa leo bado. Ukusanyaji wako wa kwanza utafungua zamu yako kiotomatiki.',
 
   'kiosk.dayDone.heading': 'Siku imekamilika.',
   'kiosk.dayDone.body': 'Zamu yako ya leo imefungwa. Toka ukiwa tayari kwa mtu anayefuata.',
@@ -327,6 +328,7 @@ export const sw: Dict = {
 
   'dashboard.title': 'Dashibodi',
   'dashboard.todayShift.label': 'Zamu ya leo',
+  'dashboard.todayShift.autoOpen': 'Inafunguliwa kiotomatiki kwenye ingizo la kwanza.',
   'dashboard.todayShift.none': 'Hakuna zamu ya leo bado. Fungua moja kuanza siku.',
   'dashboard.todayShift.statusPrefix': 'Hali:',
   'dashboard.todayShift.unknown': 'Imeshindwa kupata hali ya zamu.',
@@ -918,6 +920,7 @@ export const sw: Dict = {
   'ops.cashFlow.row.collectionSubmit': 'Rekodi mkusanyo',
   'ops.cashFlow.flash.collectionRecorded': 'Mkusanyo umerekodiwa kwenye zamu.',
   'ops.cashFlow.startShiftButton': 'Fungua zamu',
+  'ops.cashFlow.autoOpenNotice': 'Zamu yako inafunguliwa kiotomatiki kwenye ingizo la kwanza.',
   'ops.cashFlow.startShiftRestricted': 'Ni mmiliki au meneja tu anayeweza kufungua zamu.',
   'ops.cashFlow.startDialog.title': 'Fungua zamu mpya',
   'ops.cashFlow.startDialog.waiter': 'Mhudumu',

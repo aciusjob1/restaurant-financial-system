@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
 import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const { t } = useT();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,13 +55,24 @@ export default function LoginPage() {
                  autoComplete='username' required />
         </label>
 
-        <label className='block'>
-          <span className='text-sm font-medium'>{t('login.password')}</span>
-          <input type='password'
-                 className='mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none'
-                 value={password} onChange={(e) => setPassword(e.target.value)}
-                 autoComplete='current-password' required />
-        </label>
+        <div className='block'>
+          <label htmlFor='login-password' className='text-sm font-medium'>{t('login.password')}</label>
+          <div className='relative'>
+            <input id='login-password' type={showPassword ? 'text' : 'password'}
+                   className='mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none'
+                   value={password} onChange={(e) => setPassword(e.target.value)}
+                   autoComplete='current-password' required />
+            <button
+              type='button'
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+              tabIndex={-1}
+              className='absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-800'
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
 
         <button type='submit' disabled={busy}
                 className='w-full rounded-lg bg-slate-900 text-white py-2 font-medium disabled:opacity-60'>
