@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
@@ -6,89 +6,83 @@ import { prisma } from '../src/lib/prisma.js';
 
 const app = createApp();
 
-const OWNER   = { username: 'phase19j4b-owner',   password: 'OwnerPassword!234',   fullName: 'Phase19j4b Owner',   role: 'OWNER' as const };
-const MANAGER = { username: 'phase19j4b-manager', password: 'ManagerPassword!234', fullName: 'Phase19j4b Manager', role: 'MANAGER' as const };
-const WAITER  = { username: 'phase19j4b-waiter',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter',  role: 'WAITER' as const };
-const WAITER2 = { username: 'phase19j4b-waiter2', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter2', role: 'WAITER' as const };
-const WAITER3 = { username: 'phase19j4b-waiter3', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter3', role: 'WAITER' as const };
-const WAITER4 = { username: 'phase19j4b-waiter4', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter4', role: 'WAITER' as const };
-const WAITER5 = { username: 'phase19j4b-waiter5', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter5', role: 'WAITER' as const };
-const WAITER6 = { username: 'phase19j4b-waiter6', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter6', role: 'WAITER' as const };
-const WAITER7 = { username: 'phase19j4b-waiter7', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter7', role: 'WAITER' as const };
-const WAITER8 = { username: 'phase19j4b-waiter8', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter8', role: 'WAITER' as const };
-const WAITER9 = { username: 'phase19j4b-waiter9', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter9', role: 'WAITER' as const };
-const WAITER10 = { username: 'phase19j4b-waiter10', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter10', role: 'WAITER' as const };
-const WAITER11 = { username: 'phase19j4b-waiter11', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter11', role: 'WAITER' as const };
-const WAITER12 = { username: 'phase19j4b-waiter12', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter12', role: 'WAITER' as const };
-const WAITER13 = { username: 'phase19j4b-waiter13', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter13', role: 'WAITER' as const };
-const WAITER14 = { username: 'phase19j4b-waiter14', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter14', role: 'WAITER' as const };
-const WAITER15 = { username: 'phase19j4b-waiter15', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter15', role: 'WAITER' as const };
-const WAITER16 = { username: 'phase19j4b-waiter16', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter16', role: 'WAITER' as const };
-const WAITER17 = { username: 'phase19j4b-waiter17', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter17', role: 'WAITER' as const };
-const WAITER18 = { username: 'phase19j4b-waiter18', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter18', role: 'WAITER' as const };
-const WAITER19 = { username: 'phase19j4b-waiter19', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter19', role: 'WAITER' as const };
-const WAITER20 = { username: 'phase19j4b-waiter20', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter20', role: 'WAITER' as const };
-const WAITER21 = { username: 'phase19j4b-waiter21', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter21', role: 'WAITER' as const };
-const WAITER22 = { username: 'phase19j4b-waiter22', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter22', role: 'WAITER' as const };
-const WAITER23 = { username: 'phase19j4b-waiter23', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter23', role: 'WAITER' as const };
-const WAITER24 = { username: 'phase19j4b-waiter24', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter24', role: 'WAITER' as const };
-const WAITER25 = { username: 'phase19j4b-waiter25', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter25', role: 'WAITER' as const };
-const WAITER26 = { username: 'phase19j4b-waiter26', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter26', role: 'WAITER' as const };
-const WAITER27 = { username: 'phase19j4b-waiter27', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter27', role: 'WAITER' as const };
-const WAITER28 = { username: 'phase19j4b-waiter28', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter28', role: 'WAITER' as const };
-const WAITER29 = { username: 'phase19j4b-waiter29', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter29', role: 'WAITER' as const };
-const WAITER30 = { username: 'phase19j4b-waiter30', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter30', role: 'WAITER' as const };
-const WAITER31 = { username: 'phase19j4b-waiter31', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter31', role: 'WAITER' as const };
-const WAITER32 = { username: 'phase19j4b-waiter32', password: 'WaiterPassword!234', fullName: 'Phase19j4b Waiter32', role: 'WAITER' as const };
+const OWNER    = { username: 'phase19j4b-owner',    password: 'OwnerPassword!234',   fullName: 'Phase19j4b Owner',    role: 'OWNER'   as const };
+const MANAGER  = { username: 'phase19j4b-manager',  password: 'ManagerPassword!234', fullName: 'Phase19j4b Manager',  role: 'MANAGER' as const };
 const MANAGER2 = { username: 'phase19j4b-manager2', password: 'ManagerPassword!234', fullName: 'Phase19j4b Manager2', role: 'MANAGER' as const };
+const WAITER   = { username: 'phase19j4b-waiter',   password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter',   role: 'WAITER'  as const };
+const WAITER2  = { username: 'phase19j4b-waiter2',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter2',  role: 'WAITER'  as const };
+const WAITER3  = { username: 'phase19j4b-waiter3',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter3',  role: 'WAITER'  as const };
+const WAITER4  = { username: 'phase19j4b-waiter4',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter4',  role: 'WAITER'  as const };
+const WAITER5  = { username: 'phase19j4b-waiter5',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter5',  role: 'WAITER'  as const };
+const WAITER6  = { username: 'phase19j4b-waiter6',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter6',  role: 'WAITER'  as const };
+const WAITER7  = { username: 'phase19j4b-waiter7',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter7',  role: 'WAITER'  as const };
+const WAITER8  = { username: 'phase19j4b-waiter8',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter8',  role: 'WAITER'  as const };
+const WAITER9  = { username: 'phase19j4b-waiter9',  password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter9',  role: 'WAITER'  as const };
+const WAITER10 = { username: 'phase19j4b-waiter10', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter10', role: 'WAITER'  as const };
+const WAITER11 = { username: 'phase19j4b-waiter11', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter11', role: 'WAITER'  as const };
+const WAITER12 = { username: 'phase19j4b-waiter12', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter12', role: 'WAITER'  as const };
+const WAITER13 = { username: 'phase19j4b-waiter13', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter13', role: 'WAITER'  as const };
+const WAITER14 = { username: 'phase19j4b-waiter14', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter14', role: 'WAITER'  as const };
+const WAITER15 = { username: 'phase19j4b-waiter15', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter15', role: 'WAITER'  as const };
+const WAITER16 = { username: 'phase19j4b-waiter16', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter16', role: 'WAITER'  as const };
+const WAITER17 = { username: 'phase19j4b-waiter17', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter17', role: 'WAITER'  as const };
+const WAITER18 = { username: 'phase19j4b-waiter18', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter18', role: 'WAITER'  as const };
+const WAITER19 = { username: 'phase19j4b-waiter19', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter19', role: 'WAITER'  as const };
+const WAITER20 = { username: 'phase19j4b-waiter20', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter20', role: 'WAITER'  as const };
+const WAITER21 = { username: 'phase19j4b-waiter21', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter21', role: 'WAITER'  as const };
+const WAITER22 = { username: 'phase19j4b-waiter22', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter22', role: 'WAITER'  as const };
+const WAITER23 = { username: 'phase19j4b-waiter23', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter23', role: 'WAITER'  as const };
+const WAITER24 = { username: 'phase19j4b-waiter24', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter24', role: 'WAITER'  as const };
+const WAITER25 = { username: 'phase19j4b-waiter25', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter25', role: 'WAITER'  as const };
+const WAITER26 = { username: 'phase19j4b-waiter26', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter26', role: 'WAITER'  as const };
+const WAITER27 = { username: 'phase19j4b-waiter27', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter27', role: 'WAITER'  as const };
+const WAITER28 = { username: 'phase19j4b-waiter28', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter28', role: 'WAITER'  as const };
+const WAITER29 = { username: 'phase19j4b-waiter29', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter29', role: 'WAITER'  as const };
+const WAITER30 = { username: 'phase19j4b-waiter30', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter30', role: 'WAITER'  as const };
+const WAITER31 = { username: 'phase19j4b-waiter31', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter31', role: 'WAITER'  as const };
+const WAITER32 = { username: 'phase19j4b-waiter32', password: 'WaiterPassword!234',  fullName: 'Phase19j4b Waiter32', role: 'WAITER'  as const };
+
 const ALL = [OWNER, MANAGER, MANAGER2, WAITER, WAITER2, WAITER3, WAITER4, WAITER5, WAITER6, WAITER7, WAITER8, WAITER9, WAITER10, WAITER11, WAITER12, WAITER13, WAITER14, WAITER15, WAITER16, WAITER17, WAITER18, WAITER19, WAITER20, WAITER21, WAITER22, WAITER23, WAITER24, WAITER25, WAITER26, WAITER27, WAITER28, WAITER29, WAITER30, WAITER31, WAITER32];
 
 const D_HAPPY      = '2099-09-01';
-const D_COLLECTION = '2099-09-02';
-const D_NOTOPEN    = '2099-09-03';
-const D_BADRECV    = '2099-09-04';
-const D_EMPTY      = '2099-09-05';
-const D_NOOPENING  = '2099-09-06';
-const D_BADPAIDBY  = '2099-09-07';
-const D_COMPLETE   = '2099-09-08';
-const D_NOCOLL     = '2099-09-09';
-const D_SELFREV_M  = '2099-09-10';
-const D_SELFREV_O  = '2099-09-11';
-const D_OTHERREV   = '2099-09-12';
-const D_AUTO_CS    = '2099-09-13';
-const D_AUTO_CS2   = '2099-09-14';
-const D_MGR_FLAGS  = '2099-09-15';
-const D_AUTO_HAND_OFF = '2099-09-16';
-const D_AUTO_HAND_ON  = '2099-09-17';
-const D_MGR_HAND      = '2099-09-18';
-const D_SUB1 = '2099-09-19';
-const D_SUB2 = '2099-09-20';
-const D_SUB3 = '2099-09-21';
-const D_SUB4 = '2099-09-22';
-const D_SUB5 = '2099-09-23';
-const D_SUB6 = '2099-09-24';
-const D_SUB7 = '2099-09-25';
-const D_SUB8 = '2099-09-26';
+const D_NOTOPEN    = '2099-09-02';
+const D_BADRECV    = '2099-09-03';
+const D_BADPAIDBY  = '2099-09-04';
+const D_COMPLETE   = '2099-09-05';
+const D_NOCOLL     = '2099-09-06';
+const D_SELFREV_M  = '2099-09-07';
+const D_SELFREV_O  = '2099-09-08';
+const D_OTHERREV   = '2099-09-09';
+const D_AUTO_CS    = '2099-09-10';
+const D_AUTO_CS2   = '2099-09-11';
+const D_MGR_FLAGS  = '2099-09-12';
+const D_SUB1 = '2099-09-13';
+const D_SUB2 = '2099-09-14';
+const D_SUB3 = '2099-09-15';
+const D_SUB4 = '2099-09-16';
+const D_SUB5 = '2099-09-17';
+const D_SUB6 = '2099-09-18';
+const D_SUB7 = '2099-09-19';
+const D_SUB8 = '2099-09-20';
 const D_FIN1 = '2099-10-01';
 const D_FIN2 = '2099-10-02';
 const D_FIN3 = '2099-10-03';
 const D_FIN4 = '2099-10-04';
 const D_FIN5 = '2099-10-05';
 const D_FIN6 = '2099-10-06';
-const ALL_DATES = [D_HAPPY, D_COLLECTION, D_NOTOPEN, D_BADRECV, D_EMPTY, D_NOOPENING, D_BADPAIDBY, D_COMPLETE, D_NOCOLL, D_SELFREV_M, D_SELFREV_O, D_OTHERREV, D_AUTO_CS, D_AUTO_CS2, D_MGR_FLAGS, D_AUTO_HAND_OFF, D_AUTO_HAND_ON, D_MGR_HAND, D_SUB1, D_SUB2, D_SUB3, D_SUB4, D_SUB5, D_SUB6, D_SUB7, D_SUB8, D_FIN1, D_FIN2, D_FIN3, D_FIN4, D_FIN5, D_FIN6];
+
+const ALL_DATES = [D_HAPPY, D_NOTOPEN, D_BADRECV, D_BADPAIDBY, D_COMPLETE, D_NOCOLL, D_SELFREV_M, D_SELFREV_O, D_OTHERREV, D_AUTO_CS, D_AUTO_CS2, D_MGR_FLAGS, D_SUB1, D_SUB2, D_SUB3, D_SUB4, D_SUB5, D_SUB6, D_SUB7, D_SUB8, D_FIN1, D_FIN2, D_FIN3, D_FIN4, D_FIN5, D_FIN6];
 
 const TEST_CATEGORY = 'Phase19j4b Test Category';
 
 async function cleanup() {
   const usernames = ALL.map((u) => u.username);
-
   await prisma.expense.deleteMany({ where: { category: { name: TEST_CATEGORY } } });
   await prisma.expense.deleteMany({ where: { createdByUser: { username: { in: usernames } } } });
   await prisma.expenseCategory.deleteMany({ where: { name: TEST_CATEGORY } });
-
   const dates = ALL_DATES.map((d) => new Date(d + 'T00:00:00.000Z'));
   await prisma.dailyClosing.deleteMany({ where: { businessDate: { in: dates } } });
-
+  await prisma.salesSummary.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.cashHandover.deleteMany({ where: { fromUser: { username: { in: usernames } } } });
   await prisma.reconciliation.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.collection.deleteMany({ where: { user: { username: { in: usernames } } } });
@@ -138,32 +132,51 @@ async function loginAs(u) {
   return agent;
 }
 
+// Seed an OPEN shift directly via Prisma. POST /shifts was removed —
+// shifts auto-open on first collection in production. Tests need a
+// pre-existing shift to exercise the close/submit/finalize paths.
 async function openShift(businessDate, waiter) {
-  const w = await loginAs(waiter);
-  const res = await w.post('/api/v1/shifts').send({ businessDate, openingCash: '1000.00' });
-  expect(res.status).toBe(201);
-  return res.body.shift.id;
+  const u = await prisma.user.findUniqueOrThrow({ where: { username: waiter.username } });
+  const shift = await prisma.shift.create({
+    data: {
+      userId: u.id,
+      businessDate: new Date(businessDate + 'T00:00:00.000Z'),
+      status: 'OPEN',
+      openingCash: '1000.00',
+    },
+  });
+  return shift.id;
 }
 
-async function openShiftNoCash(businessDate, waiter) {
-  // StartShiftSchema requires openingCash, so open with it, then
-  // nulls opening cash directly to simulate the state close-money
-  // must handle. This is a setup path the business API cannot create.
-  const w = await loginAs(waiter);
-  const res = await w.post('/api/v1/shifts').send({ businessDate, openingCash: '1000.00' });
-  expect(res.status).toBe(201);
-  const id = res.body.shift.id;
-  await prisma.shift.update({ where: { id }, data: { openingCash: null } });
-  return id;
+// Seed a SalesSummary for the given user and date. close-money and
+// submit require one — they compute Net Cash from totalSales.
+async function seedSales(waiter, businessDate, totalSales) {
+  const u = await prisma.user.findUniqueOrThrow({ where: { username: waiter.username } });
+  await prisma.salesSummary.create({
+    data: {
+      businessDate: new Date(businessDate + 'T00:00:00.000Z'),
+      source: 'MANUAL',
+      sourceReference: 'test-' + waiter.username + '-' + businessDate,
+      totalSales,
+      cashSales: totalSales,
+      mobileSales: '0.00',
+      otherSales: '0.00',
+      userId: u.id,
+    },
+  });
 }
 
 describe('POST /shifts/:id/close-money', () => {
-  it('happy path: collections + expense + handover in one transaction', async () => {
+  it('happy path: mpesa entries + expense, net cash derived from sales', async () => {
     const shiftId = await openShift(D_HAPPY, WAITER);
+    await seedSales(WAITER, D_HAPPY, '8000.00');
     const m = await loginAs(MANAGER);
 
     const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '5000.00', mpesa: '2000.00' },
+      mpesaEntries: [
+        { payerName: 'Alice', amount: '1200.00' },
+        { payerName: 'Bob',   amount: '800.00'  },
+      ],
       expenses: [
         {
           categoryId: testCategoryId,
@@ -172,18 +185,17 @@ describe('POST /shifts/:id/close-money', () => {
           description: 'Gas refill during shift',
         },
       ],
-      cashHandedOver: '5500.00',
-      receivedByUserId: managerId,
     });
 
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
     expect(res.body.handover).toBeNull();
-    expect(res.body.created.collections).toBe(2);
+    expect(res.body.created.mpesaEntries).toBe(2);
     expect(res.body.created.expenses).toBe(1);
     expect(res.body.reconciliation.expectedCash).toBe('5500.00');
-    expect(res.body.reconciliation.cashDifference).toBe('0.00');
+    expect(res.body.reconciliation.actualCash).toBe('5500.00');
     expect(res.body.reconciliation.expectedMobile).toBe('2000.00');
+    expect(res.body.reconciliation.cashDifference).toBe('0.00');
 
     const colls = await prisma.collection.findMany({ where: { shiftId } });
     expect(colls.length).toBe(2);
@@ -200,36 +212,13 @@ describe('POST /shifts/:id/close-money', () => {
     expect(shiftAfter.submittedAt).toBeTruthy();
   });
 
-  it('refuses when the shift already has non-voided collections (COLLECTIONS_EXIST)', async () => {
-    const shiftId = await openShift(D_COLLECTION, WAITER2);
-    const w = await loginAs(WAITER2);
-    const c = await w.post('/api/v1/collections').send({
-      shiftId,
-      paymentMethod: 'CASH',
-      amount: '100.00',
-    });
-    expect(c.status).toBe(201);
-
-    const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '200.00' },
-      cashHandedOver: '1200.00',
-      receivedByUserId: managerId,
-    });
-
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('COLLECTIONS_EXIST');
-  });
-
   it('refuses when the shift is not OPEN (SHIFT_NOT_OPEN)', async () => {
     const shiftId = await openShift(D_NOTOPEN, WAITER3);
     await prisma.shift.update({ where: { id: shiftId }, data: { status: 'SUBMITTED' } });
 
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '200.00' },
-      cashHandedOver: '1200.00',
-      receivedByUserId: managerId,
+      mpesaEntries: [{ payerName: 'Alice', amount: '200.00' }],
     });
 
     expect(res.status).toBe(409);
@@ -237,15 +226,10 @@ describe('POST /shifts/:id/close-money', () => {
   });
 
   it('manager close-money produces no handover even with a legacy receivedByUserId', async () => {
-    // Invariant: runShiftClose is only reachable by MANAGER/OWNER. A
-    // manager operating a waiter-owned shift already holds the cash, so
-    // no CashHandover row is created. The legacy receivedByUserId field
-    // is accepted in the schema but ignored.
     const shiftId = await openShift(D_BADRECV, WAITER4);
+    await seedSales(WAITER4, D_BADRECV, '1200.00');
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '200.00' },
-      cashHandedOver: '1200.00',
       receivedByUserId: waiterId,
     });
 
@@ -255,36 +239,11 @@ describe('POST /shifts/:id/close-money', () => {
     expect(handoverCount).toBe(0);
   });
 
-  it('rejects an empty close (NOTHING_TO_CLOSE)', async () => {
-    const shiftId = await openShift(D_EMPTY, WAITER5);
-    const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: {},
-      cashHandedOver: '1000.00',
-      receivedByUserId: managerId,
-    });
-
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('NOTHING_TO_CLOSE');
-  });
-
-  it('refuses to close when opening cash is null (OPENING_CASH_REQUIRED)', async () => {
-    const shiftId = await openShiftNoCash(D_NOOPENING, WAITER6);
-    const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '200.00' },
-      cashHandedOver: '200.00',
-      receivedByUserId: managerId,
-    });
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('OPENING_CASH_REQUIRED');
-  });
-
   it('rejects a bogus paidByUserId on an expense line (INVALID_PAID_BY)', async () => {
     const shiftId = await openShift(D_BADPAIDBY, WAITER7);
+    await seedSales(WAITER7, D_BADPAIDBY, '1000.00');
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '1000.00' },
       expenses: [
         {
           categoryId: testCategoryId,
@@ -294,8 +253,6 @@ describe('POST /shifts/:id/close-money', () => {
           paidByUserId: 'nonexistent-paid-by-id',
         },
       ],
-      cashHandedOver: '900.00',
-      receivedByUserId: managerId,
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_PAID_BY');
@@ -324,13 +281,12 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
         },
       ],
       cashHandedOver: '5800.00',
-      receivedByUserId: managerId,
     });
 
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
     expect(res.body.handover).toBeNull();
-    expect(res.body.created.collections).toBe(0);
+    expect(res.body.created.mpesaEntries).toBe(0);
     expect(res.body.created.expenses).toBe(1);
     expect(res.body.reconciliation.expectedCash).toBe('5800.00');
     expect(res.body.reconciliation.actualCash).toBe('5800.00');
@@ -347,7 +303,6 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
       cashHandedOver: '1000.00',
-      receivedByUserId: managerId,
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('NO_COLLECTIONS');
@@ -364,7 +319,6 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
     const m = await loginAs(MANAGER);
     const c = await m.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
       cashHandedOver: '4000.00',
-      receivedByUserId: managerId,
     });
     expect(c.status).toBe(201);
     const reconId = c.body.reconciliation.id;
@@ -378,12 +332,9 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
 
   it('OWNER may review their own submission', async () => {
     const shiftId = await openShift(D_SELFREV_O, WAITER11);
+    await seedSales(WAITER11, D_SELFREV_O, '3000.00');
     const o = await loginAs(OWNER);
-    const c = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '2000.00' },
-      cashHandedOver: '3000.00',
-      receivedByUserId: managerId,
-    });
+    const c = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({});
     expect(c.status).toBe(201);
     const reconId = c.body.reconciliation.id;
 
@@ -405,7 +356,6 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
     const mA = await loginAs(MANAGER);
     const c = await mA.post('/api/v1/shifts/' + shiftId + '/complete-shift').send({
       cashHandedOver: '2500.00',
-      receivedByUserId: managerId,
     });
     expect(c.status).toBe(201);
     const reconId = c.body.reconciliation.id;
@@ -422,6 +372,7 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
 describe('Owner auto-approval preferences in close-money', () => {
   it('OWNER with autoApproveExpenses + autoReviewReconciliations ON: close-money lands APPROVED + REVIEWED', async () => {
     const shiftId = await openShift(D_AUTO_CS, WAITER13);
+    await seedSales(WAITER13, D_AUTO_CS, '500.00');
     const o = await loginAs(OWNER);
     const pref = await o.patch('/api/v1/auth/me').send({
       autoApproveExpenses: true,
@@ -430,7 +381,6 @@ describe('Owner auto-approval preferences in close-money', () => {
     expect(pref.status).toBe(200);
 
     const res = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '500.00' },
       expenses: [
         {
           categoryId: testCategoryId,
@@ -439,8 +389,6 @@ describe('Owner auto-approval preferences in close-money', () => {
           description: 'owner auto-close',
         },
       ],
-      cashHandedOver: '400.00',
-      receivedByUserId: managerId,
     });
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('REVIEWED');
@@ -485,7 +433,6 @@ describe('Owner auto-approval preferences in close-money', () => {
         },
       ],
       cashHandedOver: '250.00',
-      receivedByUserId: managerId,
     });
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('REVIEWED');
@@ -503,6 +450,7 @@ describe('Owner auto-approval preferences in close-money', () => {
 
   it('MANAGER with both flags ON on their own account: still PENDING + SUBMITTED', async () => {
     const shiftId = await openShift(D_MGR_FLAGS, WAITER15);
+    await seedSales(WAITER15, D_MGR_FLAGS, '300.00');
     const m = await loginAs(MANAGER);
     await m.patch('/api/v1/auth/me').send({
       autoApproveExpenses: true,
@@ -510,7 +458,6 @@ describe('Owner auto-approval preferences in close-money', () => {
     });
 
     const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '300.00' },
       expenses: [
         {
           categoryId: testCategoryId,
@@ -519,8 +466,6 @@ describe('Owner auto-approval preferences in close-money', () => {
           description: 'manager with flags',
         },
       ],
-      cashHandedOver: '250.00',
-      receivedByUserId: managerId,
     });
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
@@ -537,70 +482,62 @@ describe('Owner auto-approval preferences in close-money', () => {
   });
 });
 
-// The Owner autoConfirmHandovers describe block was removed in 5a-4b.
-// runShiftClose no longer creates a handover, so the flag has no
-// meaning on this endpoint. Its behavior on the kiosk /handovers
-// endpoint is covered in handover.test.ts.
-
 describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
-  it('Submit with NO existing collections and 2 new: creates 2, closes the shift', async () => {
+  it('Submit with NO existing collections and 2 new mpesa entries: creates 2, closes the shift', async () => {
     const shiftId = await openShift(D_SUB1, WAITER19);
+    await seedSales(WAITER19, D_SUB1, '3500.00');
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      collections: { cash: '3000.00', mpesa: '500.00' },
-      cashHandedOver: '3000.00',
-      receivedByUserId: managerId,
+      mpesaEntries: [
+        { payerName: 'Carol', amount: '300.00' },
+        { payerName: 'Dave',  amount: '200.00' },
+      ],
     });
     expect(res.status).toBe(201);
-    expect(res.body.created.collections).toBe(2);
+    expect(res.body.created.mpesaEntries).toBe(2);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
     expect(res.body.handover).toBeNull();
     const shiftAfter = await prisma.shift.findUnique({ where: { id: shiftId } });
     expect(shiftAfter!.status).toBe('SUBMITTED');
   });
 
-  it('Submit with existing collections and no new: existing untouched, math from existing', async () => {
+  it('Submit with existing collections and no new mpesa: existing untouched, sales drives net cash', async () => {
     const shiftId = await openShift(D_SUB2, WAITER20);
+    await seedSales(WAITER20, D_SUB2, '700.00');
     const w = await loginAs(WAITER20);
     await w.post('/api/v1/collections').send({ shiftId, paymentMethod: 'CASH', amount: '700.00' });
     const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      cashHandedOver: '700.00',
-      receivedByUserId: managerId,
-    });
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({});
     expect(res.status).toBe(201);
-    expect(res.body.created.collections).toBe(0);
-    expect(res.body.reconciliation.expectedCash).toBe('1700.00');
+    expect(res.body.created.mpesaEntries).toBe(0);
+    expect(res.body.reconciliation.expectedCash).toBe('700.00');
     const collCount = await prisma.collection.count({ where: { shiftId, voidedAt: null } });
     expect(collCount).toBe(1);
   });
 
-  it('Submit with existing + new: math combines both, only new row is created', async () => {
+  it('Submit with existing + new: math combines both, only new mpesa row is created', async () => {
     const shiftId = await openShift(D_SUB3, WAITER21);
+    await seedSales(WAITER21, D_SUB3, '500.00');
     const w = await loginAs(WAITER21);
     await w.post('/api/v1/collections').send({ shiftId, paymentMethod: 'CASH', amount: '200.00' });
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      collections: { cash: '300.00' },
-      cashHandedOver: '500.00',
-      receivedByUserId: managerId,
+      mpesaEntries: [{ payerName: 'Eve', amount: '300.00' }],
     });
     expect(res.status).toBe(201);
-    expect(res.body.created.collections).toBe(1);
-    expect(res.body.reconciliation.expectedCash).toBe('1500.00');
+    expect(res.body.created.mpesaEntries).toBe(1);
+    expect(res.body.reconciliation.expectedCash).toBe('200.00');
+    expect(res.body.reconciliation.expectedMobile).toBe('300.00');
     const collCount = await prisma.collection.count({ where: { shiftId, voidedAt: null } });
     expect(collCount).toBe(2);
   });
 
-  it('Submit with no collections at all: 400 NO_COLLECTIONS', async () => {
+  it('Submit with no collections and no sales summary: 409 NO_SALES_SUMMARY', async () => {
     const shiftId = await openShift(D_SUB4, WAITER22);
     const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      cashHandedOver: '0.00',
-      receivedByUserId: managerId,
-    });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('NO_COLLECTIONS');
+    const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({});
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('NO_SALES_SUMMARY');
   });
 
   it('Submit on non-OPEN shift: 409 SHIFT_NOT_OPEN', async () => {
@@ -608,9 +545,7 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
     await prisma.shift.update({ where: { id: shiftId }, data: { status: 'SUBMITTED' } });
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      collections: { cash: '100.00' },
-      cashHandedOver: '100.00',
-      receivedByUserId: managerId,
+      mpesaEntries: [{ payerName: 'Frank', amount: '100.00' }],
     });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('SHIFT_NOT_OPEN');
@@ -618,33 +553,25 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
 
   it('Submit when recon already exists: 409 RECONCILIATION_EXISTS', async () => {
     const shiftId = await openShift(D_SUB6, WAITER24);
+    await seedSales(WAITER24, D_SUB6, '100.00');
     const m = await loginAs(MANAGER);
-    const first = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      collections: { cash: '100.00' },
-      cashHandedOver: '100.00',
-      receivedByUserId: managerId,
-    });
+    const first = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({});
     expect(first.status).toBe(201);
     await prisma.shift.update({ where: { id: shiftId }, data: { status: 'OPEN' } });
-    const second = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      collections: { cash: '100.00' },
-      cashHandedOver: '100.00',
-      receivedByUserId: managerId,
-    });
+    const second = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({});
     expect(second.status).toBe(409);
     expect(second.body.code).toBe('RECONCILIATION_EXISTS');
   });
 
-  it('OWNER with auto flags ON via Submit: APPROVED expense + REVIEWED recon + CONFIRMED handover', async () => {
+  it('OWNER with auto flags ON via Submit: APPROVED expense + REVIEWED recon', async () => {
     const shiftId = await openShift(D_SUB7, WAITER25);
+    await seedSales(WAITER25, D_SUB7, '500.00');
     const o = await loginAs(OWNER);
     await o.patch('/api/v1/auth/me').send({
       autoApproveExpenses: true,
       autoReviewReconciliations: true,
-      autoConfirmHandovers: true,
     });
     const res = await o.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      collections: { cash: '500.00' },
       expenses: [
         {
           categoryId: testCategoryId,
@@ -653,8 +580,6 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
           description: 'submit auto flags',
         },
       ],
-      cashHandedOver: '400.00',
-      receivedByUserId: managerId,
     });
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('REVIEWED');
@@ -664,15 +589,14 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
     await o.patch('/api/v1/auth/me').send({
       autoApproveExpenses: false,
       autoReviewReconciliations: false,
-      autoConfirmHandovers: false,
     });
   });
 
-  it('MANAGER via Submit: PENDING expense + SUBMITTED recon + CONFIRMED handover', async () => {
+  it('MANAGER via Submit: PENDING expense + SUBMITTED recon', async () => {
     const shiftId = await openShift(D_SUB8, WAITER26);
+    await seedSales(WAITER26, D_SUB8, '200.00');
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/shifts/' + shiftId + '/submit').send({
-      collections: { cash: '200.00' },
       expenses: [
         {
           categoryId: testCategoryId,
@@ -681,8 +605,6 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
           description: 'submit as manager',
         },
       ],
-      cashHandedOver: '150.00',
-      receivedByUserId: managerId,
     });
     expect(res.status).toBe(201);
     expect(res.body.reconciliation.status).toBe('SUBMITTED');
@@ -695,13 +617,10 @@ describe('Unified Submit endpoint (POST /shifts/:id/submit)', () => {
 describe('POST /shifts/:id/finalize', () => {
   it('MANAGER submits, OWNER finalizes: reviews recon, closes shift, no handover', async () => {
     const shiftId = await openShift(D_FIN1, WAITER27);
+    await seedSales(WAITER27, D_FIN1, '1500.00');
     const m = await loginAs(MANAGER);
     const o = await loginAs(OWNER);
-    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '500.00' },
-      cashHandedOver: '1500.00',
-      receivedByUserId: managerId,
-    });
+    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({});
     expect(submit.status).toBe(201);
 
     const fin = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
@@ -719,13 +638,10 @@ describe('POST /shifts/:id/finalize', () => {
 
   it('finalize confirms a PENDING handover', async () => {
     const shiftId = await openShift(D_FIN2, WAITER28);
+    await seedSales(WAITER28, D_FIN2, '1500.00');
     const m = await loginAs(MANAGER);
     const o = await loginAs(OWNER);
-    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '500.00' },
-      cashHandedOver: '1500.00',
-      receivedByUserId: managerId,
-    });
+    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({});
     expect(submit.status).toBe(201);
     const reconId = submit.body.reconciliation.id;
 
@@ -754,13 +670,10 @@ describe('POST /shifts/:id/finalize', () => {
 
   it('finalize on already CLOSED shift -> 409 SHIFT_ALREADY_CLOSED', async () => {
     const shiftId = await openShift(D_FIN3, WAITER29);
+    await seedSales(WAITER29, D_FIN3, '1500.00');
     const m = await loginAs(MANAGER);
     const o = await loginAs(OWNER);
-    await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '500.00' },
-      cashHandedOver: '1500.00',
-      receivedByUserId: managerId,
-    });
+    await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({});
     const first = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
     expect(first.status).toBe(200);
 
@@ -779,12 +692,9 @@ describe('POST /shifts/:id/finalize', () => {
 
   it('MANAGER cannot finalize their own submission (403 SELF_REVIEW_FORBIDDEN)', async () => {
     const shiftId = await openShift(D_FIN5, WAITER31);
+    await seedSales(WAITER31, D_FIN5, '1500.00');
     const m = await loginAs(MANAGER);
-    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '500.00' },
-      cashHandedOver: '1500.00',
-      receivedByUserId: managerId,
-    });
+    const submit = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({});
     expect(submit.status).toBe(201);
 
     const fin = await m.post('/api/v1/shifts/' + shiftId + '/finalize').send({});
@@ -794,12 +704,9 @@ describe('POST /shifts/:id/finalize', () => {
 
   it('OWNER can finalize their own submission (self-review allowed)', async () => {
     const shiftId = await openShift(D_FIN6, WAITER32);
+    await seedSales(WAITER32, D_FIN6, '1500.00');
     const o = await loginAs(OWNER);
-    const submit = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({
-      collections: { cash: '500.00' },
-      cashHandedOver: '1500.00',
-      receivedByUserId: managerId,
-    });
+    const submit = await o.post('/api/v1/shifts/' + shiftId + '/close-money').send({});
     expect(submit.status).toBe(201);
 
     const fin = await o.post('/api/v1/shifts/' + shiftId + '/finalize').send({});

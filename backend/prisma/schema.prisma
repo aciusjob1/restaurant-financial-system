@@ -212,6 +212,7 @@ model Shift {
 
   closedBy        String?
   closedAt        DateTime?
+  autoClosedAt    DateTime?
 
   reopenedBy      String?
   reopenedAt      DateTime?
