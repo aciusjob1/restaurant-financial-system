@@ -8,7 +8,10 @@ export async function closeMoney(req: Request, res: Response) {
   const result = await service.closeMoney({
     actor: { id: req.user!.id, role: req.user!.role as Role },
     shiftId: req.params.id!,
-    collections: input.collections,
+    mpesaEntries: (input.mpesaEntries ?? []).map((m) => ({
+      payerName: m.payerName,
+      amount: m.amount,
+    })),
     expenses: (input.expenses ?? []).map((e) => ({
       categoryId: e.categoryId,
       amount: e.amount,
@@ -17,7 +20,6 @@ export async function closeMoney(req: Request, res: Response) {
       notes: e.notes ?? null,
       paidByUserId: e.paidByUserId ?? null,
     })),
-    cashHandedOver: input.cashHandedOver,
     receivedByUserId: input.receivedByUserId,
     notes: input.notes ?? null,
   });
@@ -49,7 +51,10 @@ export async function submitShift(req: Request, res: Response) {
   const result = await service.submitShift({
     actor: { id: req.user!.id, role: req.user!.role as Role },
     shiftId: req.params.id!,
-    collections: input.collections,
+    mpesaEntries: (input.mpesaEntries ?? []).map((m) => ({
+      payerName: m.payerName,
+      amount: m.amount,
+    })),
     expenses: (input.expenses ?? []).map((e) => ({
       categoryId: e.categoryId,
       amount: e.amount,
@@ -58,7 +63,6 @@ export async function submitShift(req: Request, res: Response) {
       notes: e.notes ?? null,
       paidByUserId: e.paidByUserId ?? null,
     })),
-    cashHandedOver: input.cashHandedOver,
     receivedByUserId: input.receivedByUserId,
     notes: input.notes ?? null,
   });

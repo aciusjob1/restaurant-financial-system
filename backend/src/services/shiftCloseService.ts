@@ -6,22 +6,9 @@ import { nextExpenseNumber } from '../utils/expenseNumber.js';
 import { applySalaryExpense } from './salaryService.js';
 import type { PaymentMethod, Role, Prisma } from '@prisma/client';
 
-const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
-  'MPESA',
-  'AIRTEL_MONEY',
-  'TIGO_PESA',
-  'HALOPESA',
-]);
-
-type CollectionInput = {
-  cash?: string;
-  mpesa?: string;
-  airtelMoney?: string;
-  tigoPesa?: string;
-  halopesa?: string;
-  bank?: string;
-  card?: string;
-  other?: string;
+type MpesaEntryInput = {
+  payerName: string;
+  amount: string;
 };
 
 type ExpenseInput = {
@@ -45,13 +32,37 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
+/**
+ * Fetch the total sales for a waiter on a business date.
+ *
+ * Returns null when no SalesSummary exists, so the caller can fail the
+ * close with a clear error rather than silently computing net cash
+ * against a zero.
+ *
+ * If multiple SalesSummary rows exist for the same (userId, businessDate)
+ * — e.g. one per POS source — their totalSales are summed.
+ */
+async function totalSalesForUserAndDate(
+  userId: string,
+  businessDate: Date
+): Promise<Prisma.Decimal | null> {
+  const rows = await prisma.salesSummary.findMany({
+    where: { userId, businessDate },
+    select: { totalSales: true },
+  });
+  if (rows.length === 0) return null;
+  let sum = toDecimal('0');
+  for (const r of rows) sum = sum.plus(r.totalSales);
+  return sum;
+}
+
 async function runShiftClose(
   input: {
     actor: { id: string; role: Role };
     shiftId: string;
-    collections?: CollectionInput;
+    mpesaEntries?: MpesaEntryInput[];
     expenses?: ExpenseInput[];
-    cashHandedOver: string;
+    cashHandedOver?: string; // legacy: only meaningful for 'complete-shift'
     receivedByUserId?: string;
     notes?: string | null;
   },
@@ -81,20 +92,20 @@ async function runShiftClose(
     );
   }
 
-  // Load existing non-voided collections. All modes need them.
+  // Existing non-voided collections. Only relevant for 'complete-shift',
+  // which continues to work against already-recorded collections.
   const existingCollections = await prisma.collection.findMany({
     where: { shiftId: input.shiftId, voidedAt: null },
     select: { paymentMethod: true, amount: true },
   });
 
-  // Mode-specific gate on existing collections.
-  if (mode === 'close-money' && existingCollections.length > 0) {
-    throw new ApiError(
-      409,
-      'COLLECTIONS_EXIST',
-      'This shift already has recorded collections. Use the reconciliation flow instead.'
-    );
-  }
+  // Opening-cash gate removed: auto-opened shifts have no opening cash
+  // and this close flow no longer depends on one. Net cash is computed
+  // from SalesSummary minus mobile and expenses.
+
+  // complete-shift exists to close a shift that already has recorded
+  // collections. If there are none, the caller should use close-money
+  // instead — which handles the "no prior activity" path explicitly.
   if (mode === 'complete-shift' && existingCollections.length === 0) {
     throw new ApiError(
       400,
@@ -103,21 +114,24 @@ async function runShiftClose(
     );
   }
 
-  if (shift.openingCash === null) {
-    throw new ApiError(
-      409,
-      'OPENING_CASH_REQUIRED',
-      'Declare opening cash before closing the shift money picture.'
-    );
-  }
-
   await assertDayNotClosed(shift.businessDate, input.actor.role);
 
-  // No receiver validation here. This endpoint is only reachable by
-  // MANAGER/OWNER. The waiter kiosk path creates its own handover via
-  // POST /handovers.
-
   const expenseInputs = input.expenses ?? [];
+  const mpesaEntries = input.mpesaEntries ?? [];
+
+  if (mode === 'close-money' || mode === 'submit') {
+    // SalesSummary is required for these modes.
+    const salesTotal = await totalSalesForUserAndDate(shift.userId, shift.businessDate);
+    if (salesTotal === null) {
+      throw new ApiError(
+        409,
+        'NO_SALES_SUMMARY',
+        'No sales summary exists for this waiter and business date. Record the day\'s sales before closing the shift.'
+      );
+    }
+  }
+
+  // Category validation (unchanged).
   const categoryIds = Array.from(new Set(expenseInputs.map((e) => e.categoryId)));
   const categoryByKey = new Map<string, { id: string; isActive: boolean; systemKey: string | null }>();
   if (categoryIds.length > 0) {
@@ -134,7 +148,6 @@ async function runShiftClose(
   }
 
   // Salary expenses submitted via a shift auto-target the shift owner.
-  // Resolve Employee.userId === shift.userId once; error if missing.
   const hasSalaryExpense = expenseInputs.some(
     (e) => categoryByKey.get(e.categoryId)?.systemKey === 'SALARY'
   );
@@ -157,6 +170,7 @@ async function runShiftClose(
     salaryTargetEmployeeId = emp.id;
   }
 
+  // paidByUser validation (unchanged).
   const paidByIds = Array.from(
     new Set(
       expenseInputs
@@ -177,68 +191,7 @@ async function runShiftClose(
     }
   }
 
-  // New collection rows to create from input.collections (if any).
-  const methodMap: Array<[PaymentMethod, string | undefined]> = [
-    ['CASH', input.collections?.cash],
-    ['MPESA', input.collections?.mpesa],
-    ['AIRTEL_MONEY', input.collections?.airtelMoney],
-    ['TIGO_PESA', input.collections?.tigoPesa],
-    ['HALOPESA', input.collections?.halopesa],
-    ['BANK', input.collections?.bank],
-    ['CARD', input.collections?.card],
-    ['OTHER', input.collections?.other],
-  ];
-  const newCollectionRows = methodMap
-    .filter(([, amt]) => {
-      if (amt === undefined || amt === null) return false;
-      const n = parseFloat(amt);
-      return !Number.isNaN(n) && n > 0;
-    })
-    .map(([method, amt]) => ({ method, amount: toDecimal(amt as string) }));
-
-  // Mode-specific 'nothing to do' guards.
-  if (mode === 'close-money' && newCollectionRows.length === 0 && expenseInputs.length === 0) {
-    throw new ApiError(400, 'NOTHING_TO_CLOSE', 'Provide at least one collection or expense.');
-  }
-  if (
-    mode === 'submit' &&
-    existingCollections.length === 0 &&
-    newCollectionRows.length === 0
-  ) {
-    throw new ApiError(
-      400,
-      'NO_COLLECTIONS',
-      'Provide at least one collection to submit this shift.'
-    );
-  }
-
-  // Combined collected totals: existing + new.
-  let cashCollected = toDecimal('0');
-  let mobileCollected = toDecimal('0');
-  for (const c of existingCollections) {
-    if (c.paymentMethod === 'CASH') cashCollected = cashCollected.plus(c.amount);
-    else if (MOBILE_METHODS.has(c.paymentMethod)) mobileCollected = mobileCollected.plus(c.amount);
-  }
-  for (const r of newCollectionRows) {
-    if (r.method === 'CASH') cashCollected = cashCollected.plus(r.amount);
-    else if (MOBILE_METHODS.has(r.method)) mobileCollected = mobileCollected.plus(r.amount);
-  }
-
-  let cashExpenses = toDecimal('0');
-  for (const e of expenseInputs) {
-    if (e.paymentMethod === 'CASH') cashExpenses = cashExpenses.plus(toDecimal(e.amount));
-  }
-
-  const openingCash = shift.openingCash;
-  const expectedCash = openingCash.plus(cashCollected).minus(cashExpenses);
-  const expectedMobile = mobileCollected;
-
-  const actualCash = toDecimal(input.cashHandedOver);
-  const actualMobile = expectedMobile;
-  const cashDifference = actualCash.minus(expectedCash);
-  const mobileDifference = toDecimal('0');
-
-  // Owner preferences: read fresh from the DB.
+  // Owner preferences (unchanged).
   const ownerPref = input.actor.role === 'OWNER'
     ? await prisma.user.findUnique({
         where: { id: input.actor.id },
@@ -252,20 +205,64 @@ async function runShiftClose(
   const ownerAutoApprove = ownerPref?.autoApproveExpenses === true;
   const ownerAutoReview = ownerPref?.autoReviewReconciliations === true;
 
+  // ── Compute the numbers ────────────────────────────────────
+  // For 'complete-shift', we work off existing collections and a supplied
+  // cashHandedOver — this mode is unchanged.
+  // For 'close-money' / 'submit', we compute from mpesa entries and
+  // expenses, and cash is derived — no client override.
+
+  let salesTotal = toDecimal('0');
+  let totalMobileMoney = toDecimal('0');
+  let totalExpenses = toDecimal('0');
+  let netCash = toDecimal('0');
+  let mpesaRowsToCreate: MpesaEntryInput[] = [];
+
+  if (mode === 'complete-shift') {
+    // Legacy path: existing collections + supplied cash.
+    let existingCash = toDecimal('0');
+    let existingMobile = toDecimal('0');
+    for (const c of existingCollections) {
+      if (c.paymentMethod === 'CASH') existingCash = existingCash.plus(c.amount);
+      else if (c.paymentMethod === 'MPESA' || c.paymentMethod === 'AIRTEL_MONEY'
+        || c.paymentMethod === 'TIGO_PESA' || c.paymentMethod === 'HALOPESA') {
+        existingMobile = existingMobile.plus(c.amount);
+      }
+    }
+    for (const e of expenseInputs) {
+      if (e.paymentMethod === 'CASH') totalExpenses = totalExpenses.plus(toDecimal(e.amount));
+    }
+    totalMobileMoney = existingMobile;
+    netCash = toDecimal(input.cashHandedOver ?? '0');
+  } else {
+    const fetchedSales = await totalSalesForUserAndDate(shift.userId, shift.businessDate);
+    // Guarded above, but re-check for type safety.
+    if (fetchedSales === null) {
+      throw new ApiError(409, 'NO_SALES_SUMMARY', 'No sales summary exists for this shift.');
+    }
+    salesTotal = fetchedSales;
+
+    for (const m of mpesaEntries) totalMobileMoney = totalMobileMoney.plus(toDecimal(m.amount));
+    for (const e of expenseInputs) totalExpenses = totalExpenses.plus(toDecimal(e.amount));
+
+    netCash = salesTotal.minus(totalMobileMoney).minus(totalExpenses);
+
+    mpesaRowsToCreate = mpesaEntries;
+  }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const now = new Date();
 
-      // Create NEW collection rows only. Existing rows are never touched.
-      for (const r of newCollectionRows) {
+      // Create mpesa collection rows (one per payer entry).
+      for (const m of mpesaRowsToCreate) {
         await tx.collection.create({
           data: {
             shiftId: shift.id,
             userId: shift.userId,
             createdById: input.actor.id,
-            paymentMethod: r.method,
-            amount: r.amount,
-            mobileReference: null,
+            paymentMethod: 'MPESA',
+            amount: toDecimal(m.amount),
+            mobileReference: m.payerName,
             notes: null,
           },
         });
@@ -307,7 +304,6 @@ async function runShiftClose(
             notes: created.notes,
           });
         }
-
         expenseCount += 1;
       }
 
@@ -316,12 +312,12 @@ async function runShiftClose(
           shiftId: shift.id,
           userId: shift.userId,
           createdBy: input.actor.id,
-          expectedCash,
-          expectedMobile,
-          actualCash,
-          actualMobile,
-          cashDifference,
-          mobileDifference,
+          expectedCash: netCash,
+          expectedMobile: totalMobileMoney,
+          actualCash: netCash,
+          actualMobile: totalMobileMoney,
+          cashDifference: toDecimal('0'),
+          mobileDifference: toDecimal('0'),
           status: ownerAutoReview ? 'REVIEWED' : 'SUBMITTED',
           notes: input.notes ?? null,
           submittedAt: now,
@@ -330,43 +326,48 @@ async function runShiftClose(
         },
       });
 
-      // No handover is created by this endpoint. The waiter kiosk path
-      // records its handover via POST /handovers; a manager/owner
-      // operating the shift directly is already holding the cash.
-      const handover = null;
-
       await tx.shift.update({
         where: { id: shift.id },
-        data: {
-          status: 'SUBMITTED',
-          submittedAt: now,
-        },
+        data: { status: 'SUBMITTED', submittedAt: now },
       });
 
-      return { recon, handover, expenseCount };
+      return { recon, expenseCount };
     });
 
     return {
       reconciliation: {
         id: result.recon.id,
         shiftId: result.recon.shiftId,
-        expectedCash: toMoneyString(expectedCash),
-        expectedMobile: toMoneyString(expectedMobile),
-        actualCash: toMoneyString(actualCash),
-        actualMobile: toMoneyString(actualMobile),
-        cashDifference: toMoneyString(cashDifference),
-        mobileDifference: toMoneyString(mobileDifference),
+        expectedCash: toMoneyString(netCash),
+        expectedMobile: toMoneyString(totalMobileMoney),
+        actualCash: toMoneyString(netCash),
+        actualMobile: toMoneyString(totalMobileMoney),
+        cashDifference: '0.00',
+        mobileDifference: '0.00',
         status: result.recon.status,
+      },
+      // Computed summary for the client to display.
+      summary: {
+        totalSales: toMoneyString(salesTotal),
+        totalMobileMoney: toMoneyString(totalMobileMoney),
+        totalExpenses: toMoneyString(totalExpenses),
+        netCash: toMoneyString(netCash),
       },
       handover: null,
       created: {
-        collections: newCollectionRows.length,
+        mpesaEntries: mpesaRowsToCreate.length,
         expenses: result.expenseCount,
       },
     };
   } catch (err) {
     if (isUniqueViolation(err)) {
-      throw new ApiError(409, 'RECONCILIATION_EXISTS', 'A reconciliation already exists for that shift.');
+      // Could be the shift-reconciliation unique OR a duplicate
+      // mobileReference within this shift. Both are 409s.
+      throw new ApiError(
+        409,
+        'DUPLICATE_REFERENCE',
+        'A reconciliation already exists for this shift, or a mobile-money reference was declared twice in the same shift.'
+      );
     }
     throw err;
   }
@@ -375,9 +376,8 @@ async function runShiftClose(
 export async function closeMoney(input: {
   actor: { id: string; role: Role };
   shiftId: string;
-  collections: CollectionInput;
+  mpesaEntries?: MpesaEntryInput[];
   expenses?: ExpenseInput[];
-  cashHandedOver: string;
   receivedByUserId?: string;
   notes?: string | null;
 }) {
@@ -392,15 +392,14 @@ export async function completeShift(input: {
   receivedByUserId?: string;
   notes?: string | null;
 }) {
-  return runShiftClose({ ...input, collections: undefined }, 'complete-shift');
+  return runShiftClose({ ...input, mpesaEntries: undefined }, 'complete-shift');
 }
 
 export async function submitShift(input: {
   actor: { id: string; role: Role };
   shiftId: string;
-  collections?: CollectionInput;
+  mpesaEntries?: MpesaEntryInput[];
   expenses?: ExpenseInput[];
-  cashHandedOver: string;
   receivedByUserId?: string;
   notes?: string | null;
 }) {
@@ -431,11 +430,7 @@ export async function finalizeShift(input: {
     throw new ApiError(409, 'SHIFT_ALREADY_CLOSED', 'Shift is already closed.');
   }
   if (shift.status === 'OPEN') {
-    throw new ApiError(
-      409,
-      'SHIFT_NOT_SUBMITTED',
-      'Shift has not been submitted yet.'
-    );
+    throw new ApiError(409, 'SHIFT_NOT_SUBMITTED', 'Shift has not been submitted yet.');
   }
 
   await assertDayNotClosed(shift.businessDate, input.actor.role);
@@ -443,7 +438,6 @@ export async function finalizeShift(input: {
   const recon = shift.reconciliation;
   const handover = shift.cashHandovers[0] ?? null;
 
-  // Self-review guard: a MANAGER cannot review their own submission.
   if (
     input.actor.role === 'MANAGER' &&
     recon &&
@@ -465,11 +459,7 @@ export async function finalizeShift(input: {
     if (recon && recon.status === 'SUBMITTED') {
       await tx.reconciliation.update({
         where: { id: recon.id },
-        data: {
-          status: 'REVIEWED',
-          reviewedBy: input.actor.id,
-          reviewedAt: now,
-        },
+        data: { status: 'REVIEWED', reviewedBy: input.actor.id, reviewedAt: now },
       });
       reviewPerformed = true;
     }
@@ -477,10 +467,7 @@ export async function finalizeShift(input: {
     if (handover && handover.status === 'PENDING') {
       await tx.cashHandover.update({
         where: { id: handover.id },
-        data: {
-          status: 'CONFIRMED',
-          confirmedAt: now,
-        },
+        data: { status: 'CONFIRMED', confirmedAt: now },
       });
       handoverConfirmed = true;
     }
@@ -508,4 +495,47 @@ export async function finalizeShift(input: {
     reviewPerformed,
     handoverConfirmed,
   };
+}
+
+/**
+ * System-initiated closure of a stale OPEN shift.
+ *
+ * Called by the auto-close scheduler and by the per-user login backstop
+ * when a user has an OPEN shift from a prior business date. This does
+ * NOT create a reconciliation or fabricate a cash figure — the shift
+ * is marked CLOSED with autoClosedAt set so downstream consumers know
+ * it requires manager review before it can be considered accounted for.
+ *
+ * Idempotent: if the shift is already CLOSED, returns silently. If the
+ * shift is SUBMITTED or RECONCILING, refuses (those need human review).
+ */
+export async function autoCloseStaleOpenShift(
+  shiftId: string
+): Promise<{ id: string; businessDate: Date } | null> {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { id: true, businessDate: true, status: true },
+  });
+  if (!shift) return null;
+  if (shift.status === 'CLOSED') return { id: shift.id, businessDate: shift.businessDate };
+  if (shift.status !== 'OPEN') {
+    throw new ApiError(
+      409,
+      'SHIFT_NOT_AUTO_CLOSABLE',
+      'Shift is ' + shift.status + ' and must be handled through the normal reconciliation flow.'
+    );
+  }
+
+  const now = new Date();
+  await prisma.shift.update({
+    where: { id: shift.id },
+    data: {
+      status: 'CLOSED',
+      autoClosedAt: now,
+      closedAt: now,
+      endedAt: now,
+    },
+  });
+
+  return { id: shift.id, businessDate: shift.businessDate };
 }

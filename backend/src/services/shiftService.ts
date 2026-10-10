@@ -86,6 +86,76 @@ export async function getShiftById(id: string, actor: { id: string; role: Role }
   return serializeShift(row);
 }
 
+/**
+ * Auto-opens today's shift for a user if none exists. Idempotent:
+ * returns the existing open shift if one is already there. Called from
+ * collection / handover / reconciliation / sales write paths so nobody
+ * has to manually open a shift.
+ */
+export async function ensureOpenShiftForUserAndDate(
+  userId: string,
+  businessDate: Date
+) {
+  // Same-day check first — the common case. If a shift already exists
+  // for this user on this business date, reuse it.
+  const sameDay = await prisma.shift.findFirst({
+    where: { userId, businessDate },
+  });
+  if (sameDay) return sameDay;
+
+  // If the user has an active shift on a DIFFERENT business date, they
+  // need to close it before we can open a new one for today. The partial
+  // unique index Shift_one_active_per_user enforces this at the DB level;
+  // we check here so the caller gets a specific 409 instead of a raw P2002.
+  const priorActive = await prisma.shift.findFirst({
+    where: {
+      userId,
+      status: { in: ['OPEN', 'SUBMITTED', 'RECONCILING'] },
+    },
+    select: { id: true, businessDate: true, status: true },
+  });
+  if (
+    priorActive &&
+    toDateOnly(priorActive.businessDate) !== toDateOnly(businessDate)
+  ) {
+    throw new ApiError(
+      409,
+      'PRIOR_SHIFT_STILL_OPEN',
+      'A shift from ' +
+        toDateOnly(priorActive.businessDate) +
+        ' is still ' +
+        priorActive.status +
+        '. Close it before starting a new one for ' +
+        toDateOnly(businessDate) +
+        '.'
+    );
+  }
+
+  try {
+    return await prisma.shift.create({
+      data: {
+        userId,
+        businessDate,
+        status: 'OPEN',
+        openingCash: null,
+        notes: 'Auto-opened on first entry of the day.',
+      },
+    });
+  } catch (err) {
+    // Race: another request created it between find and create.
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code: string }).code === 'P2002'
+    ) {
+      const row = await prisma.shift.findFirst({ where: { userId, businessDate } });
+      if (row) return row;
+    }
+    throw err;
+  }
+}
+
 export async function startShift(input: {
   actor: { id: string; role: Role };
   businessDate?: string;
@@ -124,16 +194,17 @@ export async function startShift(input: {
     userId = input.onBehalfOfUserId;
   }
 
-  // One shift per business date, system-wide. Enforced here in the service
-  // layer (single-user dev app — no concurrent-opener race to worry about).
+  // One shift per user per business date. The manual start endpoint still
+  // exists for the pre-declared-float case, but auto-open covers the
+  // normal path — see ensureOpenShiftForUserAndDate().
   const existing = await prisma.shift.findFirst({
-    where: { businessDate },
+    where: { userId, businessDate },
   });
   if (existing) {
     throw new ApiError(
       409,
       'SHIFT_ALREADY_OPEN',
-      'A shift already exists for this business date. Close it before starting another.'
+      'You already have a shift for this business date. Close it before starting another.'
     );
   }
 

@@ -5,6 +5,7 @@ import { parseBusinessDate, toDateOnly } from '../utils/businessDate.js';
 import { parseSalesCsv } from './posImporter.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
 import type { PaymentMethod, Prisma, Role } from '@prisma/client';
+import { ensureOpenShiftForUserAndDate } from './shiftService.js';
 
 const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
   'MPESA',
@@ -118,21 +119,9 @@ export async function getSummaryById(id: string) {
   return serializeSummary(row);
 }
 
-async function assertActiveShiftExists(businessDate: Date) {
-  const anyActive = await prisma.shift.findFirst({
-    where: {
-      businessDate,
-      status: { in: ['OPEN', 'SUBMITTED', 'RECONCILING'] },
-    },
-    select: { id: true },
-  });
-  if (!anyActive) {
-    throw new ApiError(
-      409,
-      'NO_ACTIVE_SHIFT',
-      'No active shift exists for this business date.'
-    );
-  }
+async function ensureActiveShift(businessDate: Date, userId: string | null) {
+  if (!userId) return; // system/imported sales without an owner — no shift
+  await ensureOpenShiftForUserAndDate(userId, businessDate);
 }
 
 async function upsertSummary(opts: {
@@ -144,7 +133,7 @@ async function upsertSummary(opts: {
   notes: string | null;
   lines: LineInput[];
 }): Promise<{ summary: ReturnType<typeof serializeSummary>; updated: boolean }> {
-  await assertActiveShiftExists(opts.businessDate);
+  await ensureActiveShift(opts.businessDate, opts.userId);
 
   const totals = summarize(opts.lines);
 

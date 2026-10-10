@@ -7,6 +7,7 @@ import {
   clearSessionCookie,
 } from '../lib/session.js';
 import { env } from '../config/env.js';
+import { closeStaleOpenShiftsForUser } from '../services/shiftAutoCloseService.js';
 import type { LoginInput, ChangePasswordInput, UpdateMyProfileInput } from '../validators/auth.js';
 
 export async function login(req: Request, res: Response) {
@@ -20,6 +21,16 @@ export async function login(req: Request, res: Response) {
   });
 
   setSessionCookie(res, token, expiresAt);
+
+  // Per-user backstop: if this user has an OPEN shift from a prior
+  // business date, close it now so their next write can auto-open a
+  // fresh shift. Never blocks login — a failure here is logged only.
+  try {
+    await closeStaleOpenShiftsForUser(user.id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[auth] stale-shift cleanup failed for', user.username, msg);
+  }
 
   res.json({
     success: true,

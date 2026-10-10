@@ -3,6 +3,8 @@ import { ApiError } from '../errors/ApiError.js';
 import { resolveAttributedUser } from '../utils/attributedUser.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import type { CashHandoverStatus, Prisma } from '@prisma/client';
+import { ensureOpenShiftForUserAndDate } from './shiftService.js';
+import { todayBusinessDate } from '../utils/businessDate.js';
 
 function serialize(h: {
   id: string;
@@ -91,7 +93,7 @@ export async function getHandoverById(
 
 export async function createHandover(input: {
   actor: { id: string; role: 'OWNER' | 'MANAGER' | 'WAITER' | 'AUDITOR' };
-  shiftId: string;
+  shiftId?: string;
   amount: string;
   toUserId: string;
   notes: string | null;
@@ -112,10 +114,17 @@ export async function createHandover(input: {
     ownerAutoConfirm = pref?.autoConfirmHandovers === true;
   }
 
-  const shift = await prisma.shift.findUnique({
-    where: { id: input.shiftId },
-    include: { reconciliation: { select: { id: true } } },
-  });
+  const shift = input.shiftId
+    ? await prisma.shift.findUnique({
+        where: { id: input.shiftId },
+        include: { reconciliation: { select: { id: true } } },
+      })
+    : await ensureOpenShiftForUserAndDate(attributedUserId, todayBusinessDate()).then(
+        (s) => prisma.shift.findUnique({
+          where: { id: s.id },
+          include: { reconciliation: { select: { id: true } } },
+        }),
+      );
   if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
   if (shift.userId !== attributedUserId) {
     throw new ApiError(403, 'FORBIDDEN', 'Shift is not owned by the attributed user.');

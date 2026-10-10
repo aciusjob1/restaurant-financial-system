@@ -16,14 +16,7 @@ shiftRouter.use(requireAuth);
 shiftRouter.get('/', asyncHandler(shiftController.listShifts));
 shiftRouter.get('/:id', asyncHandler(shiftController.getShift));
 
-// Start a shift: WAITER (their own), MANAGER, OWNER.
-// WAITER cannot start a shift for anyone else; enforced in service.
-shiftRouter.post(
-  '/',
-  requireRole('OWNER', 'MANAGER'),
-  validateBody(StartShiftSchema),
-  asyncHandler(shiftController.startShift)
-);
+// POST /shifts removed — shifts auto-open on first entry.
 
 // Transition a shift: state machine is enforced in the service, and is
 // role-aware. AUDITOR can never transition.

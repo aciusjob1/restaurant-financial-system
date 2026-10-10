@@ -24,7 +24,7 @@ const PositiveMoneyString = MoneyString.refine(
 );
 
 export const CreateCollectionSchema = z.object({
-  shiftId: z.string().min(1),
+  shiftId: z.string().min(1).optional(),
   paymentMethod: z.enum(PAYMENT_METHODS),
   amount: PositiveMoneyString,
   mobileReference: z.string().trim().max(64).nullable().optional(),

@@ -3,6 +3,8 @@ import { ApiError } from '../errors/ApiError.js';
 import { resolveAttributedUser } from '../utils/attributedUser.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import type { PaymentMethod, Prisma } from '@prisma/client';
+import { ensureOpenShiftForUserAndDate } from './shiftService.js';
+import { todayBusinessDate } from '../utils/businessDate.js';
 
 const EDITABLE_SHIFT_STATUSES = new Set(['OPEN'] as const);
 
@@ -91,7 +93,7 @@ export async function getCollectionById(
 
 export async function createCollection(input: {
   actor: { id: string; role: 'OWNER' | 'MANAGER' | 'WAITER' | 'AUDITOR' };
-  shiftId: string;
+  shiftId?: string;
   paymentMethod: PaymentMethod;
   amount: string;
   mobileReference: string | null;
@@ -101,7 +103,10 @@ export async function createCollection(input: {
   // Resolve attributed user: WAITER → self; MANAGER/OWNER → required target.
   const attributedUserId = resolveAttributedUser(input.actor, input.onBehalfOfUserId);
 
-  const shift = await loadEditableShift(input.shiftId);
+  // Auto-open the attributed user's shift for today if none exists.
+  const shift = input.shiftId
+    ? await loadEditableShift(input.shiftId)
+    : await ensureOpenShiftForUserAndDate(attributedUserId, todayBusinessDate());
   if (shift.userId !== attributedUserId) {
     throw new ApiError(403, 'FORBIDDEN', 'Shift is not owned by the attributed user.');
   }
@@ -110,7 +115,7 @@ export async function createCollection(input: {
   try {
     const row = await prisma.collection.create({
       data: {
-        shiftId: input.shiftId,
+        shiftId: shift.id,
         userId: attributedUserId,
         createdById: input.actor.id,
         paymentMethod: input.paymentMethod,

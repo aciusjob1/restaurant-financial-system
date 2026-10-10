@@ -17,15 +17,18 @@ const PositiveMoneyString = MoneyString.refine(
   { message: 'Amount must be positive.' }
 );
 
-const CollectionsSchema = z.object({
-  cash: MoneyString.optional(),
-  mpesa: MoneyString.optional(),
-  airtelMoney: MoneyString.optional(),
-  tigoPesa: MoneyString.optional(),
-  halopesa: MoneyString.optional(),
-  bank: MoneyString.optional(),
-  card: MoneyString.optional(),
-  other: MoneyString.optional(),
+// A single mobile-money payment, identified by the payer's name.
+//
+// NOTE: payerName is stored in Collection.mobileReference, which has a
+// unique constraint per shift. Two distinct payers with the same name in
+// the same shift will conflict — the second entry will 409 with
+// DUPLICATE_MOBILE_REFERENCE. This is a known limitation of the current
+// schema; it is NOT silently worked around (no auto-suffixing, no name
+// mangling). If two payers with the same name appear on the same shift,
+// the operator must disambiguate the reference at entry time.
+const MpesaEntrySchema = z.object({
+  payerName: z.string().trim().min(1).max(64),
+  amount: PositiveMoneyString,
 });
 
 const ExpenseLineSchema = z.object({
@@ -37,10 +40,12 @@ const ExpenseLineSchema = z.object({
   paidByUserId: z.string().min(1).nullable().optional(),
 });
 
+// Waiter-side close: the system computes Net Cash from SalesSummary minus
+// the mobile entries and expenses. cashHandedOver is NOT accepted from the
+// client; the server sets it.
 export const CloseMoneySchema = z.object({
-  collections: CollectionsSchema,
+  mpesaEntries: z.array(MpesaEntrySchema).optional(),
   expenses: z.array(ExpenseLineSchema).optional(),
-  cashHandedOver: MoneyString,
   receivedByUserId: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
@@ -57,9 +62,8 @@ export const CompleteShiftSchema = z.object({
 export type CompleteShiftInput = z.infer<typeof CompleteShiftSchema>;
 
 export const SubmitShiftSchema = z.object({
-  collections: CollectionsSchema.optional(),
+  mpesaEntries: z.array(MpesaEntrySchema).optional(),
   expenses: z.array(ExpenseLineSchema).optional(),
-  cashHandedOver: MoneyString,
   receivedByUserId: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
