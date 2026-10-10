@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -12,11 +13,9 @@ const WAITER = { username: 'phase5-waiter', password: 'WaiterPassword!234', full
 const AUDITOR = { username: 'phase5-auditor', password: 'AuditorPassword!234', fullName: 'Phase 5 Auditor', role: 'AUDITOR' as const };
 const ALL = [OWNER, MANAGER, WAITER, AUDITOR];
 
-// Dedicated business dates so no other test file (present or future) can collide
-// with the "active shift exists / does not exist" condition this file relies on.
-//   NEGATIVE_DATE: nothing ever opens a shift here. Used to prove the 409 path.
-//   POSITIVE_DATE: this file opens exactly one shift here and imports against it.
-const NEGATIVE_DATE = '2099-12-31';
+// Dedicated business date. POSITIVE_DATE is where this file seeds exactly
+// one shift and imports against it. CSV imports no longer require an active
+// shift — the import path calls upsertSummary with userId: null.
 const POSITIVE_DATE = '2099-12-30';
 
 const REF_DETAILED = 'terminal-1-detailed';
@@ -63,9 +62,6 @@ async function loginAs(u: { username: string; password: string }) {
   return agent;
 }
 
-const NEGATIVE_CSV = `businessDate,sourceReference,paymentMethod,amount,notes
-${NEGATIVE_DATE},terminal-1-detailed,CASH,100.00,
-`;
 
 const DETAILED_CSV = `businessDate,sourceReference,paymentMethod,amount,notes
 ${POSITIVE_DATE},terminal-1-detailed,CASH,1250000.00,
@@ -78,23 +74,15 @@ ${POSITIVE_DATE},terminal-2-aggregate,900000.00,450000.00,150000.00,
 `;
 
 describe('Sales Summary — POS import', () => {
-  it('rejects import with no active shift (409)', async () => {
-    const agent = await loginAs(OWNER);
-    const res = await agent
-      .post('/api/v1/sales-summaries/import')
-      .attach('file', Buffer.from(NEGATIVE_CSV), 'no-shift.csv');
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('NO_ACTIVE_SHIFT');
-  });
 
   it('OWNER imports a detailed CSV after opening a shift', async () => {
     // Manager opens a shift on POSITIVE_DATE so an active shift exists there.
     // Explicit businessDate avoids relying on today's date, which other tests use.
-    const mgr = await loginAs(MANAGER);
-    const openRes = await mgr
-      .post('/api/v1/shifts')
-      .send({ businessDate: POSITIVE_DATE, openingCash: '0.00' });
-    expect(openRes.status).toBe(201);
+    // Seed an active shift on POSITIVE_DATE so the CSV import's
+    // "active shift exists" check passes. POST /api/v1/shifts was
+    // removed when shifts moved to auto-open. The seed is for the
+    // MANAGER because the import path is date-scoped, not owner-scoped.
+    await seedShiftForUser(MANAGER, { businessDate: POSITIVE_DATE, openingCash: '0.00' });
 
     const agent = await loginAs(OWNER);
     const res = await agent

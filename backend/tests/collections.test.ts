@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -51,15 +52,15 @@ describe('Collections', () => {
   let otherWaiterShiftId: string;
 
   it('WAITER opens their own shift; a second WAITER opens their own', async () => {
-    const w1 = await loginAs(WAITER);
-    const r1 = await w1.post('/api/v1/shifts').send({ openingCash: '0.00' });
-    expect(r1.status).toBe(201);
-    waiterShiftId = r1.body.shift.id;
+    // Seed shifts directly via Prisma on far-future dates. POST /api/v1/shifts
+    // was removed when shifts moved to auto-open. Far-future dates keep the
+    // login backstop (closeStaleOpenShiftsForUser) from closing the fixture
+    // on the next login — including inside the UTC-vs-server-tz edge window.
+    const s1 = await seedShiftForUser(WAITER, { businessDate: '2099-10-01', openingCash: '0.00' });
+    waiterShiftId = s1.id;
 
-    const w2 = await loginAs(WAITER2);
-    const r2 = await w2.post('/api/v1/shifts').send({ openingCash: '0.00' });
-    expect(r2.status).toBe(201);
-    otherWaiterShiftId = r2.body.shift.id;
+    const s2 = await seedShiftForUser(WAITER2, { businessDate: '2099-10-02', openingCash: '0.00' });
+    otherWaiterShiftId = s2.id;
   });
 
   it('WAITER declares CASH and MPESA against their own open shift', async () => {

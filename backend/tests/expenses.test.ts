@@ -5,6 +5,7 @@ import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 import { env } from '../src/config/env.js';
 
 const app = createApp();
@@ -238,12 +239,13 @@ describe('Expenses — closed-day guard', () => {
     const w = await loginAs(WAITER);
     const m = await loginAs(MANAGER);
 
-    const s = await w.post('/api/v1/shifts').send({
+    // Seed the shift directly via Prisma. POST /api/v1/shifts was removed
+    // when shifts moved to auto-open.
+    const seeded = await seedShiftForUser(WAITER, {
       businessDate: D_CLOSED,
       openingCash: '0.00',
     });
-    expect(s.status).toBe(201);
-    const shiftId = s.body.shift.id;
+    const shiftId = seeded.id;
 
     await w.post('/api/v1/collections').send({
       shiftId,
@@ -668,11 +670,10 @@ describe('Create expense on a shift (submitNow + shift-date guard)', () => {
     managerId = users.find((u) => u.username === MANAGER.username)!.id;
     waiterId = users.find((u) => u.username === WAITER.username)!.id;
 
-    // WAITER opens a shift on D_SHIFT_NOW (also creates the collection-less OPEN state).
-    const w = await loginAs(WAITER2);
-    const sh = await w.post('/api/v1/shifts').send({ businessDate: D_SHIFT_NOW, openingCash: '0.00' });
-    expect(sh.status).toBe(201);
-    shiftId = sh.body.shift.id;
+    // WAITER2 has an OPEN shift on D_SHIFT_NOW. Seeded directly via Prisma;
+    // POST /api/v1/shifts was removed when shifts moved to auto-open.
+    const seeded = await seedShiftForUser(WAITER2, { businessDate: D_SHIFT_NOW, openingCash: '0.00' });
+    shiftId = seeded.id;
   });
 
   // Cleanup is handled by the outer afterAll: cleanup() deletes shifts +

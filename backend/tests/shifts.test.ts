@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -49,28 +50,20 @@ async function loginAs(u: { username: string; password: string }) {
 }
 
 describe('Shift lifecycle', () => {
-  it('WAITER starts their own shift, defaults businessDate from server tz', async () => {
-    const agent = await loginAs(WAITER);
-    const res = await agent.post('/api/v1/shifts').send({ openingCash: '0.00' });
-    expect(res.status).toBe(201);
-    expect(res.body.shift.status).toBe('OPEN');
-    expect(res.body.shift.userId).toBeTruthy();
-    expect(res.body.shift.openingCash).toBe('0.00');
-    expect(res.body.shift.businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  // Seed WAITER's OPEN shift via Prisma. POST /api/v1/shifts was removed when
+  // shifts moved to auto-open. The tests below drive this seeded shift through
+  // the OPEN → SUBMITTED → RECONCILING → CLOSED state machine via
+  // POST /shifts/:id/transition, which is unchanged.
+  beforeAll(async () => {
+    await seedShiftForUser(WAITER, { businessDate: '2099-11-01', openingCash: '0.00' });
   });
 
-  it('WAITER cannot start a second active shift (409)', async () => {
-    const agent = await loginAs(WAITER);
-    const res = await agent.post('/api/v1/shifts').send({ openingCash: '10000.00' });
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('SHIFT_ALREADY_OPEN');
-  });
 
   it('WAITER cannot transition another waiters shift (403)', async () => {
     const w2 = await loginAs(WAITER2);
-    const start = await w2.post('/api/v1/shifts').send({ openingCash: '0.00' });
-    expect(start.status).toBe(201);
-    const otherShiftId = start.body.shift.id;
+    // Seed WAITER2's shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seededOther = await seedShiftForUser(WAITER2, { businessDate: '2099-11-02', openingCash: '0.00' });
+    const otherShiftId = seededOther.id;
 
     const waiter = await loginAs(WAITER);
     const res = await waiter
@@ -159,23 +152,8 @@ describe('Shift lifecycle', () => {
     }
   });
 
-  it('AUDITOR sees shifts but cannot start one', async () => {
-    const auditor = await loginAs(AUDITOR);
-    const list = await auditor.get('/api/v1/shifts');
-    expect(list.status).toBe(200);
 
-    const attempt = await auditor.post('/api/v1/shifts').send({ openingCash: '0.00' });
-    expect(attempt.status).toBe(403);
-  });
 
-  it('rejects a malformed businessDate', async () => {
-    // WAITER2 has a submitted shift from an earlier test; they can start
-    // nothing else. Use OWNER, who has no shift yet.
-    const owner = await loginAs(OWNER);
-    const res = await owner.post('/api/v1/shifts').send({ businessDate: '24/09/2026' });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('VALIDATION_ERROR');
-  });
 });
 describe('Enrichment - shift list rows expose user.fullName', () => {
   it('GET /api/v1/shifts includes user { id, fullName } on each row', async () => {
@@ -193,58 +171,6 @@ describe('Enrichment - shift list rows expose user.fullName', () => {
       expect(typeof s.user.fullName).toBe('string');
       expect(s.user.id).toBe(s.userId);
     }
-  });
-});
-
-describe('Open shift on behalf of a waiter (onBehalfOfUserId)', () => {
-  it('MANAGER opens a shift for a specific WAITER', async () => {
-    const target = await prisma.user.findUnique({ where: { username: WAITER3.username } });
-    expect(target).toBeTruthy();
-    const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts').send({
-      businessDate: '2099-12-01',
-      openingCash: '5000.00',
-      onBehalfOfUserId: target!.id,
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.shift.userId).toBe(target!.id);
-    expect(res.body.shift.status).toBe('OPEN');
-    expect(res.body.shift.openingCash).toBe('5000.00');
-  });
-
-  it('WAITER cannot pass onBehalfOfUserId (403)', async () => {
-    const target = await prisma.user.findUnique({ where: { username: WAITER3.username } });
-    const w = await loginAs(WAITER);
-    const res = await w.post('/api/v1/shifts').send({
-      businessDate: '2099-12-02',
-      openingCash: '0.00',
-      onBehalfOfUserId: target!.id,
-    });
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe('FORBIDDEN');
-  });
-
-  it('MANAGER cannot open on behalf of a non-WAITER (400)', async () => {
-    const target = await prisma.user.findUnique({ where: { username: MANAGER.username } });
-    const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts').send({
-      businessDate: '2099-12-03',
-      openingCash: '0.00',
-      onBehalfOfUserId: target!.id,
-    });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('INVALID_ON_BEHALF_USER');
-  });
-
-  it('MANAGER gets 400 for a nonexistent target', async () => {
-    const m = await loginAs(MANAGER);
-    const res = await m.post('/api/v1/shifts').send({
-      businessDate: '2099-12-04',
-      openingCash: '0.00',
-      onBehalfOfUserId: 'nonexistent-user-id',
-    });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('INVALID_ON_BEHALF_USER');
   });
 });
 

@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -66,10 +67,9 @@ describe('Reconciliation ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã�
 
   it('waiter opens shift, declares collections, submits shift', async () => {
     const w = await loginAs(WAITER);
-    const s = await w.post('/api/v1/shifts').send({ businessDate: TEST_DATE, openingCash: '0.00' });
-    if (s.status !== 201) console.log('SHIFT CREATE FAILED:', s.status, JSON.stringify(s.body));
-    expect(s.status).toBe(201);
-    shiftId = s.body.shift.id;
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded = await seedShiftForUser(WAITER, { businessDate: TEST_DATE, openingCash: '0.00' });
+    shiftId = seeded.id;
 
     // Cash 1,000,000; MPESA 500,000; CARD 200,000 (card must NOT feed reconciliation).
     const c1 = await w.post('/api/v1/collections').send({ shiftId, paymentMethod: 'CASH', amount: '1000000.00' });
@@ -120,9 +120,9 @@ describe('Reconciliation ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã�
     // Use WAITER3 with its own shift on TEST_DATE to test this without touching the
     // main flow.
     const w = await loginAs(WAITER3);
-    const s = await w.post('/api/v1/shifts').send({ businessDate: TEST_DATE, openingCash: '0.00' });
-    if (s.status !== 201) console.log('SHIFT CREATE FAILED:', s.status, JSON.stringify(s.body));
-    const shift3 = s.body.shift.id;
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded3 = await seedShiftForUser(WAITER3, { businessDate: TEST_DATE, openingCash: '0.00' });
+    const shift3 = seeded3.id;
     await w.post('/api/v1/collections').send({ shiftId: shift3, paymentMethod: 'CASH', amount: '100.00' });
     await w.post(`/api/v1/shifts/${shift3}/transition`).send({ to: 'SUBMITTED' });
     const r = await w.post('/api/v1/reconciliations').send({ shiftId: shift3 });
@@ -173,10 +173,9 @@ describe('Reconciliation ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã�
 
   it('waiter2 opens own shift on the same date, submits', async () => {
     const w = await loginAs(WAITER2);
-    const s = await w.post('/api/v1/shifts').send({ businessDate: TEST_DATE, openingCash: '0.00' });
-    if (s.status !== 201) console.log('SHIFT CREATE FAILED:', s.status, JSON.stringify(s.body));
-    expect(s.status).toBe(201);
-    shift2 = s.body.shift.id;
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded2 = await seedShiftForUser(WAITER2, { businessDate: TEST_DATE, openingCash: '0.00' });
+    shift2 = seeded2.id;
     await w.post('/api/v1/collections').send({ shiftId: shift2, paymentMethod: 'CASH', amount: '300000.00' });
     const t = await w.post(`/api/v1/shifts/${shift2}/transition`).send({ to: 'SUBMITTED' });
     expect(t.status).toBe(200);
@@ -245,10 +244,9 @@ describe('Reconciliation ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã�
     // WAITER3's shift was SUBMITTED earlier; but WAITER3's shift is separate.
     // Open a fresh shift for WAITER3 on a different date to keep it OPEN.
     const w = await loginAs(WAITER4);
-    const s = await w.post('/api/v1/shifts').send({ businessDate: '2099-12-31', openingCash: '0.00' });
-    if (s.status !== 201) console.log('SHIFT CREATE FAILED:', s.status, JSON.stringify(s.body));
-    expect(s.status).toBe(201);
-    const openShift = s.body.shift.id;
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded = await seedShiftForUser(WAITER4, { businessDate: '2099-12-31', openingCash: '0.00' });
+    const openShift = seeded.id;
     const res = await w.post('/api/v1/reconciliations').send({ shiftId: openShift });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('SHIFT_NOT_SUBMITTED');
@@ -320,11 +318,12 @@ describe('Reconciliation - receiptVariance', () => {
 
   it('setup: waiter opens a fresh shift, declares cash, submits, drafts a recon', async () => {
     const w = await loginAs(WAITER_VAR);
-    const s = await w.post('/api/v1/shifts').send({
-      businessDate: RV_DATE, openingCash: '0.00',
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded = await seedShiftForUser(WAITER_VAR, {
+      businessDate: RV_DATE,
+      openingCash: '0.00',
     });
-    expect(s.status).toBe(201);
-    rvShiftId = s.body.shift.id;
+    rvShiftId = seeded.id;
 
     const c = await w.post('/api/v1/collections').send({
       shiftId: rvShiftId, paymentMethod: 'CASH', amount: '100.00',

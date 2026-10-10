@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -88,12 +89,14 @@ async function setupClosedShift(opts: {
   const w = await loginAs(opts.waiter);
   const m = await loginAs(MANAGER);
 
-  const s = await w.post('/api/v1/shifts').send({
+  // Seed the shift directly via Prisma. POST /api/v1/shifts was removed
+  // when shifts moved to auto-open. All fixtures use far-future dates, so
+  // the login backstop cannot close the seeded shift on a later login.
+  const seeded = await seedShiftForUser(opts.waiter, {
     businessDate: opts.businessDate,
     openingCash: '0.00',
   });
-  expect(s.status).toBe(201);
-  const shiftId = s.body.shift.id;
+  const shiftId = seeded.id;
 
   const c = await w.post('/api/v1/collections').send({
     shiftId, paymentMethod: 'CASH', amount: opts.cashCollection,
@@ -138,10 +141,11 @@ describe('Daily Closing — creation and prerequisites', () => {
     // Use a dedicated waiter so this test can leave an open shift behind
     // without blocking the rest of the file.
     const w = await loginAs(WAITER_OPEN);
-    const s = await w.post('/api/v1/shifts').send({
-      businessDate: D_NOT_READY, openingCash: '0.00',
+    // Seed the shift via Prisma; POST /api/v1/shifts was removed.
+    await seedShiftForUser(WAITER_OPEN, {
+      businessDate: D_NOT_READY,
+      openingCash: '0.00',
     });
-    expect(s.status).toBe(201);
 
     const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/daily-closings').send({ businessDate: D_NOT_READY });

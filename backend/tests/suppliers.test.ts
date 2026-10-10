@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -663,13 +664,13 @@ describe('Voiding a single allocation', () => {
 
 describe('Closed-day guard on supplier financial writes', () => {
   it('blocks MANAGER invoice post and payment create on a CLOSED day', async () => {
-    // Build a real closed day on D_CLOSED
+    // Build a real closed day on D_CLOSED. Seeded directly via Prisma;
+    // POST /api/v1/shifts was removed when shifts moved to auto-open.
     const w = await loginAs(WAITER);
     const m = await loginAs(MANAGER);
 
-    const s = await w.post('/api/v1/shifts').send({ businessDate: D_CLOSED, openingCash: '0.00' });
-    expect(s.status).toBe(201);
-    const shiftId = s.body.shift.id;
+    const seededShift = await seedShiftForUser(WAITER, { businessDate: D_CLOSED, openingCash: '0.00' });
+    const shiftId = seededShift.id;
     await w.post('/api/v1/collections').send({ shiftId, paymentMethod: 'CASH', amount: '100.00' });
     await w.post(`/api/v1/shifts/${shiftId}/transition`).send({ to: 'SUBMITTED' });
     const recon = await w.post('/api/v1/reconciliations').send({ shiftId });

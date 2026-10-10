@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -12,9 +13,12 @@ const WAITER  = { username: 'phase18c-waiter',  password: 'WaiterPass!234',  ful
 const EXTRA   = { username: 'phase18c-extra',   password: 'ExtraPass!234',   fullName: 'Phase18c Extra',   role: 'WAITER'  as const };
 const ALL = [OWNER, MANAGER, WAITER, EXTRA];
 
-const D_NULL1     = new Date('2024-08-15');
-const D_NULL2     = new Date('2024-08-16');
-const D_SUBMITTED = new Date('2024-08-17');
+// Far-future dates. The login backstop (closeStaleOpenShiftsForUser) closes
+// OPEN shifts whose businessDate is strictly before today. Seeding on past
+// dates would let one test's login close another test's fixture shift.
+const D_NULL1     = new Date('2099-08-15');
+const D_NULL2     = new Date('2099-08-16');
+const D_SUBMITTED = new Date('2099-08-17');
 
 async function cleanup() {
   const usernames = ALL.map((u) => u.username);
@@ -83,11 +87,10 @@ beforeAll(async () => {
   shiftNull2Id = s2.id;
   shiftSubmittedId = s3.id;
 
-  // Normal shift with openingCash set (created via API by OWNER).
-  const oa = await loginAs(OWNER);
-  const apiStart = await oa.post('/api/v1/shifts').send({ openingCash: '500.00' });
-  expect(apiStart.status).toBe(201);
-  shiftSetId = apiStart.body.shift.id;
+  // Normal shift with openingCash set. Seeded directly via Prisma;
+  // POST /api/v1/shifts was removed when shifts moved to auto-open.
+  const setShift = await seedShiftForUser(OWNER, { openingCash: '500.00' });
+  shiftSetId = setShift.id;
 });
 
 afterAll(cleanup);

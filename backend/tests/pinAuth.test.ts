@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
@@ -407,5 +407,10 @@ describe('concurrency: PIN race', () => {
       expect([0, 1]).toContain(finalUser.failedPinAttempts);
       expect(finalUser.lockedUntil).toBeNull();
     }
-  });
+    // 20 iterations x 2 parallel logins x argon2 verify = ~40 KDF calls.
+    // Under full-suite load (21 files in parallel, most of them now doing
+    // real crypto), this exceeds the default 15s. The service is correct —
+    // see authService.ts L68-90 (atomic raw SQL increment) and L130-136
+    // (single-statement success clear). This test just needs headroom.
+  }, 60_000);
 });

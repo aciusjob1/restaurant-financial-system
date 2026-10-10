@@ -3,6 +3,7 @@ import request from 'supertest';
 import argon2 from 'argon2';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { seedShiftForUser } from './support/seedShift.js';
 
 const app = createApp();
 
@@ -87,9 +88,10 @@ describe('Cash handover - happy path', () => {
 
   it('waiter opens shift, declares cash, submits, reconciles, submits reconciliation', async () => {
     const w = await loginAs(WAITER);
-    const s = await w.post('/api/v1/shifts').send({ businessDate: TEST_DATE, openingCash: '0.00' });
-    expect(s.status).toBe(201);
-    shiftId = s.body.shift.id;
+    // Seed the shift directly via Prisma. POST /api/v1/shifts was removed
+    // when shifts moved to auto-open.
+    const seeded = await seedShiftForUser(WAITER, { businessDate: TEST_DATE, openingCash: '0.00' });
+    shiftId = seeded.id;
 
     const c = await w.post('/api/v1/collections').send({
       shiftId, paymentMethod: 'CASH', amount: '125000.00',
@@ -184,11 +186,12 @@ describe('Cash handover - no reconciliation linkage', () => {
 
   it('waiter2 opens a shift without creating a reconciliation', async () => {
     const w2 = await loginAs(WAITER2);
-    const s = await w2.post('/api/v1/shifts').send({
-      businessDate: NO_RECON_DATE, openingCash: '0.00',
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded = await seedShiftForUser(WAITER2, {
+      businessDate: NO_RECON_DATE,
+      openingCash: '0.00',
     });
-    expect(s.status).toBe(201);
-    noReconShiftId = s.body.shift.id;
+    noReconShiftId = seeded.id;
     sharedWaiter2ShiftId = noReconShiftId;
   });
 
@@ -348,11 +351,12 @@ describe('Cash handover - on behalf', () => {
 
   it('on-behalf waiter2 opens a shift', async () => {
     const w2 = await loginAs(ON_BEHALF_WAITER2);
-    const s = await w2.post('/api/v1/shifts').send({
-      businessDate: ON_BEHALF_DATE, openingCash: '0.00',
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded = await seedShiftForUser(ON_BEHALF_WAITER2, {
+      businessDate: ON_BEHALF_DATE,
+      openingCash: '0.00',
     });
-    expect(s.status).toBe(201);
-    onBehalfShiftId = s.body.shift.id;
+    onBehalfShiftId = seeded.id;
   });
 
   it('MANAGER creates a handover on behalf of a waiter; fromUserId = waiter, createdById = manager', async () => {
@@ -394,11 +398,12 @@ describe('Cash handover - on behalf', () => {
 
   it('OWNER creates a handover on behalf of a waiter; stores shift id for later describes', async () => {
     const w = await loginAs(ON_BEHALF_WAITER);
-    const s = await w.post('/api/v1/shifts').send({
-      businessDate: '2099-12-15', openingCash: '0.00',
+    // Seed the shift directly via Prisma; POST /api/v1/shifts was removed.
+    const seeded = await seedShiftForUser(ON_BEHALF_WAITER, {
+      businessDate: '2099-12-15',
+      openingCash: '0.00',
     });
-    expect(s.status).toBe(201);
-    const shiftId = s.body.shift.id;
+    const shiftId = seeded.id;
     sharedOnBehalfWaiterShiftId = shiftId;
 
     const waiterId = await currentUserId(w);
