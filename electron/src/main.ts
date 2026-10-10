@@ -1,15 +1,14 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'node:path';
-import { startBackend, type ManagedChild } from './spawn.js';
-
-const DEV_URL = process.env.RFS_DEV ? 'http://localhost:3000' : null;
-const PROD_FILE = path.join(__dirname, '..', 'renderer', 'index.html');
+import getPort from 'get-port';
+import { startBackend, startFrontend, type ManagedChild } from './spawn.js';
 
 let backend: ManagedChild | null = null;
+let frontend: ManagedChild | null = null;
 let mainWindow: BrowserWindow | null = null;
 let quitting = false;
 
-async function waitForBackend(url: string, timeoutMs: number): Promise<boolean> {
+async function waitForHttp(url: string, timeoutMs: number): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
@@ -24,25 +23,55 @@ async function waitForBackend(url: string, timeoutMs: number): Promise<boolean> 
 }
 
 async function createWindow() {
-  // Start the backend before the window so the renderer can hit /api immediately.
-  console.log('[electron] starting backend child process…');
-  backend = startBackend();
+  console.log('[electron] picking ports…');
+  const apiPort = await getPort({ port: [4000, 4100, 4200, 4300, 4400] });
+  const webPort = await getPort({ port: [3000, 3100, 3200, 3300, 3400] });
+  console.log('[electron] api=' + apiPort + ' web=' + webPort);
 
-  const ok = await waitForBackend('http://127.0.0.1:4000/health', 20_000);
-  if (!ok) {
-    console.error('[electron] backend did not answer /health within 20s');
+  // Backend first — the frontend will talk to it.
+  console.log('[electron] starting backend…');
+  backend = startBackend(apiPort);
+  const apiOk = await waitForHttp('http://127.0.0.1:' + apiPort + '/health', 20_000);
+  if (!apiOk) {
+    console.error('[electron] backend did not answer /health in 20s');
     dialog.showErrorBox(
       'RFS backend failed to start',
-      'The backend process did not respond on http://127.0.0.1:4000/health.\n\n' +
-        'Check the terminal for [spawn:api] logs. Common causes:\n' +
-        '  - Postgres is not running (pnpm backend:dev needs DATABASE_URL reachable)\n' +
-        '  - Port 4000 is already in use\n' +
+      'The backend did not respond on http://127.0.0.1:' + apiPort + '/health.\n\n' +
+        'Check the terminal for [spawn:api] logs.\n' +
+        'Common causes:\n' +
+        '  - Postgres is not running\n' +
         '  - backend/dist is stale — run: pnpm --filter @rfs/backend build'
     );
     app.quit();
     return;
   }
   console.log('[electron] backend healthy');
+
+  // Frontend next.
+  console.log('[electron] starting frontend…');
+  frontend = startFrontend(webPort);
+  const webOk = await waitForHttp('http://127.0.0.1:' + webPort + '/login', 60_000);
+  if (!webOk) {
+    console.error('[electron] frontend did not answer /login in 60s');
+    dialog.showErrorBox(
+      'RFS frontend failed to start',
+      'The Next.js dev server did not respond on http://127.0.0.1:' + webPort + '/login.\n\n' +
+        'Check the terminal for [spawn:web] logs.\n' +
+        'Common causes:\n' +
+        '  - frontend build error (compile failure)\n' +
+        '  - frontend/node_modules missing — run: pnpm install'
+    );
+    app.quit();
+    return;
+  }
+  console.log('[electron] frontend ready');
+
+  // Env var so the renderer knows which API port to call.
+  // Note: NEXT_PUBLIC_API_BASE_URL is baked into the frontend bundle at
+  // dev-server start, so this env only affects the window URL — the
+  // frontend's API base still comes from frontend/.env.local. Phase 3/4
+  // will wire this properly for packaged runs.
+  process.env.RFS_API_PORT = String(apiPort);
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -63,8 +92,7 @@ async function createWindow() {
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 
-  if (DEV_URL) void mainWindow.loadURL(DEV_URL);
-  else void mainWindow.loadFile(PROD_FILE);
+  await mainWindow.loadURL('http://127.0.0.1:' + webPort + '/login');
 }
 
 app.whenReady().then(() => {
@@ -80,12 +108,13 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async (event) => {
   if (quitting) return;
-  if (!backend) return;
+  if (!backend && !frontend) return;
   quitting = true;
   event.preventDefault();
-  console.log('[electron] shutting down backend…');
-  try { await backend.stop(); } catch (e) { console.error('[electron] stop error:', e); }
-  backend = null;
+  console.log('[electron] shutting down children…');
+  // Frontend first, then backend.
+  if (frontend) { try { await frontend.stop(); } catch (e) { console.error('[electron] frontend stop:', e); } frontend = null; }
+  if (backend)  { try { await backend.stop();  } catch (e) { console.error('[electron] backend stop:',  e); } backend = null; }
   app.quit();
 });
 
