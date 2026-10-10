@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { ApiError } from '../errors/ApiError.js';
+import type { Role } from '@prisma/client';
 
 // A real Argon2id hash, computed once at module load. Used only when the
 // username doesn't exist, so the code path runs the same Argon2 verify
@@ -30,6 +31,120 @@ export async function authenticateUser(params: { username: string; password: str
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
   return user;
+}
+
+// ── PIN authentication ────────────────────────────────────────
+//
+// Lockout policy: 5 consecutive failed attempts, then 15 minutes locked.
+// The threshold and duration are duplicated in the SQL below and here.
+// Any change to the threshold must be made in both places.
+const PIN_LOCKOUT_THRESHOLD = 5;
+const PIN_LOCKOUT_MINUTES = 15;
+
+/**
+ * Atomically record one failed PIN attempt for a user. Single SQL statement;
+ * Postgres locks the row for the duration of the UPDATE, so concurrent calls
+ * cannot lose increments or race past the threshold.
+ *
+ * Three cases, in this order:
+ *
+ *   1. Actively locked (lockedUntil > NOW):
+ *        The counter and the lock timestamp are preserved unchanged. A wrong
+ *        PIN while locked is a no-op on this row — it does not extend the
+ *        lock and does not inflate the counter. This is the "actively
+ *        locked, wrong attempt" invariant the concurrency tests assert.
+ *
+ *   2. Expired lock (lockedUntil <= NOW, non-null):
+ *        The lock has lifted but the counter is still at or above the
+ *        threshold. A fresh wrong attempt starts a NEW cycle: counter = 1,
+ *        lockout cleared. Prevents the "got locked, waited 15 minutes,
+ *        typed wrong PIN, immediately locked again" pathology.
+ *
+ *   3. Fresh or attempting (lockedUntil IS NULL):
+ *        Counter increments. If the new value reaches the threshold, the
+ *        lock is set to now + PIN_LOCKOUT_MINUTES; otherwise the account
+ *        remains unlocked.
+ */
+async function recordFailedPinAttempt(userId: string): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `UPDATE "User"
+     SET
+       "failedPinAttempts" = CASE
+         WHEN "lockedUntil" IS NOT NULL AND "lockedUntil" > NOW()
+           THEN "failedPinAttempts"
+         WHEN "lockedUntil" IS NOT NULL AND "lockedUntil" <= NOW()
+           THEN 1
+         ELSE "failedPinAttempts" + 1
+       END,
+       "lockedUntil" = CASE
+         WHEN "lockedUntil" IS NOT NULL AND "lockedUntil" > NOW()
+           THEN "lockedUntil"
+         WHEN "lockedUntil" IS NOT NULL AND "lockedUntil" <= NOW()
+           THEN NULL
+         WHEN "failedPinAttempts" + 1 >= $1
+           THEN NOW() + ($2 || ' minutes')::interval
+         ELSE NULL
+       END
+     WHERE id = $3`,
+    PIN_LOCKOUT_THRESHOLD,
+    PIN_LOCKOUT_MINUTES,
+    userId
+  );
+}
+
+/**
+ * Authenticate a waiter by 6-digit PIN. Uniform response for every failure
+ * mode: unknown username, no PIN configured, wrong PIN, locked account,
+ * inactive account, non-WAITER role. Same 401, same body, same timing.
+ *
+ * The lockout check is not a read-then-check. The success path uses a single
+ * conditional UPDATE that resets the counter only if the row is currently
+ * unlocked. If another request locked the account between our read and this
+ * write, the update affects 0 rows and we reject uniformly. No race window.
+ */
+export async function authenticateByPin(params: { username: string; pin: string }) {
+  const user = await prisma.user.findUnique({ where: { username: params.username } });
+
+  // Timing-safe: always run one argon2 verify, even when the user is unknown
+  // or has no PIN set. Closes the user-enumeration side channel.
+  const hash = user?.pinHash ?? (await getDummyHash());
+  const ok = await verifyPassword(hash, params.pin);
+
+  if (!user || !user.pinHash || !ok) {
+    if (user) {
+      await recordFailedPinAttempt(user.id);
+    }
+    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid username or PIN.');
+  }
+
+  // Atomic success path. The UPDATE only fires if the row is not currently
+  // locked, is active, and is a WAITER. If any of those fails at the moment
+  // of the write — including a concurrent lock from another request — the
+  // update affects 0 rows and we reject.
+  const result = await prisma.user.updateMany({
+    where: {
+      id: user.id,
+      role: 'WAITER',
+      isActive: true,
+      OR: [
+        { lockedUntil: null },
+        { lockedUntil: { lte: new Date() } },
+      ],
+    },
+    data: {
+      failedPinAttempts: 0,
+      lockedUntil: null,
+      lastLogin: new Date(),
+    },
+  });
+
+  if (result.count === 0) {
+    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid username or PIN.');
+  }
+
+  // Re-read to return the current row (post-update) with lastLogin set.
+  const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+  return updated;
 }
 
 export async function changePassword(params: {
@@ -96,4 +211,43 @@ export async function updateMyProfile(
     },
   });
   return user;
+}
+
+/**
+ * Assign or reset a waiter's PIN. Only OWNER and MANAGER may call this.
+ * The PIN itself is never returned, never logged, and never stored outside
+ * the argon2 hash. The actor who set the PIN is recorded in pinSetByUserId
+ * for audit.
+ */
+export async function setPin(params: {
+  actorId: string;
+  actorRole: Role;
+  targetUserId: string;
+  pin: string;
+}): Promise<{ id: string; username: string }> {
+  if (params.actorRole !== 'OWNER' && params.actorRole !== 'MANAGER') {
+    throw new ApiError(403, 'FORBIDDEN', 'Only OWNER or MANAGER can set PINs.');
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: params.targetUserId } });
+  if (!target) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found.');
+  if (target.role !== 'WAITER') {
+    throw new ApiError(400, 'PIN_ONLY_FOR_WAITERS', 'PINs are only for waiters.');
+  }
+
+  const pinHash = await hashPassword(params.pin);
+
+  await prisma.user.update({
+    where: { id: target.id },
+    data: {
+      pinHash,
+      pinSetByUserId: params.actorId,
+      pinSetAt: new Date(),
+      failedPinAttempts: 0,
+      lockedUntil: null,
+    },
+  });
+
+  // Never return the PIN or its hash.
+  return { id: target.id, username: target.username };
 }

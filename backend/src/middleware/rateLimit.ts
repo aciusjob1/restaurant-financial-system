@@ -25,3 +25,9 @@ export const loginLimiter: RequestHandler =
           message: 'Too many attempts. Please try again later.',
         },
       });
+
+// PIN login uses the same IP-level rate limits as password login. The
+// per-account lockout in User.failedPinAttempts / User.lockedUntil is the
+// primary defense for PIN guessing; this limiter is the secondary layer
+// that also caps attempts across different accounts from the same IP.
+export const loginPinLimiter: RequestHandler = loginLimiter;

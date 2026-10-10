@@ -100,6 +100,12 @@ model User {
   autoReviewReconciliations  Boolean         @default(false)
   autoConfirmHandovers       Boolean         @default(false)
 
+  pinHash                    String?
+  pinSetByUserId             String?
+  pinSetAt                   DateTime?
+  failedPinAttempts          Int                @default(0)
+  lockedUntil                DateTime?
+
   sessions                Session[]
   employee                Employee?
   salesSummaries          SalesSummary[]
@@ -123,6 +129,8 @@ model User {
   salariesApproved        SalaryRecord[]     @relation("SalaryApprovedBy")
   salaryPayments          SalaryPayment[]    @relation("SalaryPaymentRecordedBy")
   salaryPaymentsVoided    SalaryPayment[]    @relation("SalaryPaymentVoidedBy")
+  pinSetByUser            User?              @relation("PinSetBy", fields: [pinSetByUserId], references: [id], onDelete: SetNull)
+  pinsSetByOthers         User[]             @relation("PinSetBy")
   suppliersCreated        Supplier[]         @relation("SupplierCreatedBy")
   invoicesCreated         PurchaseInvoice[]  @relation("InvoiceCreatedBy")
   invoicesPosted          PurchaseInvoice[]  @relation("InvoicePostedBy")

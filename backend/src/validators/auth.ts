@@ -5,12 +5,24 @@ export const LoginSchema = z.object({
   password: z.string().min(8).max(256),
 });
 
+export const LoginPinSchema = z.object({
+  username: z.string().trim().min(3).max(64),
+  pin: z.string().regex(/^\d{6}$/, 'PIN must be 6 digits'),
+});
+
+export const SetPinSchema = z.object({
+  userId: z.string().min(1),
+  pin: z.string().regex(/^\d{6}$/, 'PIN must be 6 digits'),
+});
+
 export const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(8).max(256),
   newPassword: z.string().min(12).max(256),
 });
 
 export type LoginInput = z.infer<typeof LoginSchema>;
+export type LoginPinInput = z.infer<typeof LoginPinSchema>;
+export type SetPinInput = z.infer<typeof SetPinSchema>;
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 
 export const UpdateMyProfileSchema = z
