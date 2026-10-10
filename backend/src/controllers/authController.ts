@@ -1,3 +1,4 @@
+import type { User } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { authenticateUser, authenticateByPin, changePassword, updateMyProfile, setPin } from '../services/authService.js';
 import {
@@ -10,10 +11,7 @@ import { env } from '../config/env.js';
 import { closeStaleOpenShiftsForUser } from '../services/shiftAutoCloseService.js';
 import type { LoginInput, LoginPinInput, ChangePasswordInput, SetPinInput, UpdateMyProfileInput } from '../validators/auth.js';
 
-export async function login(req: Request, res: Response) {
-  const { username, password } = req.body as LoginInput;
-  const user = await authenticateUser({ username, password });
-
+async function completeLogin(req: Request, res: Response, user: User) {
   const { token, expiresAt } = await createSession({
     userId: user.id,
     ipAddress: req.ip,
@@ -42,6 +40,12 @@ export async function login(req: Request, res: Response) {
       language: user.language ?? null,
     },
   });
+}
+
+export async function login(req: Request, res: Response) {
+  const { username, password } = req.body as LoginInput;
+  const user = await authenticateUser({ username, password });
+  await completeLogin(req, res, user);
 }
 
 export async function logout(req: Request, res: Response) {
@@ -79,32 +83,7 @@ export async function updateMe(req: Request, res: Response) {
 export async function loginWithPin(req: Request, res: Response) {
   const { username, pin } = req.body as LoginPinInput;
   const user = await authenticateByPin({ username, pin });
-
-  const { token, expiresAt } = await createSession({
-    userId: user.id,
-    ipAddress: req.ip,
-    userAgent: req.get('user-agent') ?? null,
-  });
-
-  setSessionCookie(res, token, expiresAt);
-
-  try {
-    await closeStaleOpenShiftsForUser(user.id);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[auth] stale-shift cleanup failed for', user.username, msg);
-  }
-
-  res.json({
-    success: true,
-    user: {
-      id: user.id,
-      username: user.username,
-      fullName: user.fullName,
-      role: user.role,
-      language: user.language ?? null,
-    },
-  });
+  await completeLogin(req, res, user);
 }
 
 /**
