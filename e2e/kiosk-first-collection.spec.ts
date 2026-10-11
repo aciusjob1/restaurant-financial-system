@@ -1,20 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { PrismaClient } from '@prisma/client';
-import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
+// Shared E2E waiter — provisioned by e2e/global-setup.ts. Do not create or
+// delete this user in the spec; only clean up the business data it produces.
 const WAITER = {
-  username: 'e2e-kiosk-waiter',
+  username: 'e2e-waiter',
   password: 'E2eWaiter!234',
-  fullName: 'E2E Kiosk Waiter',
 };
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-async function cleanupWaiter() {
+// Deletes only the business data belonging to the E2E waiter. The user row
+// itself must survive — other specs depend on it.
+async function cleanupWaiterData() {
   const u = await prisma.user.findUnique({ where: { username: WAITER.username } });
   if (!u) return;
   await prisma.collection.deleteMany({ where: { userId: u.id } });
@@ -25,29 +23,18 @@ async function cleanupWaiter() {
 }
 
 test.beforeAll(async () => {
-  await cleanupWaiter();
-  await prisma.user.deleteMany({ where: { username: WAITER.username } });
-  await prisma.user.create({
-    data: {
-      username: WAITER.username,
-      fullName: WAITER.fullName,
-      role: 'WAITER',
-      passwordHash: await argon2.hash(WAITER.password, { type: argon2.argon2id }),
-      isActive: true,
-    },
-  });
+  await cleanupWaiterData();
 });
 
 test.afterAll(async () => {
-  await cleanupWaiter();
-  await prisma.user.deleteMany({ where: { username: WAITER.username } });
+  await cleanupWaiterData();
   await prisma.$disconnect();
 });
 
 test('waiter with no shift records a collection and the shift auto-opens', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel(/username/i).fill(WAITER.username);
-  await page.getByLabel(/password/i).fill(WAITER.password);
+  await page.getByLabel(/^password$/i).fill(WAITER.password);
   await page.getByRole('button', { name: /sign in|ingia/i }).click();
 
   // Lands on /kiosk and shows the no-shift notice.
@@ -67,5 +54,5 @@ test('waiter with no shift records a collection and the shift auto-opens', async
   await expect(page.getByText('Shift open', { exact: true })).toBeVisible({ timeout: 15_000 });
 
   // The collection we just added is listed.
-  await expect(page.getByText('500.00')).toBeVisible();
+  await expect(page.getByRole('cell', { name: '500.00' })).toBeVisible();
 });
