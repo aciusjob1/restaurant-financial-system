@@ -101,6 +101,7 @@ model User {
   autoConfirmHandovers       Boolean         @default(false)
 
   pinHash                    String?
+  pinLookup                  String?            @unique
   pinSetByUserId             String?
   pinSetAt                   DateTime?
   failedPinAttempts          Int                @default(0)

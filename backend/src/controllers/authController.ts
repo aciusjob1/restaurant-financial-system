@@ -1,6 +1,6 @@
 import type { User } from '@prisma/client';
 import type { Request, Response } from 'express';
-import { authenticateUser, authenticateByPin, changePassword, updateMyProfile, setPin } from '../services/authService.js';
+import { authenticateUser, authenticateByPin, authenticateByPinOnly, changePassword, updateMyProfile, setPin } from '../services/authService.js';
 import {
   createSession,
   setSessionCookie,
@@ -9,7 +9,7 @@ import {
 } from '../lib/session.js';
 import { env } from '../config/env.js';
 import { closeStaleOpenShiftsForUser } from '../services/shiftAutoCloseService.js';
-import type { LoginInput, LoginPinInput, ChangePasswordInput, SetPinInput, UpdateMyProfileInput } from '../validators/auth.js';
+import type { LoginInput, LoginPinInput, LoginPinOnlyInput, ChangePasswordInput, SetPinInput, UpdateMyProfileInput } from '../validators/auth.js';
 
 async function completeLogin(req: Request, res: Response, user: User) {
   const { token, expiresAt } = await createSession({
@@ -99,4 +99,15 @@ export async function setUserPin(req: Request, res: Response) {
     pin,
   });
   res.json({ success: true, user: result });
+}
+
+/**
+ * PIN-only login for waiters. Same session mechanics and response shape
+ * as loginWithPin. The service returns a uniform 401 for every failure
+ * mode — unknown PIN, no PIN, wrong PIN, locked, inactive, non-WAITER.
+ */
+export async function loginPinOnly(req: Request, res: Response) {
+  const { pin } = req.body as LoginPinOnlyInput;
+  const user = await authenticateByPinOnly({ pin });
+  await completeLogin(req, res, user);
 }

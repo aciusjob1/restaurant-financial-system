@@ -31,3 +31,24 @@ export const loginLimiter: RequestHandler =
 // primary defense for PIN guessing; this limiter is the secondary layer
 // that also caps attempts across different accounts from the same IP.
 export const loginPinLimiter: RequestHandler = loginLimiter;
+
+// PIN-only login: no username, so a wrong PIN resolves to no user row and
+// the per-account lockout cannot be the primary defense. This limiter is
+// the only guard, so it's tighter than the username+pin limiter. 5 failed
+// attempts per 15 minutes per IP in production. Successful logins do not
+// consume a slot.
+export const loginPinOnlyLimiter: RequestHandler =
+  env.NODE_ENV === 'test'
+    ? noopLimiter
+    : rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: env.NODE_ENV === 'production' ? 5 : 50,
+        skipSuccessfulRequests: true,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: {
+          success: false,
+          code: 'RATE_LIMITED',
+          message: 'Too many PIN attempts. Please try again later.',
+        },
+      });

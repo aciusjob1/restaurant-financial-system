@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { ApiError } from '../errors/ApiError.js';
+import { computePinLookup } from '../lib/pinLookup.js';
 import type { Role } from '@prisma/client';
 
 // A real Argon2id hash, computed once at module load. Used only when the
@@ -147,6 +148,70 @@ export async function authenticateByPin(params: { username: string; pin: string 
   return updated;
 }
 
+/**
+ * Authenticate a waiter by 6-digit PIN alone. Same uniform 401 for every
+ * failure mode as authenticateByPin, but the lookup key is a keyed HMAC
+ * of the PIN rather than the username — this is what makes PIN-only
+ * possible without iterating argon2 hashes.
+ *
+ * Wrong PINs touch no user row: the HMAC resolves to no user, and we
+ * return uniform 401 without incrementing any counter. This means
+ * PIN-only login cannot be used to lock a waiter out. Rate limiting
+ * on the route is the only abuse defense, which is why it's tighter
+ * than the username+pin limiter.
+ *
+ * Timing: unknown PIN runs a dummy argon2 verify so the response does
+ * not distinguish "PIN belongs to nobody" from "PIN belongs to a
+ * locked user."
+ */
+export async function authenticateByPinOnly(params: { pin: string }) {
+  const lookup = computePinLookup(params.pin);
+
+  const user = await prisma.user.findFirst({
+    where: { pinLookup: lookup, role: 'WAITER', isActive: true },
+  });
+
+  if (!user || !user.pinHash) {
+    await verifyPassword(await getDummyHash(), params.pin);
+    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid PIN.');
+  }
+
+  // Defense in depth: the HMAC match alone isn't the credential check.
+  // If both the DB and PIN_LOOKUP_SECRET leaked, this argon2 verify is
+  // what still stops a forged lookup.
+  const ok = await verifyPassword(user.pinHash, params.pin);
+  if (!ok) {
+    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid PIN.');
+  }
+
+  // Atomic success path. Same shape as authenticateByPin: clears the
+  // counter and lock only if the row is still unlocked and active at
+  // the moment of the write.
+  const result = await prisma.user.updateMany({
+    where: {
+      id: user.id,
+      role: 'WAITER',
+      isActive: true,
+      OR: [
+        { lockedUntil: null },
+        { lockedUntil: { lte: new Date() } },
+      ],
+    },
+    data: {
+      failedPinAttempts: 0,
+      lockedUntil: null,
+      lastLogin: new Date(),
+    },
+  });
+
+  if (result.count === 0) {
+    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid PIN.');
+  }
+
+  const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+  return updated;
+}
+
 export async function changePassword(params: {
   userId: string;
   currentPassword: string;
@@ -236,17 +301,27 @@ export async function setPin(params: {
   }
 
   const pinHash = await hashPassword(params.pin);
+  const pinLookup = computePinLookup(params.pin);
 
-  await prisma.user.update({
-    where: { id: target.id },
-    data: {
-      pinHash,
-      pinSetByUserId: params.actorId,
-      pinSetAt: new Date(),
-      failedPinAttempts: 0,
-      lockedUntil: null,
-    },
-  });
+  try {
+    await prisma.user.update({
+      where: { id: target.id },
+      data: {
+        pinHash,
+        pinLookup,
+        pinSetByUserId: params.actorId,
+        pinSetAt: new Date(),
+        failedPinAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+  } catch (e) {
+    // Unique violation on pinLookup: another active waiter already has this PIN.
+    if ((e as { code?: string })?.code === 'P2002') {
+      throw new ApiError(409, 'PIN_ALREADY_IN_USE', 'That PIN is already in use.');
+    }
+    throw e;
+  }
 
   // Never return the PIN or its hash.
   return { id: target.id, username: target.username };

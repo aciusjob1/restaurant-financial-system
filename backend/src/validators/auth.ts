@@ -9,6 +9,9 @@ export const LoginPinSchema = z.object({
   username: z.string().trim().min(3).max(64),
   pin: z.string().regex(/^\d{6}$/, 'PIN must be 6 digits'),
 });
+export const LoginPinOnlySchema = z.object({
+  pin: z.string().regex(/^\d{6}$/, 'PIN must be 6 digits'),
+});
 
 export const SetPinSchema = z.object({
   userId: z.string().min(1),
@@ -22,6 +25,7 @@ export const ChangePasswordSchema = z.object({
 
 export type LoginInput = z.infer<typeof LoginSchema>;
 export type LoginPinInput = z.infer<typeof LoginPinSchema>;
+export type LoginPinOnlyInput = z.infer<typeof LoginPinOnlySchema>;
 export type SetPinInput = z.infer<typeof SetPinSchema>;
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 
