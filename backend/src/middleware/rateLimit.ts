@@ -2,33 +2,64 @@ import rateLimit from 'express-rate-limit';
 import type { RequestHandler } from 'express';
 import { env } from '../config/env.js';
 
-// In tests we run many logins in one process; the limiter would trip.
-// Production and development keep the limiter active, but only failed
-// logins count toward the ceiling, and the development ceiling is higher.
+// In tests we run many logins in one process; the limiter would trip. The
+// factory makes that decision testable without booting a non-test process.
 const noopLimiter: RequestHandler = (_req, _res, next) => next();
 
-export const loginLimiter: RequestHandler =
-  env.NODE_ENV === 'test'
-    ? noopLimiter
-    : rateLimit({
-        windowMs: 15 * 60 * 1000,
-        // Production: 10 failed attempts per 15 min per IP.
-        // Development: 100, so a normal day of testing never locks anyone out.
-        // Successful logins do not consume a slot in either mode.
-        max: env.NODE_ENV === 'production' ? 10 : 100,
-        skipSuccessfulRequests: true,
-        standardHeaders: true,
-        legacyHeaders: false,
-        message: {
-          success: false,
-          code: 'RATE_LIMITED',
-          message: 'Too many attempts. Please try again later.',
-        },
-      });
+type LimiterConfig = {
+  nodeEnv: string;
+  windowMs: number;
+  prodMax: number;
+  devMax: number;
+  message: string;
+};
 
-// PIN login uses the same IP-level rate limits as password login. The
-// per-account lockout in User.failedPinAttempts / User.lockedUntil is the
-// primary defense for PIN guessing; this limiter is the secondary layer
+/**
+ * Build a rate limiter as a pure function of its config. This is exported
+ * so the test suite can construct limiters with production semantics
+ * without needing a process whose NODE_ENV is 'production'.
+ *
+ * The application's own limiters below call this with `env.NODE_ENV`.
+ * In test mode both return the noop limiter — the suite runs many
+ * logins in one process and would otherwise trip on its own traffic.
+ *
+ * NOTE: these tests verify the limiter FACTORY, not the route wiring.
+ * Whether the auth route actually mounts these handlers is a separate
+ * concern (see outstanding follow-up in the E2E suite).
+ */
+export function createLoginLimiter(cfg: LimiterConfig): RequestHandler {
+  if (cfg.nodeEnv === 'test') return noopLimiter;
+  return rateLimit({
+    windowMs: cfg.windowMs,
+    max: cfg.nodeEnv === 'production' ? cfg.prodMax : cfg.devMax,
+    skipSuccessfulRequests: true,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      code: 'RATE_LIMITED',
+      message: cfg.message,
+    },
+  });
+}
+
+const FIFTEEN_MINUTES = 15 * 60 * 1000;
+
+// Password login.
+//   Production: 10 failed attempts per 15 min per IP.
+//   Development: 100, so a normal day of testing never locks anyone out.
+//   Successful logins do not consume a slot in either mode.
+export const loginLimiter: RequestHandler = createLoginLimiter({
+  nodeEnv: env.NODE_ENV,
+  windowMs: FIFTEEN_MINUTES,
+  prodMax: 10,
+  devMax: 100,
+  message: 'Too many attempts. Please try again later.',
+});
+
+// PIN login (username + PIN) shares the SAME limiter instance as password
+// login. The per-account lockout in User.failedPinAttempts / lockedUntil is
+// the primary defense for PIN guessing; this limiter is the secondary layer
 // that also caps attempts across different accounts from the same IP.
 export const loginPinLimiter: RequestHandler = loginLimiter;
 
@@ -37,18 +68,10 @@ export const loginPinLimiter: RequestHandler = loginLimiter;
 // the only guard, so it's tighter than the username+pin limiter. 5 failed
 // attempts per 15 minutes per IP in production. Successful logins do not
 // consume a slot.
-export const loginPinOnlyLimiter: RequestHandler =
-  env.NODE_ENV === 'test'
-    ? noopLimiter
-    : rateLimit({
-        windowMs: 15 * 60 * 1000,
-        max: env.NODE_ENV === 'production' ? 5 : 50,
-        skipSuccessfulRequests: true,
-        standardHeaders: true,
-        legacyHeaders: false,
-        message: {
-          success: false,
-          code: 'RATE_LIMITED',
-          message: 'Too many PIN attempts. Please try again later.',
-        },
-      });
+export const loginPinOnlyLimiter: RequestHandler = createLoginLimiter({
+  nodeEnv: env.NODE_ENV,
+  windowMs: FIFTEEN_MINUTES,
+  prodMax: 5,
+  devMax: 50,
+  message: 'Too many PIN attempts. Please try again later.',
+});
