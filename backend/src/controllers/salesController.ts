@@ -4,6 +4,8 @@ import { ApiError } from '../errors/ApiError.js';
 import type {
   ManualSalesSummaryInput,
   ListSalesSummariesQuery,
+  MySummaryQuery,
+  WaiterReportInput,
 } from '../validators/sales.js';
 import type { PaymentMethod } from '@prisma/client';
 
@@ -33,6 +35,8 @@ export async function createManualSummary(req: Request, res: Response) {
       amount: l.amount,
       notes: l.notes ?? null,
     })),
+    totalSales: input.totalSales,
+    expenseRows: input.expenseRows,
     enteredBy: req.user!.id,
     actorRole: req.user!.role,
   });
@@ -55,4 +59,23 @@ export async function importCsv(req: Request, res: Response) {
     updated: result.updated,
     summaries: result.summaries,
   });
+}
+
+export async function getMySummary(req: Request, res: Response) {
+  const q = req.query as MySummaryQuery;
+  const businessDate = q.businessDate ?? new Date().toISOString().slice(0, 10);
+  const result = await salesService.listMySummary(req.user!.id, businessDate);
+  res.json({ success: true, ...(result ?? { summary: null, activeExpenses: [] }) });
+}
+
+export async function submitWaiterReport(req: Request, res: Response) {
+  const body = req.body as WaiterReportInput;
+  const summary = await salesService.submitWaiterReport({
+    summaryId: req.params.id!,
+    actorId: req.user!.id,
+    actorRole: req.user!.role,
+    mpesaRows: body.mpesaRows,
+    expenseRows: body.expenseRows,
+  });
+  res.status(200).json({ success: true, summary });
 }

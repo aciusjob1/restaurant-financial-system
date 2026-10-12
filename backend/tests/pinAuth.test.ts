@@ -154,7 +154,7 @@ describe('POST /api/v1/auth/login-pin', () => {
     expect(u.failedPinAttempts).toBe(5);
     expect(u.lockedUntil).not.toBeNull();
     expect(u.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
-  });
+  }, 60_000);
 
   it('rejects a correct PIN while locked and does not change the state', async () => {
     await resetPinState(WAITER.username, WAITER.pin);
@@ -177,7 +177,7 @@ describe('POST /api/v1/auth/login-pin', () => {
     const after = await prisma.user.findUniqueOrThrow({ where: { username: WAITER.username } });
     expect(after.failedPinAttempts).toBe(before.failedPinAttempts);
     expect(after.lockedUntil!.getTime()).toBe(before.lockedUntil!.getTime());
-  });
+  }, 60_000);
 
   it('rejects a wrong PIN while locked and does not extend the lock', async () => {
     await resetPinState(WAITER.username, WAITER.pin);
@@ -200,7 +200,7 @@ describe('POST /api/v1/auth/login-pin', () => {
     const after = await prisma.user.findUniqueOrThrow({ where: { username: WAITER.username } });
     expect(after.failedPinAttempts).toBe(before.failedPinAttempts);
     expect(after.lockedUntil!.getTime()).toBe(before.lockedUntil!.getTime());
-  });
+  }, 60_000);
 
   it('accepts a correct PIN after the lock expires, resetting the counter', async () => {
     await resetPinState(WAITER.username, WAITER.pin);

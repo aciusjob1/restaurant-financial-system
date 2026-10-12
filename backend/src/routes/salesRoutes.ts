@@ -3,7 +3,7 @@ import multer from 'multer';
 import * as salesController from '../controllers/salesController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
-import { ManualSalesSummarySchema } from '../validators/sales.js';
+import { ManualSalesSummarySchema, WaiterReportSchema } from '../validators/sales.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../errors/ApiError.js';
 
@@ -39,10 +39,27 @@ salesRouter.get(
   requireRole('OWNER', 'MANAGER', 'AUDITOR'),
   asyncHandler(salesController.listSummaries)
 );
+// Waiter's own summary for a date — "individual" fetch. Order matters:
+// this MUST be registered before GET /:id, or Express would match /mine
+// as an id.
+salesRouter.get(
+  '/mine',
+  requireRole('WAITER', 'MANAGER', 'OWNER', 'AUDITOR'),
+  asyncHandler(salesController.getMySummary)
+);
 salesRouter.get(
   '/:id',
   requireRole('OWNER', 'MANAGER', 'AUDITOR'),
   asyncHandler(salesController.getSummary)
+);
+
+// Waiter submits M-Pesa breakdown + expenses against an existing summary.
+// Total Sales is not touched here.
+salesRouter.post(
+  '/:id/waiter-report',
+  requireRole('WAITER', 'MANAGER', 'OWNER'),
+  validateBody(WaiterReportSchema),
+  asyncHandler(salesController.submitWaiterReport)
 );
 
 // Manual entry: OWNER, MANAGER only

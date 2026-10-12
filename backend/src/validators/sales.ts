@@ -25,6 +25,12 @@ export const ManualSalesSummarySchema = z.object({
   sourceReference: z.string().trim().max(128).optional().default(''),
   userId: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
+  // Optional explicit total for callers that receive a number on a
+  // paper form (e.g. the waiter daily report) rather than itemised lines.
+  // When absent, totalSales remains derived from `lines` — same as before.
+  totalSales: MoneyString.optional(),
+  // Lines may be empty when the caller supplies an explicit totalSales
+  // and only wants to record the aggregate figure.
   lines: z
     .array(
       z.object({
@@ -33,7 +39,19 @@ export const ManualSalesSummarySchema = z.object({
         notes: z.string().trim().max(500).nullable().optional(),
       })
     )
-    .min(1),
+    .min(0),
+  // Optional expense rows for the daily report. Semantics:
+  //   undefined  → no expense handling (legacy callers, CSV import)
+  //   []         → supersede any prior DAILY expenses for this user/date
+  //   [{...}]    → supersede prior and create these rows
+  expenseRows: z
+    .array(
+      z.object({
+        description: z.string().trim().min(1).max(200),
+        amount: MoneyString,
+      })
+    )
+    .optional(),
 });
 
 export const ListSalesSummariesQuerySchema = z.object({
@@ -43,3 +61,34 @@ export const ListSalesSummariesQuerySchema = z.object({
 
 export type ManualSalesSummaryInput = z.infer<typeof ManualSalesSummarySchema>;
 export type ListSalesSummariesQuery = z.infer<typeof ListSalesSummariesQuerySchema>;
+
+// For GET /mine — a waiter fetches the summary the manager/cashier entered
+// for them today, plus their currently-active DAILY expenses, so the kiosk
+// can pre-populate the form for resubmission.
+export const MySummaryQuerySchema = z.object({
+  businessDate: DateOnly.optional(),
+});
+export type MySummaryQuery = z.infer<typeof MySummaryQuerySchema>;
+
+// For POST /:id/waiter-report — the waiter fills in the M-Pesa breakdown
+// and their expenses. Total Sales stays as entered upstream; this endpoint
+// never touches it.
+export const WaiterReportSchema = z.object({
+  mpesaRows: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(120),
+        amount: MoneyString,
+      })
+    )
+    .default([]),
+  expenseRows: z
+    .array(
+      z.object({
+        description: z.string().trim().min(1).max(200),
+        amount: MoneyString,
+      })
+    )
+    .default([]),
+});
+export type WaiterReportInput = z.infer<typeof WaiterReportSchema>;

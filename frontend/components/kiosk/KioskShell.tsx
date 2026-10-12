@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
@@ -16,7 +16,6 @@ const ALLOWED_ROLES = new Set(['WAITER']);
 
 export function KioskShell({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const { t } = useT();
   const [me, setMe] = useState<MeResponse['user'] | null>(null);
   const [denied, setDenied] = useState(false);
@@ -71,20 +70,6 @@ export function KioskShell({ children }: { children: ReactNode }) {
     <div className='min-h-screen bg-slate-50'>
       <div className='border-b border-slate-200 bg-white'>
         <div className='max-w-4xl mx-auto px-6 py-3 flex items-center gap-4'>
-          <nav className='flex items-center gap-3'>
-            <Link
-              href='/kiosk'
-              className={'text-sm ' + (pathname === '/kiosk' ? 'font-medium text-slate-900' : 'text-slate-500 hover:text-slate-900')}
-            >
-              {t('kiosk.nav.shift')}
-            </Link>
-            <Link
-              href='/kiosk/expenses'
-              className={'text-sm ' + (pathname.startsWith('/kiosk/expenses') ? 'font-medium text-slate-900' : 'text-slate-500 hover:text-slate-900')}
-            >
-              {t('kiosk.nav.expenses')}
-            </Link>
-          </nav>
           <div className='ml-auto flex items-center gap-4'>
             <LanguagePicker />
             <span className='text-xs text-slate-500'>
