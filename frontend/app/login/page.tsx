@@ -78,6 +78,11 @@ export default function LoginPage() {
                 className='w-full rounded-lg bg-slate-900 text-white py-2 font-medium disabled:opacity-60'>
           {busy ? t('login.submitting') : t('login.submit')}
         </button>
+
+        <button type='button' onClick={() => router.push('/login/pin')}
+                className='w-full text-sm text-slate-500 hover:text-slate-800 underline'>
+          {t('login.pinToggle')}
+        </button>
       </form>
     </main>
   );
