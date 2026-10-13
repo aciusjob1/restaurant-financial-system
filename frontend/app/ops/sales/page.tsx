@@ -52,6 +52,7 @@ export default function SalesPage() {
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
+  const [conflict, setConflict] = useState<{ existingTotal: string } | null>(null);
 
   function refresh() {
     setLoading(true);
@@ -96,9 +97,9 @@ export default function SalesPage() {
     return users.find((x) => x.id === u)?.fullName ?? u.slice(0, 8);
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function doSubmit(overwrite: boolean) {
     setErr(null);
+    setConflict(null);
     if (!userId) {
       setErr({ code: 'WAITER_REQUIRED', message: t('ops.sales.waiterRequired') });
       return;
@@ -123,6 +124,7 @@ export default function SalesPage() {
           notes: notes.trim() || null,
           totalSales: amount.trim(),
           lines: [],
+          ...(overwrite ? { overwrite: true } : {}),
         }),
       });
       setUserId('');
@@ -130,15 +132,59 @@ export default function SalesPage() {
       setNotes('');
       refresh();
     } catch (e2) {
-      setErr(errOf(e2));
+      if (e2 instanceof ApiError && e2.status === 409 && e2.code === 'SUMMARY_EXISTS') {
+        const details = e2.details as { existing?: { totalSales?: string } } | undefined;
+        setConflict({ existingTotal: details?.existing?.totalSales ?? '?' });
+      } else {
+        setErr(errOf(e2));
+      }
     } finally {
       setBusy(false);
     }
   }
 
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    doSubmit(false);
+  }
+
   return (
     <OpsShell>
       <OpsHeader title={t('ops.sales.title')} subtitle={t('ops.sales.subtitle')} />
+
+      {conflict && (
+        <div className='rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3'>
+          <div className='text-sm font-medium text-amber-900'>
+            {t('ops.sales.conflict.heading')}
+          </div>
+          <div className='text-sm text-amber-800'>
+            {t('ops.sales.conflict.bodyBefore')}
+            <span className='font-mono'>{businessDate}</span>
+            {t('ops.sales.conflict.bodyAfter')}
+            <br />
+            {t('ops.sales.conflict.existingTotalPrefix')}
+            <span className='font-mono'>{conflict.existingTotal}</span>
+          </div>
+          <div className='flex gap-2'>
+            <button
+              type='button'
+              onClick={() => doSubmit(true)}
+              disabled={busy}
+              className='rounded-lg bg-amber-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'
+            >
+              {t('ops.sales.conflict.confirm')}
+            </button>
+            <button
+              type='button'
+              onClick={() => setConflict(null)}
+              disabled={busy}
+              className='rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm disabled:opacity-60'
+            >
+              {t('ops.sales.conflict.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
 
       <form
         onSubmit={submit}

@@ -25,6 +25,32 @@ export async function getSummary(req: Request, res: Response) {
 
 export async function createManualSummary(req: Request, res: Response) {
   const input = req.body as ManualSalesSummaryInput;
+
+  // Duplicate guard (Model B): if a MANUAL summary already exists for this
+  // waiter + date + sourceReference, require an explicit overwrite flag
+  // rather than silently replacing the manager's previous entry.
+  if (!input.overwrite) {
+    const existing = await salesService.findExistingManualSummary({
+      businessDate: input.businessDate,
+      userId: input.userId ?? null,
+      sourceReference: input.sourceReference ?? '',
+    });
+    if (existing) {
+      throw new ApiError(
+        409,
+        'SUMMARY_EXISTS',
+        'A sales summary already exists for this waiter and date.',
+        {
+          existing: {
+            id: existing.id,
+            totalSales: existing.totalSales.toString(),
+            createdAt: existing.createdAt.toISOString(),
+          },
+        }
+      );
+    }
+  }
+
   const summary = await salesService.createManualSummary({
     businessDate: input.businessDate,
     sourceReference: input.sourceReference ?? '',

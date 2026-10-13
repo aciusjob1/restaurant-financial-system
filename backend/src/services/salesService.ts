@@ -113,6 +113,28 @@ export async function listSummaries(opts: {
   return rows.map(serializeSummary);
 }
 
+/**
+ * Look up an existing MANUAL summary for a specific waiter + date, used by
+ * the controller as a duplicate guard before permitting a create. Returns
+ * null when userId is missing (unattributed summaries do not collide).
+ */
+export async function findExistingManualSummary(opts: {
+  businessDate: string;
+  userId: string | null;
+  sourceReference: string;
+}) {
+  if (!opts.userId) return null;
+  return prisma.salesSummary.findFirst({
+    where: {
+      source: 'MANUAL',
+      businessDate: parseBusinessDate(opts.businessDate),
+      sourceReference: opts.sourceReference,
+      userId: opts.userId,
+    },
+    select: { id: true, totalSales: true, createdAt: true },
+  });
+}
+
 export async function getSummaryById(id: string) {
   const row = await prisma.salesSummary.findUnique({
     where: { id },
@@ -346,24 +368,14 @@ async function upsertSummary(opts: {
   notes: string | null;
   lines: LineInput[];
   // When set, used as the summary's totalSales; cashSales is derived as
-  // total − mobile − other. When undefined, totals are line-derived.
+  // total - mobile - other. When undefined, totals are line-derived.
   totalSalesOverride?: Prisma.Decimal;
-  // undefined  → no expense handling (CSV import, legacy callers)
-  // []         → supersede prior DAILY expenses for this user/date
-  // [...]      → supersede prior and create these
+  // undefined  -> no expense handling (CSV import, legacy callers)
+  // []         -> supersede prior DAILY expenses for this user/date
+  // [...]      -> supersede prior and create these
   expenseRows?: Array<{ description: string; amount: Prisma.Decimal }>;
 }): Promise<{ summary: ReturnType<typeof serializeSummary>; updated: boolean }> {
   await ensureActiveShift(opts.businessDate, opts.userId);
-
-  const lineTotals = summarize(opts.lines);
-  const totals = opts.totalSalesOverride
-    ? {
-        total: opts.totalSalesOverride,
-        cash: opts.totalSalesOverride.minus(lineTotals.mobile).minus(lineTotals.other),
-        mobile: lineTotals.mobile,
-        other: lineTotals.other,
-      }
-    : lineTotals;
 
   const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.salesSummary.findFirst({
@@ -376,26 +388,76 @@ async function upsertSummary(opts: {
       include: INCLUDE_LINES,
     });
 
+    // Decide which lines will actually be in the DB after this call.
+    //
+    // Empty `lines` in the payload means "leave the existing lines alone".
+    // The manager sales page uses this: it only sets the total, and must
+    // not wipe the waiter's M-Pesa breakdown on a correction. CSV import
+    // and manual entry always pass at least one line, so they keep the
+    // original replace-everything behaviour.
+    let liveLines: Array<{ paymentMethod: PaymentMethod; amount: Prisma.Decimal }>;
+
     if (existing) {
-      await tx.salesSummaryLine.deleteMany({
+      if (opts.lines.length > 0) {
+        await tx.salesSummaryLine.deleteMany({
+          where: { salesSummaryId: existing.id },
+        });
+        await tx.salesSummaryLine.createMany({
+          data: opts.lines.map((l) => ({
+            salesSummaryId: existing.id,
+            paymentMethod: l.paymentMethod,
+            amount: l.amount,
+            notes: l.notes ?? null,
+          })),
+        });
+      }
+      const dbLines = await tx.salesSummaryLine.findMany({
         where: { salesSummaryId: existing.id },
+        select: { paymentMethod: true, amount: true },
       });
+      liveLines = dbLines;
+    } else {
+      liveLines = opts.lines.map((l) => ({
+        paymentMethod: l.paymentMethod,
+        amount: l.amount,
+      }));
+    }
+
+    const mobile = liveLines
+      .filter((l) => l.paymentMethod === 'MPESA')
+      .reduce((a, l) => a.plus(l.amount), toDecimal('0'));
+    const cash = liveLines
+      .filter((l) => l.paymentMethod === 'CASH')
+      .reduce((a, l) => a.plus(l.amount), toDecimal('0'));
+    const other = liveLines
+      .filter((l) => l.paymentMethod !== 'MPESA' && l.paymentMethod !== 'CASH')
+      .reduce((a, l) => a.plus(l.amount), toDecimal('0'));
+    const lineSum = mobile.plus(cash).plus(other);
+
+    const finalTotals = opts.totalSalesOverride
+      ? {
+          total: opts.totalSalesOverride,
+          cash: opts.totalSalesOverride.minus(mobile).minus(other),
+          mobile,
+          other,
+        }
+      : {
+          total: lineSum,
+          cash,
+          mobile,
+          other,
+        };
+
+    if (existing) {
       const updated = await tx.salesSummary.update({
         where: { id: existing.id },
         data: {
-          totalSales: totals.total,
-          cashSales: totals.cash,
-          mobileSales: totals.mobile,
-          otherSales: totals.other,
+          totalSales: finalTotals.total,
+          cashSales: finalTotals.cash,
+          mobileSales: finalTotals.mobile,
+          otherSales: finalTotals.other,
           enteredBy: opts.enteredBy,
           notes: opts.notes,
-          lines: {
-            create: opts.lines.map((l) => ({
-              paymentMethod: l.paymentMethod,
-              amount: l.amount,
-              notes: l.notes ?? null,
-            })),
-          },
         },
         include: INCLUDE_LINES,
       });
@@ -416,10 +478,10 @@ async function upsertSummary(opts: {
         userId: opts.userId,
         enteredBy: opts.enteredBy,
         notes: opts.notes,
-        totalSales: totals.total,
-        cashSales: totals.cash,
-        mobileSales: totals.mobile,
-        otherSales: totals.other,
+        totalSales: finalTotals.total,
+        cashSales: finalTotals.cash,
+        mobileSales: finalTotals.mobile,
+        otherSales: finalTotals.other,
         lines: {
           create: opts.lines.map((l) => ({
             paymentMethod: l.paymentMethod,

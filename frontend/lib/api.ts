@@ -7,11 +7,19 @@ export class ApiError extends Error {
   status: number;
   code: string;
   retryAfterSeconds?: number;
-  constructor(status: number, code: string, message: string, retryAfterSeconds?: number) {
+  details?: unknown;
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    retryAfterSeconds?: number,
+    details?: unknown
+  ) {
     super(message);
     this.status = status;
     this.code = code;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.details = details;
   }
 }
 
@@ -36,7 +44,8 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
       const n = parseInt(ra, 10);
       if (Number.isFinite(n) && n >= 0) retryAfterSeconds = n;
     }
-    throw new ApiError(res.status, code, message, retryAfterSeconds);
+    const details = (data as { details?: unknown }).details;
+    throw new ApiError(res.status, code, message, retryAfterSeconds, details);
   }
   return data as T;
 }

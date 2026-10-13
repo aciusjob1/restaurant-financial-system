@@ -29,6 +29,10 @@ export const ManualSalesSummarySchema = z.object({
   // paper form (e.g. the waiter daily report) rather than itemised lines.
   // When absent, totalSales remains derived from `lines` — same as before.
   totalSales: MoneyString.optional(),
+  // When true, allow replacing an existing MANUAL summary for the same
+  // waiter + date. When false/absent, the controller returns 409
+  // SUMMARY_EXISTS so the manager confirms the replacement explicitly.
+  overwrite: z.boolean().optional(),
   // Lines may be empty when the caller supplies an explicit totalSales
   // and only wants to record the aggregate figure.
   lines: z
