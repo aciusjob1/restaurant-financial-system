@@ -38,3 +38,14 @@ export async function updateEmployee(req: Request, res: Response) {
   const employee = await employeeService.updateEmployee(req.params.id!, input);
   res.json({ success: true, employee });
 }
+
+/**
+ * Minimal active-employee list for the kiosk salary picker.
+ * Gated at the route to WAITER | MANAGER | OWNER.
+ */
+export async function listEmployeesForKiosk(req: Request, res: Response) {
+  // Actor identity comes from the authenticated session (requireAuth at
+  // the router level). Never from the request body or query.
+  const employees = await employeeService.listEmployeesForKiosk(req.user!.id);
+  res.json({ success: true, employees });
+}

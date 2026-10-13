@@ -14,6 +14,14 @@ employeeRouter.get(
   requireRole('OWNER', 'MANAGER', 'AUDITOR'),
   asyncHandler(employeeController.listEmployees)
 );
+// Minimal active-employee list for the kiosk salary picker. Registered
+// before /:id so Express doesn't treat "for-kiosk" as an employee id.
+employeeRouter.get(
+  '/for-kiosk',
+  requireRole('WAITER', 'MANAGER', 'OWNER'),
+  asyncHandler(employeeController.listEmployeesForKiosk)
+);
+
 employeeRouter.get(
   '/:id',
   requireRole('OWNER', 'MANAGER', 'AUDITOR'),

@@ -8,6 +8,7 @@ import type { PaymentMethod, Prisma, Role } from '@prisma/client';
 import { ensureOpenShiftForUserAndDate } from './shiftService.js';
 import { buildSubmissionFingerprint, markSubmissionPending } from './dailyCashReceiptService.js';
 import { nextExpenseNumber } from '../utils/expenseNumber.js';
+import { applySalaryExpense } from './salaryService.js';
 
 const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
   'MPESA',
@@ -163,22 +164,34 @@ export async function listMySummary(userId: string, businessDate: string) {
   });
   if (!summary) return null;
 
+  // Return all active expenses for this waiter/day, regardless of
+  // category. The kiosk renders them with their category name so the
+  // waiter can see what was previously recorded before resubmitting.
   const activeExpenses = await prisma.expense.findMany({
     where: {
       businessDate: bd,
       createdBy: userId,
-      category: { systemKey: 'DAILY' },
       voidedAt: null,
     },
-    select: { description: true, amount: true },
+    select: {
+      id: true,
+      description: true,
+      amount: true,
+      categoryId: true,
+      category: { select: { id: true, name: true, systemKey: true } },
+    },
     orderBy: { createdAt: 'asc' },
   });
 
   return {
     summary: serializeSummary(summary),
     activeExpenses: activeExpenses.map((e) => ({
+      id: e.id,
       description: e.description,
       amount: toMoneyString(e.amount),
+      categoryId: e.categoryId,
+      categoryName: e.category.name,
+      categorySystemKey: e.category.systemKey,
     })),
   };
 }
@@ -217,7 +230,12 @@ export async function submitWaiterCollections(input: {
   actorId: string;
   actorRole: Role;
   mpesaEntries: Array<{ payerName: string; amount: string }>;
-  expenses: Array<{ description: string; amount: string }>;
+  expenses: Array<{
+    categoryId: string;
+    description: string;
+    amount: string;
+    salaryTargetEmployeeId?: string;
+  }>;
 }) {
   const summary = await prisma.salesSummary.findUnique({
     where: { id: input.summaryId },
@@ -345,8 +363,10 @@ export async function submitWaiterCollections(input: {
         userId: attributedUserId,
         enteredBy: input.actorId,
         expenseRows: input.expenses.map((e) => ({
+          categoryId: e.categoryId,
           description: e.description,
           amount: toDecimal(e.amount),
+          salaryTargetEmployeeId: e.salaryTargetEmployeeId,
         })),
       });
 
@@ -356,28 +376,26 @@ export async function submitWaiterCollections(input: {
         include: INCLUDE_LINES,
       });
 
-      const dailyCat = await tx.expenseCategory.findUnique({
-        where: { systemKey: 'DAILY' },
-        select: { id: true },
+      // Return every active expense for this waiter/day, regardless of
+      // category, so the kiosk can render the previous submission in
+      // full before the waiter replaces it.
+      const activeExpenses = await tx.expense.findMany({
+        where: {
+          businessDate: summary.businessDate,
+          createdBy: input.actorId,
+          voidedAt: null,
+        },
+        select: {
+          id: true,
+          expenseNumber: true,
+          amount: true,
+          description: true,
+          paymentMethod: true,
+          categoryId: true,
+          category: { select: { id: true, name: true, systemKey: true } },
+        },
+        orderBy: { createdAt: 'asc' },
       });
-      const activeExpenses = dailyCat
-        ? await tx.expense.findMany({
-            where: {
-              businessDate: summary.businessDate,
-              createdBy: input.actorId,
-              categoryId: dailyCat.id,
-              voidedAt: null,
-            },
-            select: {
-              id: true,
-              expenseNumber: true,
-              amount: true,
-              description: true,
-              paymentMethod: true,
-            },
-            orderBy: { createdAt: 'asc' },
-          })
-        : [];
 
       const fingerprint = buildSubmissionFingerprint({
         mpesaEntries: input.mpesaEntries,
@@ -399,6 +417,9 @@ export async function submitWaiterCollections(input: {
           amount: toMoneyString(e.amount),
           description: e.description,
           paymentMethod: e.paymentMethod,
+          categoryId: e.categoryId,
+          categoryName: e.category.name,
+          categorySystemKey: e.category.systemKey,
         })),
       };
     });
@@ -539,7 +560,12 @@ async function handleDailyExpenses(
     businessDate: Date;
     userId: string | null;
     enteredBy: string;
-    expenseRows?: Array<{ description: string; amount: Prisma.Decimal }>;
+    expenseRows?: Array<{
+      categoryId?: string;
+      description: string;
+      amount: Prisma.Decimal;
+      salaryTargetEmployeeId?: string;
+    }>;
   }
 ): Promise<void> {
   if (opts.expenseRows === undefined) return;
@@ -548,6 +574,10 @@ async function handleDailyExpenses(
     return;
   }
 
+  const rows = opts.expenseRows;
+
+  // DAILY is the fallback for legacy callers (upsertSummary, submitWaiterReport)
+  // that still submit { description, amount } without a category.
   const dailyCat = await tx.expenseCategory.findUnique({
     where: { systemKey: 'DAILY' },
     select: { id: true },
@@ -560,15 +590,62 @@ async function handleDailyExpenses(
     );
   }
 
+  // Any explicit categoryId must exist and be active. Track systemKey
+  // so we can branch on SALARY rows.
+  const explicitIds = Array.from(
+    new Set(rows.map((r) => r.categoryId).filter((v): v is string => !!v))
+  );
+  const byId = new Map<string, { id: string; isActive: boolean; systemKey: string | null }>();
+  if (explicitIds.length > 0) {
+    const cats = await tx.expenseCategory.findMany({
+      where: { id: { in: explicitIds } },
+      select: { id: true, isActive: true, systemKey: true },
+    });
+    for (const c of cats) byId.set(c.id, c);
+    for (const id of explicitIds) {
+      const c = byId.get(id);
+      if (!c) {
+        throw new ApiError(400, 'INVALID_CATEGORY', 'Expense category ' + id + ' does not exist.');
+      }
+      if (!c.isActive) {
+        throw new ApiError(400, 'CATEGORY_INACTIVE', 'Expense category ' + id + ' is not active.');
+      }
+    }
+  }
+
+  // Pre-validate SALARY rows and load target employees before any writes.
+  // A single invalid row aborts the whole transaction, so no partial state.
+  const salaryTargets = new Map<string, { id: string; isActive: boolean }>();
+  for (const row of rows) {
+    const cat = row.categoryId ? byId.get(row.categoryId) : undefined;
+    const isSalary = cat?.systemKey === 'SALARY';
+    if (!isSalary) continue;
+    if (!row.salaryTargetEmployeeId) {
+      throw new ApiError(
+        400,
+        'EMPLOYEE_REQUIRED',
+        'A salary expense must specify salaryTargetEmployeeId.'
+      );
+    }
+    const emp = await tx.employee.findUnique({
+      where: { id: row.salaryTargetEmployeeId },
+      select: { id: true, isActive: true },
+    });
+    if (!emp) {
+      throw new ApiError(400, 'INVALID_EMPLOYEE', 'Employee ' + row.salaryTargetEmployeeId + ' does not exist.');
+    }
+    if (!emp.isActive) {
+      throw new ApiError(409, 'EMPLOYEE_INACTIVE', 'Employee ' + emp.id + ' is not active.');
+    }
+    salaryTargets.set(row.salaryTargetEmployeeId, emp);
+  }
+
+  // Void this actor's prior non-voided rows for this business date,
+  // regardless of category. One resubmission replaces the whole list.
   await tx.expense.updateMany({
     where: {
       businessDate: opts.businessDate,
-      // Match how rows are created below: createdBy is the actor who
-      // submitted the report. For the kiosk path (waiter submits own
-      // report) this equals opts.userId; using enteredBy keeps the
-      // filter correct if a MANAGER ever submits on behalf.
       createdBy: opts.enteredBy,
-      categoryId: dailyCat.id,
       status: 'APPROVED',
       voidedAt: null,
     },
@@ -580,13 +657,15 @@ async function handleDailyExpenses(
     },
   });
 
-  for (const row of opts.expenseRows) {
+  for (const row of rows) {
+    const cat = row.categoryId ? byId.get(row.categoryId) : undefined;
+    const isSalary = cat?.systemKey === 'SALARY';
     const expenseNumber = await nextExpenseNumber(tx);
-    await tx.expense.create({
+    const created = await tx.expense.create({
       data: {
         expenseNumber,
         businessDate: opts.businessDate,
-        categoryId: dailyCat.id,
+        categoryId: row.categoryId ?? dailyCat.id,
         shiftId: null,
         createdBy: opts.enteredBy,
         approvedBy: opts.enteredBy,
@@ -595,8 +674,27 @@ async function handleDailyExpenses(
         paymentMethod: 'CASH',
         description: row.description,
         status: 'APPROVED',
+        salaryTargetEmployeeId: isSalary ? (row.salaryTargetEmployeeId ?? null) : null,
       },
     });
+
+    // SALARY at the kiosk is a real payroll event. applySalaryExpense
+    // pays down the employee's outstanding salary and records any
+    // excess as a SalaryAdvance. If the employee has no APPROVED/PAID
+    // SalaryRecord, it throws NO_SALARY_RECORD and the whole kiosk
+    // submission rolls back — the money movement and the payroll
+    // record either both land or neither does.
+    if (isSalary && created.salaryTargetEmployeeId) {
+      await applySalaryExpense(tx, {
+        expenseId: created.id,
+        employeeId: created.salaryTargetEmployeeId,
+        amount: created.amount,
+        paymentMethod: created.paymentMethod,
+        businessDate: created.businessDate,
+        recordedBy: opts.enteredBy,
+        notes: created.notes ?? null,
+      });
+    }
   }
 }
 

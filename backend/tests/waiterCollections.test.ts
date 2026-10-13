@@ -32,6 +32,7 @@ function todayISO(): string {
 let waiterId: string;
 let otherWaiterId: string;
 let managerId: string;
+let dailyCategoryId: string;
 
 async function cleanup() {
   const names = [WAITER.username, OTHER_WAITER.username, MANAGER.username];
@@ -98,6 +99,13 @@ beforeAll(async () => {
   otherWaiterId = o.id;
   const m = await makeUser({ ...MANAGER, role: 'MANAGER' });
   managerId = m.id;
+
+  const dailyCat = await prisma.expenseCategory.findUnique({
+    where: { systemKey: 'DAILY' },
+    select: { id: true },
+  });
+  if (!dailyCat) throw new Error('DAILY expense category missing — run prisma:apply-raw-sql');
+  dailyCategoryId = dailyCat.id;
 });
 
 afterAll(async () => {
@@ -141,8 +149,8 @@ describe('submitWaiterCollections', () => {
         { payerName: 'Juma', amount: '3000.00' },
       ],
       expenses: [
-        { description: 'Fuel', amount: '2000.00' },
-        { description: 'Ice', amount: '500.00' },
+        { categoryId: dailyCategoryId, description: 'Fuel', amount: '2000.00' },
+        { categoryId: dailyCategoryId, description: 'Ice', amount: '500.00' },
       ],
     });
 
@@ -180,7 +188,7 @@ describe('submitWaiterCollections', () => {
       actorId: waiterId,
       actorRole: 'WAITER',
       mpesaEntries: [{ payerName: 'Amina', amount: '5000.00' }],
-      expenses: [{ description: 'First', amount: '100.00' }],
+      expenses: [{ categoryId: dailyCategoryId, description: 'First', amount: '100.00' }],
     });
 
     await submitWaiterCollections({
@@ -191,7 +199,7 @@ describe('submitWaiterCollections', () => {
         { payerName: 'Amina', amount: '6000.00' },
         { payerName: 'Juma', amount: '2000.00' },
       ],
-      expenses: [{ description: 'Second', amount: '200.00' }],
+      expenses: [{ categoryId: dailyCategoryId, description: 'Second', amount: '200.00' }],
     });
 
     const active = await prisma.collection.findMany({
@@ -257,7 +265,7 @@ describe('submitWaiterCollections', () => {
         actorId: waiterId,
         actorRole: 'WAITER',
         mpesaEntries: [{ payerName: 'ManagerAmina', amount: '7000.00' }],
-        expenses: [{ description: 'ShouldNotPersist', amount: '50.00' }],
+        expenses: [{ categoryId: dailyCategoryId, description: 'ShouldNotPersist', amount: '50.00' }],
       })
     ).rejects.toMatchObject({ status: 409, code: 'CONFLICT_WITH_OTHER_ACTOR' });
 
@@ -435,7 +443,7 @@ describe('submitWaiterCollections', () => {
       actorId: waiterId,
       actorRole: 'WAITER',
       mpesaEntries: [],
-      expenses: [{ description: 'OnlyExpense', amount: '300.00' }],
+      expenses: [{ categoryId: dailyCategoryId, description: 'OnlyExpense', amount: '300.00' }],
     });
 
     const activeCollections = await prisma.collection.findMany({
@@ -453,5 +461,48 @@ describe('submitWaiterCollections', () => {
     });
     expect(activeExpenses).toHaveLength(1);
     expect(activeExpenses[0].description).toBe('OnlyExpense');
+  });
+});
+
+describe('listEmployeesForKiosk', () => {
+  it("returns only the calling user's active Employee record", async () => {
+    const position = await prisma.position.findFirstOrThrow({ where: { isActive: true } });
+    const emp = await prisma.employee.create({
+      data: {
+        employeeNumber: 'TEST-KIOSK-1',
+        fullName: 'Kiosk Waiter',
+        positionId: position.id,
+        userId: waiterId,
+        startDate: new Date(),
+        isActive: true,
+      },
+    });
+    const other = await prisma.employee.create({
+      data: {
+        employeeNumber: 'TEST-KIOSK-2',
+        fullName: 'Other Employee',
+        positionId: position.id,
+        userId: otherWaiterId,
+        startDate: new Date(),
+        isActive: true,
+      },
+    });
+
+    try {
+      const { listEmployeesForKiosk } = await import('../src/services/employeeService.js');
+      const rows = await listEmployeesForKiosk(waiterId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].id).toBe(emp.id);
+      expect(rows[0].fullName).toBe('Kiosk Waiter');
+      expect(rows.find((r) => r.id === other.id)).toBeUndefined();
+    } finally {
+      await prisma.employee.deleteMany({ where: { id: { in: [emp.id, other.id] } } });
+    }
+  });
+
+  it('returns [] when the calling user has no Employee record', async () => {
+    const { listEmployeesForKiosk } = await import('../src/services/employeeService.js');
+    const rows = await listEmployeesForKiosk(waiterId);
+    expect(rows).toEqual([]);
   });
 });

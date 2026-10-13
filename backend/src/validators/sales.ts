@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 export const PAYMENT_METHODS = [
   'CASH',
@@ -117,7 +118,7 @@ export const WaiterCollectionsSchema = z.object({
   mpesaEntries: z
     .array(
       z.object({
-        payerName: z.string().trim().min(1).max(64),
+        payerName: z.string().trim().min(1).max(64).transform(titleCaseName),
         amount: MoneyString,
       })
     )
@@ -125,8 +126,13 @@ export const WaiterCollectionsSchema = z.object({
   expenses: z
     .array(
       z.object({
+        categoryId: z.string().min(1),
         description: z.string().trim().min(1).max(200),
         amount: MoneyString,
+        // Required when the category is the SALARY system category.
+        // The service enforces that. Left optional in the schema so the
+        // error can carry a specific code.
+        salaryTargetEmployeeId: z.string().min(1).optional(),
       })
     )
     .default([]),

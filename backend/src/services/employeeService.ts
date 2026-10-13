@@ -54,6 +54,27 @@ export async function listEmployees() {
   return rows.map(serializeEmployee);
 }
 
+/**
+ * Minimal active-employee list for the kiosk salary picker.
+ * Only returns fields a waiter needs: identity and number. No salary,
+ * position, phone, or notes.
+ */
+export async function listEmployeesForKiosk(userId: string) {
+  // Returns only the calling user's own active Employee record, or [].
+  // Employee.userId is @unique, so this returns at most one row.
+  const rows = await prisma.employee.findMany({
+    where: { userId, isActive: true },
+    orderBy: { fullName: 'asc' },
+    select: {
+      id: true,
+      fullName: true,
+      employeeNumber: true,
+      isActive: true,
+    },
+  });
+  return rows;
+}
+
 export async function getEmployeeById(id: string) {
   const row = await prisma.employee.findUnique({ where: { id } });
   if (!row) throw new ApiError(404, 'NOT_FOUND', 'Employee not found.');

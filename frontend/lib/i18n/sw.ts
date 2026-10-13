@@ -105,6 +105,12 @@ export const sw: Dict = {
   'kiosk.report.noSales.heading': 'Mauzo hayajaingizwa bado',
   'kiosk.report.noSales.body': "Mauzo ya leo hayajaingizwa bado. Wasiliana na msimamizi wako. Mauzo huingizwa baada ya kazi ya siku kukamilika.",
   'kiosk.report.readOnlyTotal': 'Jumla ya mauzo (imeingizwa na msimamizi wako)',
+  'kiosk.report.expenseCategory': 'Aina',
+  'kiosk.report.noCategories': 'Hakuna aina za matumizi zilizowekwa. Omba meneja kuongeza moja.',
+  'kiosk.report.expenseEmployee': 'Mfanyakazi',
+  'kiosk.report.expenseEmployeeSelect': 'Chagua mfanyakazi',
+  'kiosk.report.employeeRequired': 'Chagua mfanyakazi kwa matumizi ya mshahara.',
+  'kiosk.report.noEmployeeForKiosk': 'Akaunti yako haijaunganishwa na rekodi ya mfanyakazi. Omba meneja kuunganisha kabla ya kurekodi matumizi ya mshahara.',
 
   'kiosk.dayDone.heading': 'Siku imekamilika.',
   'kiosk.dayDone.body': 'Zamu yako ya leo imefungwa. Toka ukiwa tayari kwa mtu anayefuata.',

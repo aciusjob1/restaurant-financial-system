@@ -103,6 +103,12 @@ export const en = {
   'kiosk.report.noSales.heading': 'Sales not entered yet',
   'kiosk.report.noSales.body': "Sales for today have not been entered. Contact your supervisor. Sales are entered after the day's work is complete.",
   'kiosk.report.readOnlyTotal': 'Total sales (entered by your supervisor)',
+  'kiosk.report.expenseCategory': 'Category',
+  'kiosk.report.noCategories': 'No expense categories are configured. Ask a manager to add one.',
+  'kiosk.report.expenseEmployee': 'Employee',
+  'kiosk.report.expenseEmployeeSelect': 'Select employee',
+  'kiosk.report.employeeRequired': 'Select an employee for the salary expense.',
+  'kiosk.report.noEmployeeForKiosk': 'Your account is not linked to an employee record. Ask a manager to link it before recording salary expenses.',
 
   'kiosk.dayDone.heading': 'Day complete.',
   'kiosk.dayDone.body': 'Your shift for today is closed. Sign out when ready for the next person.',
