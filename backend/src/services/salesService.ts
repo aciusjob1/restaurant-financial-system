@@ -6,6 +6,7 @@ import { parseSalesCsv } from './posImporter.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
 import type { PaymentMethod, Prisma, Role } from '@prisma/client';
 import { ensureOpenShiftForUserAndDate } from './shiftService.js';
+import { buildSubmissionFingerprint, markSubmissionPending } from './dailyCashReceiptService.js';
 import { nextExpenseNumber } from '../utils/expenseNumber.js';
 
 const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
@@ -377,6 +378,17 @@ export async function submitWaiterCollections(input: {
             orderBy: { createdAt: 'asc' },
           })
         : [];
+
+      const fingerprint = buildSubmissionFingerprint({
+        mpesaEntries: input.mpesaEntries,
+        expenses: input.expenses,
+      });
+      await markSubmissionPending(tx, {
+        userId: attributedUserId,
+        businessDate: summary.businessDate,
+        actorId: input.actorId,
+        fingerprint,
+      });
 
       return {
         summary: serializeSummary(finalSummary),

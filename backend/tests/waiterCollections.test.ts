@@ -42,6 +42,7 @@ async function cleanup() {
   const uids = users.map((u) => u.id);
   if (!uids.length) return;
 
+  await prisma.dailyCashReceipt.deleteMany({ where: { userId: { in: uids } } });
   await prisma.collection.deleteMany({ where: { userId: { in: uids } } });
   await prisma.collection.deleteMany({ where: { createdById: { in: uids } } });
   await prisma.expense.deleteMany({ where: { createdBy: { in: uids } } });
@@ -109,6 +110,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const uids = [waiterId, otherWaiterId, managerId];
+  await prisma.dailyCashReceipt.deleteMany({ where: { userId: { in: uids } } });
   await prisma.collection.deleteMany({ where: { userId: { in: uids } } });
   await prisma.collection.deleteMany({ where: { createdById: { in: uids } } });
   await prisma.expense.deleteMany({ where: { createdBy: { in: uids } } });

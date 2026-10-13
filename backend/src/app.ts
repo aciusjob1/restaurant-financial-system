@@ -12,6 +12,7 @@ import { salesRouter } from './routes/salesRoutes.js';
 import { collectionRouter } from './routes/collectionRoutes.js';
 import { reconciliationRouter } from './routes/reconciliationRoutes.js';
 import { handoverRouter } from './routes/handoverRoutes.js';
+import { dailyCashReceiptRouter } from './routes/dailyCashReceiptRoutes.js';
 import { closingRouter } from './routes/closingRoutes.js';
 import { expenseRouter, expenseCategoryRouter } from './routes/expenseRoutes.js';
 import { salaryRouter, salaryPaymentRouter } from './routes/salaryRoutes.js';
@@ -68,6 +69,7 @@ export function createApp() {
   app.use('/api/v1/collections', collectionRouter);
   app.use('/api/v1/reconciliations', reconciliationRouter);
   app.use('/api/v1/handovers', handoverRouter);
+  app.use('/api/v1/daily-cash-receipts', dailyCashReceiptRouter);
   app.use('/api/v1/daily-closings', closingRouter);
   app.use('/api/v1/expense-categories', expenseCategoryRouter);
   app.use('/api/v1/expenses', expenseRouter);

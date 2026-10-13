@@ -46,6 +46,13 @@ enum SalesSummarySource {
 }
 
 
+enum DailyCashStatus {
+  PENDING
+  APPROVED
+  INSUFFICIENT
+  NO_NETCASH_HANDED_OVER
+}
+
 enum ReconciliationStatus {
   DRAFT
   SUBMITTED
@@ -141,6 +148,10 @@ model User {
   allocationsVoided       PaymentAllocation[] @relation("AllocationVoidedBy")
   materialsCreated        Material[]         @relation("MaterialCreatedBy")
   materialCategoriesCreated MaterialCategory[] @relation("MaterialCategoryCreatedBy")
+  dailyCashReceiptsCreated  DailyCashReceipt[]         @relation("DailyCashReceiptCreatedBy")
+  dailyCashReceiptsDecided  DailyCashReceipt[]         @relation("DailyCashReceiptDecidedBy")
+  dailyCashReceiptsOwned    DailyCashReceipt[]         @relation("DailyCashReceiptUser")
+  dailyCashReceiptDecisions DailyCashReceiptDecision[] @relation("DailyCashReceiptDecisionDecidedBy")
 
   stockMovementsCreated   StockMovement[]  @relation("StockMovementCreatedBy")
 
@@ -272,6 +283,48 @@ model SalesSummary {
   @@unique([source, businessDate, sourceReference, userId])
   @@index([businessDate])
   @@index([userId])
+}
+
+model DailyCashReceipt {
+  id                    String           @id @default(cuid())
+  userId                String
+  businessDate          DateTime         @db.Date
+  status                DailyCashStatus  @default(PENDING)
+  amountReceived        Decimal?         @db.Decimal(14, 2)
+  submissionFingerprint String?
+
+  createdBy             String
+  createdAt             DateTime         @default(now())
+  decidedBy             String?
+  decidedAt             DateTime?
+  updatedAt             DateTime         @updatedAt
+
+  user           User           @relation("DailyCashReceiptUser",     fields: [userId],    references: [id], onDelete: Restrict)
+  createdByUser  User           @relation("DailyCashReceiptCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  decidedByUser  User?          @relation("DailyCashReceiptDecidedBy", fields: [decidedBy], references: [id], onDelete: Restrict)
+  decisions      DailyCashReceiptDecision[]
+
+  @@unique([userId, businessDate])
+  @@index([businessDate])
+  @@index([status])
+}
+
+model DailyCashReceiptDecision {
+  id                String           @id @default(cuid())
+  receiptId         String
+  status            DailyCashStatus
+  amountReceived    Decimal?         @db.Decimal(14, 2)
+  decidedBy         String
+  decidedAt         DateTime         @default(now())
+  invalidatedAt     DateTime?
+  invalidatedReason String?
+  createdAt         DateTime         @default(now())
+
+  receipt        DailyCashReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  decidedByUser  User             @relation("DailyCashReceiptDecisionDecidedBy", fields: [decidedBy], references: [id], onDelete: Restrict)
+
+  @@index([receiptId])
+  @@index([decidedAt])
 }
 
 model SalesSummaryLine {
