@@ -227,7 +227,7 @@ describe('Daily report — createManualSummary extensions', () => {
     expect(otherActive[0].description).toBe('OtherWaiterExpense');
   });
 
-  it('resubmission does not void non-DAILY expenses (e.g. a custom category)', async () => {
+  it('resubmission voids every active expense for the actor, regardless of category', async () => {
     const d = today();
 
     // Create a one-off category and a manual expense on it.
@@ -248,7 +248,10 @@ describe('Daily report — createManualSummary extensions', () => {
     });
 
     try {
-      // Submit a daily report (which voids DAILY, creates new).
+      // Submit a daily report. This voids every active expense for this
+      // actor on this business date, regardless of category, then creates
+      // the new rows. The prior custom-category expense is superseded
+      // along with any DAILY rows.
       await createManualSummary({
         businessDate: d,
         sourceReference: '',
@@ -261,10 +264,10 @@ describe('Daily report — createManualSummary extensions', () => {
         actorRole: 'WAITER',
       });
 
-      const stillActive = await prisma.expense.findUnique({ where: { id: customExpense.id } });
-      expect(stillActive).not.toBeNull();
-      expect(stillActive!.voidedAt).toBeNull();
-      expect(stillActive!.status).toBe('APPROVED');
+      const afterSubmit = await prisma.expense.findUnique({ where: { id: customExpense.id } });
+      expect(afterSubmit).not.toBeNull();
+      expect(afterSubmit!.voidedAt).not.toBeNull();
+      expect(afterSubmit!.status).toBe('VOID');
     } finally {
       // Cleanup custom category's expense first, then the category.
       await prisma.expense.deleteMany({ where: { categoryId: customCat.id } });
