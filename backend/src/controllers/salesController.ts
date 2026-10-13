@@ -6,6 +6,7 @@ import type {
   ListSalesSummariesQuery,
   MySummaryQuery,
   WaiterReportInput,
+  WaiterCollectionsInput,
 } from '../validators/sales.js';
 import type { PaymentMethod } from '@prisma/client';
 
@@ -104,4 +105,24 @@ export async function submitWaiterReport(req: Request, res: Response) {
     expenseRows: body.expenseRows,
   });
   res.status(200).json({ success: true, summary });
+}
+
+/**
+ * Waiter (or manager on a waiter's behalf) submits the day's actual money
+ * movements: M-Pesa collections keyed by payer name, and expenses.
+ *
+ * Response includes the persisted summary (unchanged by this endpoint),
+ * the newly created collections, and the actor's currently-active DAILY
+ * expenses after supersession.
+ */
+export async function submitWaiterCollections(req: Request, res: Response) {
+  const body = req.body as WaiterCollectionsInput;
+  const result = await salesService.submitWaiterCollections({
+    summaryId: req.params.id!,
+    actorId: req.user!.id,
+    actorRole: req.user!.role,
+    mpesaEntries: body.mpesaEntries,
+    expenses: body.expenses,
+  });
+  res.status(200).json({ success: true, ...result });
 }

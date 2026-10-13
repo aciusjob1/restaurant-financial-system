@@ -3,7 +3,7 @@ import multer from 'multer';
 import * as salesController from '../controllers/salesController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
-import { ManualSalesSummarySchema, WaiterReportSchema } from '../validators/sales.js';
+import { ManualSalesSummarySchema, WaiterReportSchema, WaiterCollectionsSchema } from '../validators/sales.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../errors/ApiError.js';
 
@@ -60,6 +60,17 @@ salesRouter.post(
   requireRole('WAITER', 'MANAGER', 'OWNER'),
   validateBody(WaiterReportSchema),
   asyncHandler(salesController.submitWaiterReport)
+);
+
+// Waiter submits the day's actual money movements: M-Pesa entries (written
+// to Collection, keyed by payer name in mobileReference) and expenses
+// (written to Expense on the DAILY category). One transaction. Does not
+// touch SalesSummary; declared sales stay as entered on /ops/sales.
+salesRouter.post(
+  '/:id/waiter-collections',
+  requireRole('WAITER', 'MANAGER', 'OWNER'),
+  validateBody(WaiterCollectionsSchema),
+  asyncHandler(salesController.submitWaiterCollections)
 );
 
 // Manual entry: OWNER, MANAGER only

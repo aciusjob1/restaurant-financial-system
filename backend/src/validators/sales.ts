@@ -96,3 +96,39 @@ export const WaiterReportSchema = z.object({
     .default([]),
 });
 export type WaiterReportInput = z.infer<typeof WaiterReportSchema>;
+
+// For POST /:id/waiter-collections — the waiter's (or manager's) submission
+// of the day's actual money movements. M-Pesa entries go to `Collection`
+// (mobileReference = payer name); expenses go to `Expense` on the DAILY
+// category. The service never touches `SalesSummary`. Declared sales and
+// recorded collections are independent inputs to the closing comparison.
+//
+// Amounts accept MoneyString (up to 2 decimal places, within Decimal(14,2)).
+// Negative amounts are not currently rejected at the schema level; the
+// service trusts the validator. If we want positivity enforced, add a
+// PositiveMoneyString variant here and switch these two `amount` fields.
+//
+// Payer names are stored in Collection.mobileReference, which has a partial
+// unique index on (shiftId, paymentMethod, mobileReference) scoped to active
+// (non-voided) rows. Two distinct payers with the same name on the same shift
+// cannot coexist — the second POST returns 409 DUPLICATE_MOBILE_REFERENCE.
+// That is a documented, deliberate limitation, not a bug.
+export const WaiterCollectionsSchema = z.object({
+  mpesaEntries: z
+    .array(
+      z.object({
+        payerName: z.string().trim().min(1).max(64),
+        amount: MoneyString,
+      })
+    )
+    .default([]),
+  expenses: z
+    .array(
+      z.object({
+        description: z.string().trim().min(1).max(200),
+        amount: MoneyString,
+      })
+    )
+    .default([]),
+});
+export type WaiterCollectionsInput = z.infer<typeof WaiterCollectionsSchema>;
