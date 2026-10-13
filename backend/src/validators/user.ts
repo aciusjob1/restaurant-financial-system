@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 const ROLES = ['OWNER', 'MANAGER', 'WAITER', 'AUDITOR'] as const;
 
@@ -10,14 +11,14 @@ export const CreateUserSchema = z.object({
     .min(3)
     .max(64)
     .regex(/^[A-Za-z0-9_.-]+$/, 'Username may only contain letters, digits, _, ., or -.'),
-  fullName: z.string().trim().min(1).max(128),
+  fullName: z.string().trim().min(1).max(128).transform(titleCaseName),
   phone: z.string().trim().max(32).nullable().optional(),
   role: z.enum(ROLES),
   password: z.string().min(12).max(256),
 });
 
 export const UpdateUserSchema = z.object({
-  fullName: z.string().trim().min(1).max(128).optional(),
+  fullName: z.string().trim().min(1).max(128).transform(titleCaseName).optional(),
   language: z.enum(['en', 'sw']).nullable().optional(),
   phone: z.string().trim().max(32).nullable().optional(),
   isActive: z.boolean().optional(),

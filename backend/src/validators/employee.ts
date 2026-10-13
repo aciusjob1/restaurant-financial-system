@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 const MoneyString = z
   .string()
@@ -34,7 +35,7 @@ export const LoginSubSchema = z.object({
 });
 
 export const CreateEmployeeSchema = z.object({
-  fullName: z.string().trim().min(1).max(128),
+  fullName: z.string().trim().min(1).max(128).transform(titleCaseName),
   phone: z.string().trim().max(32).nullable().optional(),
   positionId: z.string().min(1),
   userId: z.string().nullable().optional(),
@@ -44,7 +45,7 @@ export const CreateEmployeeSchema = z.object({
 });
 
 export const UpdateEmployeeSchema = z.object({
-  fullName: z.string().trim().min(1).max(128).optional(),
+  fullName: z.string().trim().min(1).max(128).transform(titleCaseName).optional(),
   phone: z.string().trim().max(32).nullable().optional(),
   positionId: z.string().min(1).optional(),
   userId: z.string().nullable().optional(),

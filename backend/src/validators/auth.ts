@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 export const LoginSchema = z.object({
   username: z.string().trim().min(3).max(64),
@@ -31,7 +32,7 @@ export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 
 export const UpdateMyProfileSchema = z
   .object({
-    fullName: z.string().trim().min(1).max(128).optional(),
+    fullName: z.string().trim().min(1).max(128).transform(titleCaseName).optional(),
     phone: z.string().trim().max(32).nullable().optional(),
     language: z.enum(['en', 'sw']).nullable().optional(),
     autoApproveExpenses: z.boolean().optional(),
