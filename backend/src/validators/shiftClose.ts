@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 const PAYMENT_METHODS = [
   'CASH', 'MPESA', 'AIRTEL_MONEY', 'TIGO_PESA',
@@ -27,7 +28,7 @@ const PositiveMoneyString = MoneyString.refine(
 // mangling). If two payers with the same name appear on the same shift,
 // the operator must disambiguate the reference at entry time.
 const MpesaEntrySchema = z.object({
-  payerName: z.string().trim().min(1).max(64),
+  payerName: z.string().trim().min(1).max(64).transform(titleCaseName),
   amount: PositiveMoneyString,
 });
 

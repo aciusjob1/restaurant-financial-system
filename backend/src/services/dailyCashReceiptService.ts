@@ -194,9 +194,13 @@ export async function listForDate(businessDateInput: string) {
     const col = collectedByUser.get(uid)
       ?? { cash: toDecimal('0'), mobile: toDecimal('0'), other: toDecimal('0'), total: toDecimal('0') };
     const expensesTotal = expensesByUser.get(uid) ?? toDecimal('0');
+    // Expected net cash = what the drawer should hold. Sales minus the
+    // money that did not go into the drawer вЂ” M-Pesa and other non-cash
+    // collections, as actually collected вЂ” minus the cash expenses the
+    // waiter recorded. The waiter's kiosk shows the same number.
     const expectedNet = sums.totalSales
-      .minus(sums.mobileSales)
-      .minus(sums.otherSales)
+      .minus(col.mobile)
+      .minus(col.other)
       .minus(expensesTotal);
     const receipt = receiptByUser.get(uid);
 
@@ -320,4 +324,32 @@ export async function upsertReceipt(input: {
       updatedAt: updated.updatedAt.toISOString(),
     };
   });
+}
+
+/**
+ * Returns the calling user's own receipt for a date, or null if none
+ * exists. Used by the kiosk to display the manager's decision on the
+ * waiter's most recent submission. Returns no other user's row.
+ */
+export async function getMyReceiptForDate(userId: string, businessDateInput: string) {
+  const businessDate = parseBusinessDate(businessDateInput);
+  const row = await prisma.dailyCashReceipt.findUnique({
+    where: { userId_businessDate: { userId, businessDate } },
+    select: {
+      id: true,
+      status: true,
+      amountReceived: true,
+      decidedAt: true,
+      updatedAt: true,
+    },
+  });
+  if (!row) return null;
+  return {
+    id: row.id,
+    businessDate: businessDateInput,
+    status: row.status,
+    amountReceived: row.amountReceived === null ? null : toMoneyString(row.amountReceived),
+    decidedAt: row.decidedAt?.toISOString() ?? null,
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }

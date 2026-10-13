@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 const PAYMENT_METHODS = [
   'CASH',
@@ -26,12 +27,12 @@ const PositiveMoneyString = MoneyString.refine(
 const DateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD');
 
 export const CreateExpenseCategorySchema = z.object({
-  name: z.string().trim().min(2).max(64),
+  name: z.string().trim().min(2).max(64).transform(titleCaseName),
   description: z.string().trim().max(500).nullable().optional(),
 });
 
 export const UpdateExpenseCategorySchema = z.object({
-  name: z.string().trim().min(2).max(64).optional(),
+  name: z.string().trim().min(2).max(64).transform(titleCaseName).optional(),
   description: z.string().trim().max(500).nullable().optional(),
   isActive: z.boolean().optional(),
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { titleCaseName } from '@/lib/textCase';
 
 type FieldBase = {
   label: string;
@@ -23,7 +24,11 @@ function Label({ text, children }: { text: string; children: ReactNode }) {
 const INPUT_CLS =
   'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none disabled:bg-slate-50 disabled:text-slate-500';
 
-export function TextField(p: FieldBase & { autoComplete?: string; type?: 'text' | 'password' | 'email' | 'tel' }) {
+export function TextField(p: FieldBase & {
+  autoComplete?: string;
+  type?: 'text' | 'password' | 'email' | 'tel';
+  titleCase?: boolean;
+}) {
   return (
     <Label text={p.label}>
       <input
@@ -31,6 +36,12 @@ export function TextField(p: FieldBase & { autoComplete?: string; type?: 'text' 
         className={INPUT_CLS}
         value={p.value}
         onChange={(e) => p.onChange(e.target.value)}
+        onBlur={p.titleCase
+          ? (e) => {
+              const next = titleCaseName(e.target.value);
+              if (next !== p.value) p.onChange(next);
+            }
+          : undefined}
         required={p.required}
         placeholder={p.placeholder}
         autoComplete={p.autoComplete}

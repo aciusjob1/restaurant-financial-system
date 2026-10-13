@@ -110,10 +110,10 @@ function SuppliersContent() {
 
       <form onSubmit={onCreate} className='rounded-2xl border border-slate-200 bg-white p-4 space-y-3'>
         <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-          <TextField label={t('form.name')} value={name} onChange={setName} required />
+          <TextField label={t('form.name')} value={name} onChange={setName} required titleCase />
           <TextField label={t('form.phone')} value={phone} onChange={setPhone} />
           <TextField label={t('form.email')} value={email} onChange={setEmail} />
-          <TextField label={t('form.contactPerson')} value={contactPerson} onChange={setContactPerson} />
+          <TextField label={t('form.contactPerson')} value={contactPerson} onChange={setContactPerson} titleCase />
         </div>
         <TextArea label={t('form.notes')} value={notes} onChange={setNotes} placeholder={t('common.optional')} />
         <SubmitButton busy={busy}>{t('action.createSupplier')}</SubmitButton>

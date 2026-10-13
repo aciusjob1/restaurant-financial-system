@@ -242,16 +242,19 @@ export default function CashPage() {
                             {t('ops.cashFlow.row.sales')}: <span className='font-mono'>{r.sales}</span>
                           </div>
                           <div className='text-slate-600'>
-                            {t('ops.cashFlow.row.collected')}: <span className='font-mono'>{r.collectedTotal}</span>
+                            {t('ops.cashFlow.row.mobile')}: <span className='font-mono'>{r.collectedMobile}</span>
+                          </div>
+                          <div className='text-slate-600'>
+                            {t('ops.cashFlow.row.other')}: <span className='font-mono'>{r.collectedOther}</span>
+                          </div>
+                          <div className='text-slate-600'>
+                            {t('ops.cashFlow.row.totalIn')}: <span className='font-mono'>{r.collectedTotal}</span>
                           </div>
                           <div className='text-slate-600'>
                             {t('table.expenses')}: <span className='font-mono'>{r.expensesTotal}</span>
                           </div>
-                          <div className='text-slate-600'>
-                            {t('ops.cashFlow.row.mobile')}: <span className='font-mono'>{r.mobileSales}</span>
-                          </div>
                           <div className='text-slate-600 font-medium'>
-                            {t('ops.cashFlow.row.expected')}: <span className='font-mono'>{r.expectedNet}</span>
+                            {t('ops.cashFlow.row.expectedCash')}: <span className='font-mono'>{r.expectedNet}</span>
                           </div>
                         </div>
                         {recv !== null && (

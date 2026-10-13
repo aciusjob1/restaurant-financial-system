@@ -5,6 +5,7 @@ import { KioskShell, KioskHeader } from '@/components/kiosk/KioskShell';
 import { FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
+import { titleCaseName } from '@/lib/textCase';
 
 type Me = { id: string; fullName: string; role: string };
 
@@ -48,10 +49,20 @@ type Employee = {
   isActive: boolean;
 };
 
+type MyReceipt = {
+  id: string;
+  businessDate: string;
+  status: 'PENDING' | 'APPROVED' | 'INSUFFICIENT' | 'NO_NETCASH_HANDED_OVER';
+  amountReceived: string | null;
+  decidedAt: string | null;
+  updatedAt: string;
+};
+
 type MyResponse = {
   success: true;
   summary: Summary | null;
   activeExpenses: ActiveExpense[];
+  mpesaEntries: Array<{ id: string; payerName: string; amount: string }>;
 };
 
 type MpesaRow = { key: string; name: string; amount: string };
@@ -104,6 +115,8 @@ export default function KioskPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
   const [saved, setSaved] = useState(false);
+  const [myReceipt, setMyReceipt] = useState<MyReceipt | null>(null);
+  const [mode, setMode] = useState<'view' | 'edit'>('edit');
 
   async function load() {
     setLoading(true);
@@ -137,15 +150,27 @@ export default function KioskPage() {
       );
       setSummary(myRes.summary);
 
-      const mpesaLines = (myRes.summary?.lines ?? []).filter(
-        (l) => l.paymentMethod === 'MPESA',
-      );
+      // Fetch the manager's decision on this waiter's most recent
+      // submission, if any. The endpoint returns only the caller's own
+      // receipt. This is a soft dependency: a failure does not block
+      // the form.
+      const receiptRes = await apiFetch<{ success: true; receipt: MyReceipt | null }>(
+        '/api/v1/daily-cash-receipts/mine?businessDate=' + todayISO(),
+      ).catch(() => ({ success: true as const, receipt: null as MyReceipt | null }));
+      setMyReceipt(receiptRes.receipt);
+
+      // If a submission exists, default to view mode so the waiter sees
+      // what was submitted rather than an editable form. If nothing has
+      // been submitted yet, there is nothing to view вЂ” stay in edit mode.
+      setMode(receiptRes.receipt ? 'view' : 'edit');
+
+      const mpesaRows = myRes.mpesaEntries ?? [];
       setMpesa(
-        mpesaLines.length > 0
-          ? mpesaLines.map((l) => ({
+        mpesaRows.length > 0
+          ? mpesaRows.map((c) => ({
               key: uid(),
-              name: l.notes ?? '',
-              amount: l.amount,
+              name: c.payerName,
+              amount: c.amount,
             }))
           : [{ key: uid(), name: '', amount: '' }],
       );
@@ -282,6 +307,7 @@ export default function KioskPage() {
 
       setSaved(true);
       await load();
+      setMode('view');
     } catch (e) {
       setErr({
         code: e instanceof ApiError ? e.code : 'ERR',
@@ -326,6 +352,20 @@ export default function KioskPage() {
   const noCategories = categories.length === 0;
   const noEmployee = employees.length === 0;
 
+  // Once a manager approves the submission, the record is final from the
+  // waiter's side. They must ask a manager to reopen it. For PENDING /
+  // INSUFFICIENT / NO_NETCASH_HANDED_OVER the form stays editable; the
+  // existing fingerprint logic will reset the status to PENDING on the
+  // next resubmission if the figures changed.
+  const locked = myReceipt?.status === 'APPROVED';
+  const showResubmit = myReceipt !== null && myReceipt.status !== 'APPROVED';
+
+  // The receipt view replaces the form when a submission exists and the
+  // waiter has not clicked Badilisha. When there is nothing to show,
+  // showReceipt is false and the form renders.
+  const showReceipt = mode === 'view' && myReceipt !== null;
+  const canEdit = !locked;
+
   return (
     <KioskShell>
       <KioskHeader title={greeting} subtitle={t('kiosk.report.subtitle')} />
@@ -342,6 +382,132 @@ export default function KioskPage() {
         </div>
       )}
 
+      
+
+      {showReceipt && (
+        <div className={
+          'rounded-2xl border p-5 space-y-4 ' +
+          (myReceipt!.status === 'APPROVED' ? 'border-emerald-200 bg-emerald-50' :
+           myReceipt!.status === 'INSUFFICIENT' ? 'border-red-200 bg-red-50' :
+           myReceipt!.status === 'NO_NETCASH_HANDED_OVER' ? 'border-slate-200 bg-slate-50' :
+           'border-amber-200 bg-amber-50')
+        }>
+          <div className='flex items-center justify-between'>
+            <span className='text-base font-medium text-slate-900'>
+              {t('kiosk.report.receiptHeading')}
+            </span>
+            <span className='text-xs text-slate-500'>
+              {myReceipt!.decidedAt ?? myReceipt!.updatedAt}
+            </span>
+          </div>
+
+          <div className='text-sm text-slate-800'>
+            {t('kiosk.report.statusLabel')}:{' '}
+            <span className='font-medium'>
+              {myReceipt!.status === 'PENDING' ? t('kiosk.report.status.pending') :
+               myReceipt!.status === 'APPROVED' ? t('kiosk.report.status.approved') :
+               myReceipt!.status === 'INSUFFICIENT' ? t('kiosk.report.status.insufficient') :
+               t('kiosk.report.status.noNetcash')}
+            </span>
+          </div>
+
+          {myReceipt!.status === 'INSUFFICIENT' && myReceipt!.amountReceived && (
+            <>
+              <div className='text-sm text-red-800'>
+                {t('kiosk.report.amountReceived')}:{' '}
+                <span className='font-mono'>{myReceipt!.amountReceived}</span>
+              </div>
+              <div className='text-sm text-red-800'>
+                {t('kiosk.report.shortfall')}:{' '}
+                <span className='font-mono'>
+                  {money(num(summary!.totalSales) - mpesaTotal - expensesTotal - num(myReceipt!.amountReceived))}
+                </span>
+              </div>
+            </>
+          )}
+
+          <div className='border-t border-slate-200 pt-3 space-y-2'>
+            <div className='text-xs font-medium uppercase tracking-wide text-slate-500'>
+              {t('kiosk.report.mpesaHeading')}
+            </div>
+            {mpesa.filter((r) => r.name.trim() !== '' && r.amount.trim() !== '').length === 0 ? (
+              <div className='text-sm text-slate-500'>{t('kiosk.report.receiptNoMpesa')}</div>
+            ) : (
+              <table className='w-full text-sm'>
+                <tbody>
+                  {mpesa.filter((r) => r.name.trim() !== '' && r.amount.trim() !== '').map((r) => (
+                    <tr key={r.key}>
+                      <td className='py-0.5 text-slate-700'>{r.name}</td>
+                      <td className='py-0.5 text-right font-mono text-slate-900'>{r.amount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className='border-t border-slate-200 pt-3 space-y-2'>
+            <div className='text-xs font-medium uppercase tracking-wide text-slate-500'>
+              {t('kiosk.report.expensesHeading')}
+            </div>
+            {expenses.filter((r) => r.description.trim() !== '' && r.amount.trim() !== '').length === 0 ? (
+              <div className='text-sm text-slate-500'>{t('kiosk.report.receiptNoExpenses')}</div>
+            ) : (
+              <table className='w-full text-sm'>
+                <tbody>
+                  {expenses.filter((r) => r.description.trim() !== '' && r.amount.trim() !== '').map((r) => {
+                    const cat = categories.find((c) => c.id === r.categoryId);
+                    const catName = cat?.systemKey === 'SALARY'
+                      ? t('expenseCategory.SALARY')
+                      : (cat?.name ?? '\u2014');
+                    return (
+                      <tr key={r.key}>
+                        <td className='py-0.5 text-slate-700'>
+                          <span className='text-xs text-slate-500'>{catName}</span>{' / '}{r.description}
+                        </td>
+                        <td className='py-0.5 text-right font-mono text-slate-900'>{r.amount}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className='border-t border-slate-200 pt-3 space-y-1'>
+            <div className='flex items-center justify-between text-sm'>
+              <span className='text-slate-600'>{t('kiosk.report.mpesaTotal')}</span>
+              <span className='font-mono text-slate-900'>{money(mpesaTotal)}</span>
+            </div>
+            <div className='flex items-center justify-between text-sm'>
+              <span className='text-slate-600'>{t('kiosk.report.expensesTotal')}</span>
+              <span className='font-mono text-slate-900'>{money(expensesTotal)}</span>
+            </div>
+            <div className='flex items-center justify-between text-base font-medium pt-1 border-t border-slate-200'>
+              <span className='text-slate-900'>{t('kiosk.report.netCash')}</span>
+              <span className='font-mono text-slate-900'>{money(netCash)}</span>
+            </div>
+          </div>
+
+          {myReceipt!.status === 'APPROVED' && (
+            <div className='text-xs text-emerald-800 italic'>
+              {t('kiosk.report.approvedLockedNote')}
+            </div>
+          )}
+
+          {canEdit ? (
+            <button
+              type='button'
+              onClick={() => setMode('edit')}
+              className='w-full rounded-lg bg-slate-900 text-white py-3 text-base font-medium'
+            >
+              {t('kiosk.report.edit')}
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      {!showReceipt && (
       <form onSubmit={onSubmit} className='space-y-4'>
         <div className='rounded-2xl border border-slate-200 bg-slate-50 p-5'>
           <div className='text-sm text-slate-500'>
@@ -379,8 +545,12 @@ export default function KioskPage() {
                 className={ROW_INPUT}
                 value={row.name}
                 onChange={(e) => updateMpesa(row.key, 'name', e.target.value)}
+                onBlur={(e) => {
+                  const next = titleCaseName(e.target.value);
+                  if (next !== row.name) updateMpesa(row.key, 'name', next);
+                }}
                 placeholder={t('kiosk.report.mpesaNamePlaceholder')}
-                disabled={busy}
+                disabled={busy || locked}
               />
               <input
                 type='text'
@@ -389,13 +559,13 @@ export default function KioskPage() {
                 value={row.amount}
                 onChange={(e) => updateMpesa(row.key, 'amount', e.target.value)}
                 placeholder='0.00'
-                disabled={busy}
+                disabled={busy || locked}
               />
               <button
                 type='button'
                 aria-label={t('kiosk.report.removeRow')}
                 onClick={() => removeMpesa(row.key)}
-                disabled={busy || mpesa.length === 1}
+                disabled={busy || locked || mpesa.length === 1}
                 className='text-slate-400 hover:text-red-600 disabled:opacity-30 text-lg leading-none'
               >
                 ×
@@ -406,7 +576,7 @@ export default function KioskPage() {
           <button
             type='button'
             onClick={addMpesa}
-            disabled={busy}
+            disabled={busy || locked}
             className='text-sm font-medium text-slate-600 hover:text-slate-900'
           >
             + {t('kiosk.report.addRow')}
@@ -443,7 +613,7 @@ export default function KioskPage() {
                 className={ROW_INPUT}
                 value={row.categoryId}
                 onChange={(e) => updateExpense(row.key, 'categoryId', e.target.value)}
-                disabled={busy || noCategories}
+                disabled={busy || locked || noCategories}
               >
                 {!row.categoryId && <option value=''>—</option>}
                 {categories.map((c) => (
@@ -468,7 +638,7 @@ export default function KioskPage() {
                     className={ROW_INPUT}
                     value={row.salaryTargetEmployeeId}
                     onChange={(e) => updateExpense(row.key, 'salaryTargetEmployeeId', e.target.value)}
-                    disabled={busy}
+                    disabled={busy || locked}
                   >
                     <option value=''>{t('kiosk.report.expenseEmployeeSelect')}</option>
                     {employees.map((emp) => (
@@ -485,7 +655,7 @@ export default function KioskPage() {
                 value={row.description}
                 onChange={(e) => updateExpense(row.key, 'description', e.target.value)}
                 placeholder={t('kiosk.report.expenseDescPlaceholder')}
-                disabled={busy || (categories.find((c) => c.id === row.categoryId)?.systemKey === 'SALARY' && noEmployee)}
+                disabled={busy || locked || (categories.find((c) => c.id === row.categoryId)?.systemKey === 'SALARY' && noEmployee)}
               />
               <input
                 type='text'
@@ -494,13 +664,13 @@ export default function KioskPage() {
                 value={row.amount}
                 onChange={(e) => updateExpense(row.key, 'amount', e.target.value)}
                 placeholder='0.00'
-                disabled={busy || (categories.find((c) => c.id === row.categoryId)?.systemKey === 'SALARY' && noEmployee)}
+                disabled={busy || locked || (categories.find((c) => c.id === row.categoryId)?.systemKey === 'SALARY' && noEmployee)}
               />
               <button
                 type='button'
                 aria-label={t('kiosk.report.removeRow')}
                 onClick={() => removeExpense(row.key)}
-                disabled={busy || expenses.length === 1}
+                disabled={busy || locked || expenses.length === 1}
                 className='text-slate-400 hover:text-red-600 disabled:opacity-30 text-lg leading-none'
               >
                 ×
@@ -511,7 +681,7 @@ export default function KioskPage() {
           <button
             type='button'
             onClick={addExpense}
-            disabled={busy || noCategories}
+            disabled={busy || locked || noCategories}
             className='text-sm font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40'
           >
             + {t('kiosk.report.addRow')}
@@ -529,14 +699,32 @@ export default function KioskPage() {
           </div>
         </div>
 
-        <button
-          type='submit'
-          disabled={busy || noCategories}
-          className='w-full rounded-lg bg-slate-900 text-white py-3 text-base font-medium disabled:opacity-60'
-        >
-          {busy ? t('kiosk.report.submitting') : t('kiosk.report.submit')}
-        </button>
+        {!locked && (
+          <button
+            type='submit'
+            disabled={busy || noCategories}
+            className='w-full rounded-lg bg-slate-900 text-white py-3 text-base font-medium disabled:opacity-60'
+          >
+            {busy
+              ? t('kiosk.report.submitting')
+              : showResubmit
+                ? t('kiosk.report.resubmit')
+                : t('kiosk.report.submit')}
+          </button>
+        )}
+
+        {showResubmit && (
+          <button
+            type='button'
+            onClick={() => { setMode('view'); load(); }}
+            disabled={busy}
+            className='w-full rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-60'
+          >
+            {t('kiosk.report.cancelEdit')}
+          </button>
+        )}
       </form>
+      )}
     </KioskShell>
   );
 }

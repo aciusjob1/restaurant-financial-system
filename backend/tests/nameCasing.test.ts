@@ -19,6 +19,8 @@ async function cleanup() {
     await prisma.employee.deleteMany({ where: { id: { in: employees.map((e) => e.id) } } });
   }
   await prisma.position.deleteMany({ where: { name: POSITION_NAME } });
+  await prisma.supplier.deleteMany({ where: { name: { startsWith: 'Kilimanjaro Water' } } });
+  await prisma.expenseCategory.deleteMany({ where: { name: 'Fuel' } });
   await prisma.session.deleteMany({ where: { user: { username: OWNER.username } } });
   await prisma.user.deleteMany({ where: { username: OWNER.username } });
 }
@@ -70,6 +72,9 @@ describe('titleCaseName', () => {
     ['joseph m. kamau',           'Joseph M. Kamau'],
     ['a',                         'A'],
     ['neema',                     'Neema'],
+    ['kilimanjaro water ltd',     'Kilimanjaro Water Ltd'],
+    ['coca-cola bottlers',        'Coca-Cola Bottlers'],
+    ['abc supplies',              'Abc Supplies'],
   ];
 
   for (const [input, expected] of cases) {
@@ -112,5 +117,38 @@ describe('POST /api/v1/employees - fullName normalization', () => {
       select: { fullName: true },
     });
     expect(row.fullName).toBe("O'Brien Mary-Jane");
+  });
+
+  it('title-cases a supplier name and contact person on create', async () => {
+    const agent = await loginAs(OWNER);
+    const res = await agent.post('/api/v1/suppliers').send({
+      name: 'kilimanjaro water ltd',
+      contactPerson: 'john doe',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.supplier.name).toBe('Kilimanjaro Water Ltd');
+    expect(res.body.supplier.contactPerson).toBe('John Doe');
+
+    const row = await prisma.supplier.findUniqueOrThrow({
+      where: { id: res.body.supplier.id },
+      select: { name: true, contactPerson: true },
+    });
+    expect(row.name).toBe('Kilimanjaro Water Ltd');
+    expect(row.contactPerson).toBe('John Doe');
+  });
+
+  it('title-cases an expense category name on create', async () => {
+    const agent = await loginAs(OWNER);
+    const res = await agent.post('/api/v1/expense-categories').send({
+      name: 'fuel',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.category.name).toBe('Fuel');
+
+    const row = await prisma.expenseCategory.findUniqueOrThrow({
+      where: { id: res.body.category.id },
+      select: { name: true },
+    });
+    expect(row.name).toBe('Fuel');
   });
 });

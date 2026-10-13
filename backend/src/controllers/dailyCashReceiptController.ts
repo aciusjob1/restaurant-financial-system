@@ -22,3 +22,10 @@ export async function upsert(req: Request, res: Response) {
   });
   res.status(200).json({ success: true, receipt });
 }
+
+export async function getMine(req: Request, res: Response) {
+  const parsed = ListQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid query parameters.');
+  const receipt = await service.getMyReceiptForDate(req.user!.id, parsed.data.businessDate);
+  res.json({ success: true, receipt });
+}

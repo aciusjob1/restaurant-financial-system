@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 const MoneyString = z
   .string()
@@ -18,12 +19,12 @@ const PositiveMoneyString = MoneyString.refine(
 );
 
 export const CreateMaterialCategorySchema = z.object({
-  name: z.string().trim().min(2).max(64),
+  name: z.string().trim().min(2).max(64).transform(titleCaseName),
   description: z.string().trim().max(500).nullable().optional(),
 });
 
 export const UpdateMaterialCategorySchema = z.object({
-  name: z.string().trim().min(2).max(64).optional(),
+  name: z.string().trim().min(2).max(64).transform(titleCaseName).optional(),
   description: z.string().trim().max(500).nullable().optional(),
   isActive: z.boolean().optional(),
 });
@@ -36,7 +37,7 @@ export const ListMaterialCategoriesQuerySchema = z.object({
 });
 
 export const CreateMaterialSchema = z.object({
-  name: z.string().trim().min(2).max(128),
+  name: z.string().trim().min(2).max(128).transform(titleCaseName),
   categoryId: z.string().min(1),
   unit: z.string().trim().min(1).max(16),
   currentPrice: PositiveMoneyString,
@@ -45,7 +46,7 @@ export const CreateMaterialSchema = z.object({
 });
 
 export const UpdateMaterialSchema = z.object({
-  name: z.string().trim().min(2).max(128).optional(),
+  name: z.string().trim().min(2).max(128).transform(titleCaseName).optional(),
   categoryId: z.string().min(1).optional(),
   unit: z.string().trim().min(1).max(16).optional(),
   currentPrice: PositiveMoneyString.optional(),

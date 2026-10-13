@@ -8,6 +8,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 export const dailyCashReceiptRouter = Router();
 
 dailyCashReceiptRouter.use(requireAuth);
+dailyCashReceiptRouter.get('/mine', asyncHandler(controller.getMine));
 dailyCashReceiptRouter.get('/', asyncHandler(controller.list));
 dailyCashReceiptRouter.post(
   '/',

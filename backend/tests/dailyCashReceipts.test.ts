@@ -5,7 +5,7 @@ import {
   createManualSummary,
   submitWaiterCollections,
 } from '../src/services/salesService.js';
-import { upsertReceipt, listForDate } from '../src/services/dailyCashReceiptService.js';
+import { upsertReceipt, listForDate, getMyReceiptForDate } from '../src/services/dailyCashReceiptService.js';
 
 const WAITER = {
   username: 'dcr-waiter',
@@ -18,15 +18,17 @@ const MANAGER = {
   fullName: 'Daily Cash Manager',
 };
 
+// Fixed far-future date. Isolates this suite from other files that build
+// DailyClosing rows for today's real business date. No other suite uses
+// 2099-06-15, so no other suite can close it out from under this one.
+const TEST_DATE = '2099-06-15';
 function todayISO(): string {
-  const d = new Date();
-  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
-    .toISOString()
-    .slice(0, 10);
+  return TEST_DATE;
 }
 
 let waiterId: string;
 let managerId: string;
+let dailyCategoryId: string;
 
 async function cleanup() {
   const users = await prisma.user.findMany({
@@ -71,12 +73,25 @@ beforeAll(async () => {
   waiterId = w.id;
   const m = await makeUser({ ...MANAGER, role: 'MANAGER' });
   managerId = m.id;
+
+  const dailyCat = await prisma.expenseCategory.findUnique({
+    where: { systemKey: 'DAILY' },
+    select: { id: true },
+  });
+  if (!dailyCat) throw new Error('DAILY expense category missing — run prisma:apply-raw-sql');
+  dailyCategoryId = dailyCat.id;
 });
 
 afterAll(cleanup);
 
 beforeEach(async () => {
   const uids = [waiterId, managerId];
+  // Neutralize any DailyClosing row for today that another test file may
+  // have left behind. createManualSummary calls assertDayNotClosed, and
+  // the parallel test runner can interleave suites such that a closing
+  // exists transiently. This suite tests receipts, not the closed-day
+  // guard, so removing the row is the right isolation.
+  await prisma.dailyClosing.deleteMany({ where: { businessDate: new Date(todayISO()) } });
   await prisma.dailyCashReceipt.deleteMany({ where: { userId: { in: uids } } });
   await prisma.expense.deleteMany({ where: { createdBy: { in: uids } } });
   await prisma.collection.deleteMany({ where: { userId: { in: uids } } });
@@ -131,7 +146,7 @@ describe('DailyCashReceipt — creation and resubmission', () => {
     await submitWaiterCollections({
       summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
       mpesaEntries: [{ payerName: 'Amina', amount: '5000.00' }],
-      expenses: [{ description: 'Fuel', amount: '2000.00' }],
+      expenses: [{ categoryId: dailyCategoryId, description: 'Fuel', amount: '2000.00' }],
     });
     const r = await currentReceipt();
     expect(r).toBeTruthy();
@@ -200,7 +215,7 @@ describe('DailyCashReceipt — decisions', () => {
     const summary = await seedSummary('50000.00', '10000.00');
     await submitWaiterCollections({
       summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
-      mpesaEntries: [], expenses: [{ description: 'Fuel', amount: '2000.00' }],
+      mpesaEntries: [], expenses: [{ categoryId: dailyCategoryId, description: 'Fuel', amount: '2000.00' }],
     });
     const before = await currentReceipt();
     const res = await upsertReceipt({
@@ -411,5 +426,24 @@ describe('DailyCashReceipt — listForDate', () => {
     const handovers = await prisma.cashHandover.count();
     expect(recons).toBe(0);
     expect(handovers).toBe(0);
+  });
+});
+
+describe('DailyCashReceipt вЂ” getMyReceiptForDate', () => {
+    it("returns only the caller's own receipt for the date, or null", async () => {
+    const summary = await seedSummary();
+    await submitWaiterCollections({
+      summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
+      mpesaEntries: [{ payerName: 'Amina', amount: '1000.00' }], expenses: [],
+    });
+    const mine = await getMyReceiptForDate(waiterId, todayISO());
+    expect(mine).not.toBeNull();
+    expect(mine!.status).toBe('PENDING');
+    expect(mine!.decidedAt).toBeNull();
+    expect(mine!.amountReceived).toBeNull();
+
+    // A different user (the manager) has no receipt for the same date.
+    const manager = await getMyReceiptForDate(managerId, todayISO());
+    expect(manager).toBeNull();
   });
 });

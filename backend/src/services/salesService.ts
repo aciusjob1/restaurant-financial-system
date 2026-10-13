@@ -183,6 +183,26 @@ export async function listMySummary(userId: string, businessDate: string) {
     orderBy: { createdAt: 'asc' },
   });
 
+  // The waiter's own active M-Pesa collections for the day. These live
+  // in Collection, not SalesSummary.lines — submitWaiterCollections
+  // writes them there. Filter by the assigned waiter's userId, not
+  // createdById, so a manager who submits on the waiter's behalf still
+  // surfaces the rows on the waiter's kiosk.
+  const activeMpesa = await prisma.collection.findMany({
+    where: {
+      userId,
+      paymentMethod: 'MPESA',
+      voidedAt: null,
+      shift: { businessDate: bd },
+    },
+    select: {
+      id: true,
+      mobileReference: true,
+      amount: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
   return {
     summary: serializeSummary(summary),
     activeExpenses: activeExpenses.map((e) => ({
@@ -192,6 +212,11 @@ export async function listMySummary(userId: string, businessDate: string) {
       categoryId: e.categoryId,
       categoryName: e.category.name,
       categorySystemKey: e.category.systemKey,
+    })),
+    mpesaEntries: activeMpesa.map((c) => ({
+      id: c.id,
+      payerName: c.mobileReference ?? '',
+      amount: toMoneyString(c.amount),
     })),
   };
 }

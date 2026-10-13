@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { titleCaseName } from '../utils/textCase.js';
 
 const PAYMENT_METHODS = [
   'CASH',
@@ -26,22 +27,22 @@ const PositiveMoneyString = MoneyString.refine(
 const DateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD');
 
 export const CreateSupplierSchema = z.object({
-  name: z.string().trim().min(2).max(128),
+  name: z.string().trim().min(2).max(128).transform(titleCaseName),
   phone: z.string().trim().max(32).nullable().optional(),
   email: z.string().trim().max(128).nullable().optional(),
   address: z.string().trim().max(300).nullable().optional(),
-  contactPerson: z.string().trim().max(128).nullable().optional(),
+  contactPerson: z.string().trim().max(128).transform(titleCaseName).nullable().optional(),
   tin: z.string().trim().max(64).nullable().optional(),
   paymentTerms: z.string().trim().max(128).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export const UpdateSupplierSchema = z.object({
-  name: z.string().trim().min(2).max(128).optional(),
+  name: z.string().trim().min(2).max(128).transform(titleCaseName).optional(),
   phone: z.string().trim().max(32).nullable().optional(),
   email: z.string().trim().max(128).nullable().optional(),
   address: z.string().trim().max(300).nullable().optional(),
-  contactPerson: z.string().trim().max(128).nullable().optional(),
+  contactPerson: z.string().trim().max(128).transform(titleCaseName).nullable().optional(),
   tin: z.string().trim().max(64).nullable().optional(),
   paymentTerms: z.string().trim().max(128).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
