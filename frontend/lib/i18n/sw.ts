@@ -675,6 +675,8 @@ export const sw: Dict = {
   'ops.sales.colTotalLabel': 'JUMLA',
   'ops.sales.unattributed': 'Bila mhusika',
   'ops.sales.filterDate': 'Chuja kwa tarehe',
+  'ops.sales.filterWaiter': 'Chuja kwa mhudumu',
+  'ops.sales.filterAllWaiters': 'Wahudumu wote',
   'ops.sales.waiterRequired': 'Chagua mhudumu.',
   'ops.sales.amountRequired': 'Ingiza kiasi cha mauzo.',
   'ops.sales.conflict.heading': 'Muhtasari upo tayari',

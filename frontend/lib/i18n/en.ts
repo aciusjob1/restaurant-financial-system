@@ -674,6 +674,8 @@ export const en = {
   'ops.sales.colTotalLabel': 'TOTAL',
   'ops.sales.unattributed': 'Unattributed',
   'ops.sales.filterDate': 'Filter by date',
+  'ops.sales.filterWaiter': 'Filter by waiter',
+  'ops.sales.filterAllWaiters': 'All waiters',
   'ops.sales.waiterRequired': 'Select a waiter.',
   'ops.sales.amountRequired': 'Enter a sales amount.',
   'ops.sales.conflict.heading': 'Summary already exists',

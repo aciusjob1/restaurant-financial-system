@@ -49,6 +49,10 @@ export default function SalesPage() {
   // Table filter. Defaults to today: the manager's main question is
   // "did everyone get entered today?"
   const [filterDate, setFilterDate] = useState(todayISO());
+  // Empty string = "All waiters" (default). A specific user id narrows the
+  // table to that waiter's rows only. Null-userId (Unattributed) records
+  // are shown only when this is empty.
+  const [filterWaiter, setFilterWaiter] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
@@ -86,10 +90,21 @@ export default function SalesPage() {
     [users],
   );
 
-  // Total of the rows currently displayed (filtered by filterDate).
+  // Rows actually shown in the table: filtered by the waiter dropdown.
+  // The date filter is applied server-side via the fetch. "All waiters"
+  // (empty string) shows every row, including userId: null.
+  const filtered = useMemo(
+    () =>
+      filterWaiter
+        ? summaries.filter((s) => s.userId === filterWaiter)
+        : summaries,
+    [summaries, filterWaiter],
+  );
+
+  // Total of the rows currently displayed — same array the table renders.
   const total = useMemo(
-    () => summaries.reduce((acc, s) => acc + (parseFloat(s.totalSales) || 0), 0),
-    [summaries],
+    () => filtered.reduce((acc, s) => acc + (parseFloat(s.totalSales) || 0), 0),
+    [filtered],
   );
 
   function nameFor(u: string | null): string {
@@ -228,7 +243,7 @@ export default function SalesPage() {
       </form>
 
       <div className='rounded-2xl border border-slate-200 bg-white overflow-x-auto'>
-        <div className='p-3 border-b border-slate-100 flex items-center gap-3'>
+        <div className='p-3 border-b border-slate-100 flex flex-wrap items-center gap-3'>
           <label className='text-sm text-slate-600'>
             {t('ops.sales.filterDate')}
           </label>
@@ -238,6 +253,21 @@ export default function SalesPage() {
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
           />
+          <label className='text-sm text-slate-600 ml-2'>
+            {t('ops.sales.filterWaiter')}
+          </label>
+          <select
+            className='rounded-lg border border-slate-300 px-3 py-1 text-sm bg-white'
+            value={filterWaiter}
+            onChange={(e) => setFilterWaiter(e.target.value)}
+          >
+            <option value=''>{t('ops.sales.filterAllWaiters')}</option>
+            {waiters.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.fullName}
+              </option>
+            ))}
+          </select>
         </div>
         <table className='w-full text-sm'>
           <thead className='bg-slate-50'>
@@ -264,14 +294,14 @@ export default function SalesPage() {
                 </td>
               </tr>
             )}
-            {!loading && summaries.length === 0 && (
+            {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={4} className='px-3 py-6 text-center text-slate-400'>
                   {t('ops.sales.empty')}
                 </td>
               </tr>
             )}
-            {summaries.map((s) => (
+            {filtered.map((s) => (
               <tr key={s.id} className='border-t border-slate-100'>
                 <td className='px-3 py-2'>{nameFor(s.userId)}</td>
                 <td className='px-3 py-2 font-mono text-slate-600'>{s.businessDate}</td>
@@ -283,7 +313,7 @@ export default function SalesPage() {
                 <td className='px-3 py-2 text-right font-mono'>{s.totalSales}</td>
               </tr>
             ))}
-            {!loading && summaries.length > 0 && (
+            {!loading && filtered.length > 0 && (
               <tr className='border-t-2 border-slate-300 bg-slate-50 font-medium'>
                 <td className='px-3 py-2' colSpan={3}>
                   {t('ops.sales.colTotalLabel')}
