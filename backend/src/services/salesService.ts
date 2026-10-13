@@ -183,6 +183,235 @@ export async function listMySummary(userId: string, businessDate: string) {
 }
 
 /**
+ * Waiter (or a manager on a waiter's behalf) submits the day's actual money
+ * movements: M-Pesa collections keyed by payer name, and expenses.
+ *
+ * This is the correct shape for the daily-close flow. It writes to
+ * `Collection` (money received) and `Expense` (money spent), and it does
+ * NOT touch any `SalesSummary` field. The declared sales figures the
+ * manager entered on /ops/sales remain the independent comparison side of
+ * the closing's `mobileSalesDiscrepancy` calculation.
+ *
+ * Supersession is actor-scoped. On a resubmission by the same actor, their
+ * own previous active M-Pesa collections on this shift are voided and
+ * replaced. Collections created by a *different* actor on the same shift
+ * with the same payer name cause an explicit 409 — never a silent
+ * overwrite — because two creators may represent two different real
+ * payments and we cannot tell them apart from a name alone.
+ *
+ * Concurrency: the partial unique index
+ *   ("shiftId", "paymentMethod", "mobileReference") WHERE mobileReference IS NOT NULL
+ * is the final guard. The pre-flight query inside the transaction makes
+ * the cross-actor conflict explicit and returns a distinguishable error;
+ * the index catches races the pre-flight can't see and maps to
+ * DUPLICATE_MOBILE_REFERENCE.
+ *
+ * Known limitation (documented in validators/shiftClose.ts): two distinct
+ * payers with the same name on the same shift cannot coexist when the
+ * payer name is used as the mobile reference. Operators must disambiguate
+ * at entry time. No auto-suffixing. No schema change in this change.
+ */
+export async function submitWaiterCollections(input: {
+  summaryId: string;
+  actorId: string;
+  actorRole: Role;
+  mpesaEntries: Array<{ payerName: string; amount: string }>;
+  expenses: Array<{ description: string; amount: string }>;
+}) {
+  const summary = await prisma.salesSummary.findUnique({
+    where: { id: input.summaryId },
+  });
+  if (!summary) throw new ApiError(404, 'NOT_FOUND', 'Sales summary not found.');
+  if (!summary.userId) {
+    throw new ApiError(
+      409,
+      'NO_ASSIGNED_WAITER',
+      'This summary has no assigned waiter.'
+    );
+  }
+  if (input.actorRole === 'WAITER' && summary.userId !== input.actorId) {
+    throw new ApiError(
+      403,
+      'FORBIDDEN',
+      'You can only submit your own daily collections.'
+    );
+  }
+
+  // Capture the narrowed userId once. TypeScript cannot carry the
+  // null-narrowing across a closure boundary, and Collection.userId is
+  // non-nullable. Prefer a local const over a non-null assertion so the
+  // invariant is enforced at the type level where the value is used.
+  const attributedUserId: string = summary.userId;
+
+  await assertDayNotClosed(summary.businessDate, input.actorRole);
+
+  // Ensure the shift exists before opening the transaction. Idempotent;
+  // outside the tx so a race on shift creation isn't inside our write path.
+  const shift = await ensureOpenShiftForUserAndDate(
+    attributedUserId,
+    summary.businessDate
+  );
+
+  const entries = input.mpesaEntries.map((m) => ({
+    payerName: m.payerName.trim(),
+    amount: toDecimal(m.amount),
+  }));
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // ---- 1. Pre-flight cross-actor conflict check (no writes yet) -----
+      //  For every payer name in the incoming set, look for an active
+      //  Collection on this shift with the same (paymentMethod, mobileReference).
+      //  - row created by this actor          -> we will void + replace below
+      //  - row created by a different actor   -> 409, roll back entire submission
+      if (entries.length > 0) {
+        const incomingNames = entries.map((e) => e.payerName);
+        const existing = await tx.collection.findMany({
+          where: {
+            shiftId: shift.id,
+            paymentMethod: 'MPESA',
+            mobileReference: { in: incomingNames },
+            voidedAt: null,
+          },
+          select: { id: true, mobileReference: true, createdById: true },
+        });
+        const foreign = existing.find((c) => c.createdById !== input.actorId);
+        if (foreign) {
+          throw new ApiError(
+            409,
+            'CONFLICT_WITH_OTHER_ACTOR',
+            `A collection for payer "${foreign.mobileReference}" on this shift was recorded by another user. Resolve it before resubmitting.`,
+            {
+              conflict: {
+                collectionId: foreign.id,
+                payerName: foreign.mobileReference,
+                createdById: foreign.createdById,
+              },
+            }
+          );
+        }
+      }
+
+      // ---- 2. Void this actor's own prior active M-Pesa collections -----
+      await tx.collection.updateMany({
+        where: {
+          shiftId: shift.id,
+          paymentMethod: 'MPESA',
+          createdById: input.actorId,
+          voidedAt: null,
+        },
+        data: {
+          voidedAt: new Date(),
+          voidedBy: input.actorId,
+          voidReason: 'Superseded by resubmission',
+        },
+      });
+
+      // ---- 3. Create the new collections --------------------------------
+      //  Any P2002 here is caught by the outer try and mapped to
+      //  DUPLICATE_MOBILE_REFERENCE. The transaction rolls back fully.
+      const createdCollections: Array<{
+        id: string;
+        paymentMethod: PaymentMethod;
+        amount: string;
+        mobileReference: string | null;
+        createdAt: string;
+      }> = [];
+      for (const e of entries) {
+        const row = await tx.collection.create({
+          data: {
+            shiftId: shift.id,
+            userId: attributedUserId,
+            createdById: input.actorId,
+            paymentMethod: 'MPESA',
+            amount: e.amount,
+            mobileReference: e.payerName,
+            notes: null,
+          },
+        });
+        createdCollections.push({
+          id: row.id,
+          paymentMethod: row.paymentMethod,
+          amount: toMoneyString(row.amount),
+          mobileReference: row.mobileReference,
+          createdAt: row.createdAt.toISOString(),
+        });
+      }
+
+      // ---- 4. Expenses (reuse the existing helper, same tx) -------------
+      await handleDailyExpenses(tx, {
+        businessDate: summary.businessDate,
+        userId: attributedUserId,
+        enteredBy: input.actorId,
+        expenseRows: input.expenses.map((e) => ({
+          description: e.description,
+          amount: toDecimal(e.amount),
+        })),
+      });
+
+      // ---- 5. Re-read committed state for the response ------------------
+      const finalSummary = await tx.salesSummary.findUniqueOrThrow({
+        where: { id: summary.id },
+        include: INCLUDE_LINES,
+      });
+
+      const dailyCat = await tx.expenseCategory.findUnique({
+        where: { systemKey: 'DAILY' },
+        select: { id: true },
+      });
+      const activeExpenses = dailyCat
+        ? await tx.expense.findMany({
+            where: {
+              businessDate: summary.businessDate,
+              createdBy: input.actorId,
+              categoryId: dailyCat.id,
+              voidedAt: null,
+            },
+            select: {
+              id: true,
+              expenseNumber: true,
+              amount: true,
+              description: true,
+              paymentMethod: true,
+            },
+            orderBy: { createdAt: 'asc' },
+          })
+        : [];
+
+      return {
+        summary: serializeSummary(finalSummary),
+        collections: createdCollections,
+        expenses: activeExpenses.map((e) => ({
+          id: e.id,
+          expenseNumber: e.expenseNumber,
+          amount: toMoneyString(e.amount),
+          description: e.description,
+          paymentMethod: e.paymentMethod,
+        })),
+      };
+    });
+
+    return result;
+  } catch (err) {
+    // Race / unexpected collision on the partial unique index. Translate
+    // to a clean 409 so the caller never sees a raw Prisma error and
+    // nothing is left partially committed (the tx already rolled back).
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code: string }).code === 'P2002'
+    ) {
+      throw new ApiError(
+        409,
+        'DUPLICATE_MOBILE_REFERENCE',
+        'A mobile reference in this submission already exists on this shift.'
+      );
+    }
+    throw err;
+  }
+}
+/**
  * Waiter submits the M-Pesa breakdown and expenses for a summary that was
  * already created upstream. Replaces the summary's MPESA lines (keeping
  * any CASH/other lines the manager entered) and recomputes mobileSales.
