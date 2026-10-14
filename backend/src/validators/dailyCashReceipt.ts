@@ -9,6 +9,9 @@ const MoneyString = z
 
 export const ListQuerySchema = z.object({
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD'),
+  // MANAGER/OWNER may pass userId to fetch another user's receipt.
+  // The controller rejects the override for any other role.
+  userId: z.string().min(1).optional(),
 });
 
 export const UpsertReceiptSchema = z

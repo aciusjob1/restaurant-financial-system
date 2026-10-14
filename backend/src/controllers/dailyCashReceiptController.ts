@@ -26,6 +26,12 @@ export async function upsert(req: Request, res: Response) {
 export async function getMine(req: Request, res: Response) {
   const parsed = ListQuerySchema.safeParse(req.query);
   if (!parsed.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid query parameters.');
-  const receipt = await service.getMyReceiptForDate(req.user!.id, parsed.data.businessDate);
+  // Same rule as /sales-summaries/mine: MANAGER/OWNER may request
+  // another user's receipt; every other role sees only their own.
+  const targetUserId =
+    parsed.data.userId && (req.user!.role === 'MANAGER' || req.user!.role === 'OWNER')
+      ? parsed.data.userId
+      : req.user!.id;
+  const receipt = await service.getMyReceiptForDate(targetUserId, parsed.data.businessDate);
   res.json({ success: true, receipt });
 }

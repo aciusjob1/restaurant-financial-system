@@ -43,3 +43,30 @@ export const ListStockMovementsQuery = z.object({
 
 export type CreateStockMovementInput = z.infer<typeof CreateStockMovementSchema>;
 export type ListStockMovementsQueryInput = z.infer<typeof ListStockMovementsQuery>;
+
+// Strict calendar date. Rejects 2026-02-31 and similar impossible dates
+// via a UTC roundtrip check. The wider DateOnly pattern used elsewhere
+// in the codebase does not do this; scoping the strict check to this
+// endpoint keeps the change contained.
+const CalendarDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+  .refine(
+    (s) => {
+      const d = new Date(s + 'T00:00:00.000Z');
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+    },
+    { message: 'Not a real calendar date' }
+  );
+
+// For GET /stock-movements/usage -- period aggregation for the inventory
+// monitoring view. Monday-start weeks, calendar months, single-day daily.
+// `date` anchors the period; omitted means today. Future anchors are
+// clamped to today by the service.
+export const UsageQuery = z.object({
+  period: z.enum(['daily', 'weekly', 'monthly']).default('daily'),
+  date: CalendarDate.optional(),
+  materialId: z.string().min(1).optional(),
+});
+
+export type UsageQueryInput = z.infer<typeof UsageQuery>;

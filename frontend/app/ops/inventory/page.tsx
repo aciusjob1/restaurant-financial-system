@@ -35,6 +35,28 @@ type Movement = {
   createdAt: string;
 };
 
+type UsageRow = {
+  materialId: string;
+  materialNumber: string;
+  name: string;
+  unit: string;
+  categoryName: string;
+  opening: string;
+  purchasesNet: string;
+  openingEntriesNet: string;
+  consumed: string;
+  wasted: string;
+  adjustedNet: string;
+  closing: string;
+  currentStock: string;
+  variance: string | null;
+  estConsumptionValue: string;
+  historyComplete: boolean;
+  columnsConsistent: boolean;
+};
+
+type UsagePeriod = 'daily' | 'weekly' | 'monthly';
+
 type Action = 'OPENING' | 'CONSUMPTION' | 'WASTE' | 'ADJUSTMENT';
 
 const ACTION_DIRECTION: Record<Action, 'IN' | 'OUT' | null> = {
@@ -94,6 +116,15 @@ export default function InventoryPage() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>('daily');
+  const [usageDate, setUsageDate] = useState(todayISO());
+  const [usageMaterialId, setUsageMaterialId] = useState('');
+  const [usageRows, setUsageRows] = useState<UsageRow[]>([]);
+  const [usageTotals, setUsageTotals] = useState<{ consumedQty: string; estConsumptionValue: string } | null>(null);
+  const [usageIncludesToday, setUsageIncludesToday] = useState(false);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [usageErr, setUsageErr] = useState<{ code: string; message: string } | null>(null);
+
   function load() {
     setLoading(true);
     Promise.all([
@@ -110,6 +141,31 @@ export default function InventoryPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    setUsageLoading(true);
+    setUsageErr(null);
+    const params = new URLSearchParams();
+    params.set('period', usagePeriod);
+    params.set('date', usageDate);
+    if (usageMaterialId) params.set('materialId', usageMaterialId);
+    apiFetch<{
+      success: true;
+      period: UsagePeriod;
+      from: string;
+      to: string;
+      includesToday: boolean;
+      rows: UsageRow[];
+      totals: { consumedQty: string; estConsumptionValue: string };
+    }>('/api/v1/stock-movements/usage?' + params.toString())
+      .then((res) => {
+        setUsageRows(res.rows);
+        setUsageTotals(res.totals);
+        setUsageIncludesToday(res.includesToday);
+      })
+      .catch((e) => setUsageErr(errOf(e)))
+      .finally(() => setUsageLoading(false));
+  }, [usagePeriod, usageDate, usageMaterialId]);
 
   function pickAction(a: Action) {
     setAction(a);
@@ -196,6 +252,143 @@ export default function InventoryPage() {
         <div className='text-slate-500'>{t('common.loading')}</div>
       ) : (
         <>
+          {/* ---- Stock usage monitor ---- */}
+          <section className='rounded-2xl border border-slate-200 bg-white overflow-hidden'>
+            <div className='flex flex-wrap items-center gap-3 px-5 py-3 border-b border-slate-100'>
+              <h2 className='text-base font-medium text-slate-900'>{t('ops.inventory.usage.heading')}</h2>
+              <div className='flex gap-1 ml-2'>
+                {(['daily', 'weekly', 'monthly'] as const).map((p) => (
+                  <button
+                    key={p}
+                    type='button'
+                    onClick={() => setUsagePeriod(p)}
+                    className={
+                      'px-3 py-1 text-xs rounded ' +
+                      (usagePeriod === p
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-300 text-slate-700 hover:bg-slate-50')
+                    }
+                  >
+                    {t(p === 'daily' ? 'ops.inventory.usage.period.daily'
+                       : p === 'weekly' ? 'ops.inventory.usage.period.weekly'
+                       : 'ops.inventory.usage.period.monthly')}
+                  </button>
+                ))}
+              </div>
+              <input
+                type='date'
+                value={usageDate}
+                onChange={(e) => setUsageDate(e.target.value)}
+                max={todayISO()}
+                className='rounded-lg border border-slate-300 px-2 py-1 text-sm'
+              />
+              <select
+                value={usageMaterialId}
+                onChange={(e) => setUsageMaterialId(e.target.value)}
+                className='rounded-lg border border-slate-300 px-2 py-1 text-sm'
+              >
+                <option value=''>{t('ops.inventory.usage.allMaterials')}</option>
+                {stockRows.map((r) => (
+                  <option key={r.materialId} value={r.materialId}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {usageErr && (
+              <div className='px-5 py-3'>
+                <FormError code={usageErr.code} message={tError(usageErr.code, usageErr.message)} />
+              </div>
+            )}
+
+            {usageLoading ? (
+              <div className='px-5 py-6 text-slate-500'>{t('common.loading')}</div>
+            ) : (
+              <div className='overflow-x-auto'>
+                <table className='w-full text-sm min-w-[1200px]'>
+                  <thead className='bg-slate-50'>
+                    <tr>
+                      <th className='text-left px-3 py-2 font-medium'>{t('ops.purchasing.materialCol')}</th>
+                      <th className='text-left px-3 py-2 font-medium'>{t('form.category')}</th>
+                      <th className='text-left px-3 py-2 font-medium'>{t('form.unit')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.opening')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.purchasesNet')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.openingEntriesNet')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.consumed')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.wasted')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.adjustedNet')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.closing')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.current')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.variance')}</th>
+                      <th className='text-right px-3 py-2 font-medium'>{t('ops.inventory.usage.col.estValue')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usageRows.length === 0 && (
+                      <tr><td colSpan={13} className='px-3 py-6 text-center text-slate-400'>
+                        {t('ops.inventory.usage.empty')}
+                      </td></tr>
+                    )}
+                    {usageRows.map((r) => {
+                      const rowClass =
+                        'border-t border-slate-100' +
+                        (r.historyComplete ? '' : ' border-l-4 border-l-amber-400');
+                      return (
+                        <tr key={r.materialId} className={rowClass}>
+                          <td className='px-3 py-2'>
+                            <span className='text-slate-400 font-mono text-xs mr-2'>{r.materialNumber}</span>
+                            <span className='text-slate-900'>{r.name}</span>
+                            {!r.historyComplete && (
+                              <div className='text-xs text-amber-800 italic mt-0.5'>
+                                {t('ops.inventory.usage.historyIncomplete')}
+                              </div>
+                            )}
+                          </td>
+                          <td className='px-3 py-2 text-slate-600'>{r.categoryName}</td>
+                          <td className='px-3 py-2 text-slate-600'>{r.unit}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.opening}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.purchasesNet}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.openingEntriesNet}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.consumed}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.wasted}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.adjustedNet}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.closing}</td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.currentStock}</td>
+                          <td className={'px-3 py-2 text-right font-mono ' + (
+                            r.variance === null ? 'text-slate-400'
+                            : Math.abs(parseFloat(r.variance)) < 0.005 ? 'text-emerald-700'
+                            : 'text-amber-700'
+                          )}>
+                            {r.variance === null ? '\u2014' : r.variance}
+                          </td>
+                          <td className='px-3 py-2 text-right font-mono'>{r.estConsumptionValue}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {usageTotals && usageRows.length > 0 && (
+                    <tfoot className='bg-slate-50'>
+                      <tr>
+                        <td colSpan={6} className='px-3 py-2 text-right font-medium text-slate-700'>
+                          {t('ops.inventory.usage.totalLabel')}
+                        </td>
+                        <td className='px-3 py-2 text-right font-mono font-medium'>{usageTotals.consumedQty}</td>
+                        <td colSpan={5} />
+                        <td className='px-3 py-2 text-right font-mono font-medium'>{usageTotals.estConsumptionValue}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            )}
+
+            <div className='px-5 py-3 text-xs text-slate-500 border-t border-slate-100'>
+              {t('ops.inventory.usage.estimateNote')}
+              {!usageIncludesToday && (
+                <span className='ml-2'>{t('ops.inventory.usage.varianceNote')}</span>
+              )}
+            </div>
+          </section>
+
           {/* ---- Current stock ---- */}
           <section className='rounded-2xl border border-slate-200 bg-white overflow-hidden'>
             <div className='flex items-center justify-between px-5 py-3 border-b border-slate-100'>

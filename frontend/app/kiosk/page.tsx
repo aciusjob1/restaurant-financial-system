@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { KioskShell, KioskHeader } from '@/components/kiosk/KioskShell';
 import { FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -117,8 +117,14 @@ export default function KioskPage() {
   const [saved, setSaved] = useState(false);
   const [myReceipt, setMyReceipt] = useState<MyReceipt | null>(null);
   const [mode, setMode] = useState<'view' | 'edit'>('edit');
+  const [actingFor, setActingFor] = useState<string | null>(null);
+  const [actingForName, setActingForName] = useState<string>('');
+  const actingForRef = useRef<string | null>(null);
 
   async function load() {
+    const asSuffix = actingForRef.current
+      ? '&userId=' + encodeURIComponent(actingForRef.current)
+      : '';
     setLoading(true);
     setErr(null);
     try {
@@ -146,7 +152,7 @@ export default function KioskPage() {
       const onlyEmployee = empRes.employees.length === 1 ? empRes.employees[0].id : '';
 
       const myRes = await apiFetch<MyResponse>(
-        '/api/v1/sales-summaries/mine?businessDate=' + todayISO(),
+        '/api/v1/sales-summaries/mine?businessDate=' + todayISO() + asSuffix,
       );
       setSummary(myRes.summary);
 
@@ -155,7 +161,7 @@ export default function KioskPage() {
       // receipt. This is a soft dependency: a failure does not block
       // the form.
       const receiptRes = await apiFetch<{ success: true; receipt: MyReceipt | null }>(
-        '/api/v1/daily-cash-receipts/mine?businessDate=' + todayISO(),
+        '/api/v1/daily-cash-receipts/mine?businessDate=' + todayISO() + asSuffix,
       ).catch(() => ({ success: true as const, receipt: null as MyReceipt | null }));
       setMyReceipt(receiptRes.receipt);
 
@@ -200,6 +206,17 @@ export default function KioskPage() {
   }
 
   useEffect(() => {
+    // Parse ?as=<userId>&asName=<name> on mount. Manager/owner
+    // "record on behalf" flow. The backend enforces the role check;
+    // these params are display-only for the caller.
+    const params = new URLSearchParams(window.location.search);
+    const asId = params.get('as');
+    const asName = params.get('asName');
+    if (asId) {
+      actingForRef.current = asId;
+      setActingFor(asId);
+      setActingForName(asName ?? '');
+    }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -332,11 +349,14 @@ export default function KioskPage() {
   if (!me) return null;
 
   const greeting = t('kiosk.home.greetingPrefix') + me.fullName.split(' ')[0];
+  const effectiveTitle = actingFor
+    ? t('kiosk.report.actingForTitle') + ' ' + (actingForName || actingFor)
+    : greeting;
 
   if (!summary) {
     return (
       <KioskShell>
-        <KioskHeader title={greeting} />
+        <KioskHeader title={effectiveTitle} />
         <div className='rounded-2xl border border-amber-200 bg-amber-50 p-6 space-y-2'>
           <div className='text-lg font-medium text-amber-900'>
             {t('kiosk.report.noSales.heading')}
@@ -368,7 +388,13 @@ export default function KioskPage() {
 
   return (
     <KioskShell>
-      <KioskHeader title={greeting} subtitle={t('kiosk.report.subtitle')} />
+      <KioskHeader title={effectiveTitle} subtitle={t('kiosk.report.subtitle')} />
+
+      {actingFor && (
+        <div className='rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900'>
+          {t('kiosk.report.actingForBanner')}
+        </div>
+      )}
 
       {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
       {saved && (

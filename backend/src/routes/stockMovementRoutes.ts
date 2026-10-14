@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import * as controller from '../controllers/stockMovementController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { validateBody } from '../middleware/validate.js';
-import { CreateStockMovementSchema } from '../validators/stockMovement.js';
+import { validateBody, validateQuery } from '../middleware/validate.js';
+import { CreateStockMovementSchema, UsageQuery } from '../validators/stockMovement.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const stockMovementRouter = Router();
@@ -13,6 +13,13 @@ stockMovementRouter.get(
   '/valuation',
   requireRole('OWNER', 'MANAGER', 'AUDITOR'),
   asyncHandler(controller.valuation)
+);
+
+stockMovementRouter.get(
+  '/usage',
+  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  validateQuery(UsageQuery),
+  asyncHandler(controller.usage)
 );
 
 stockMovementRouter.get(

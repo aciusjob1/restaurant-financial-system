@@ -47,3 +47,17 @@ export async function valuation(_req: Request, res: Response) {
   const result = await service.getStockValuation();
   res.json({ success: true, ...result });
 }
+
+export async function usage(req: Request, res: Response) {
+  // validateQuery has already coerced and defaulted `period`; a missing
+  // `date` means "today" and the service clamps a future anchor. The
+  // controller mirrors the defaults anyway so it does not depend on
+  // middleware behavior for correctness.
+  const q = req.query as Record<string, string | undefined>;
+  const result = await service.getStockUsage({
+    period: (q.period as 'daily' | 'weekly' | 'monthly') ?? 'daily',
+    anchorDate: q.date ?? new Date().toISOString().slice(0, 10),
+    materialId: q.materialId,
+  });
+  res.json({ success: true, ...result });
+}

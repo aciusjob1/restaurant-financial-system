@@ -27,6 +27,8 @@ const D_FUTURE   = '2099-12-31';   // intentionally future for the FUTURE_DATE t
 const TEST_CAT = 'Phase15 Test Category';
 const TEST_MAT_A = 'Phase15 Material A';
 const TEST_MAT_B = 'Phase15 Material B';
+const TEST_MAT_USAGE_A = 'Phase15 Usage Material A';
+const TEST_MAT_USAGE_B = 'Phase15 Usage Material B';
 const TEST_SUPPLIER = 'Phase15 Test Supplier';
 
 async function cleanup() {
@@ -100,6 +102,9 @@ let categoryId: string;
 let materialAId: string;
 let materialBId: string;
 let supplierId: string;
+let ownerId: string;
+let usageMaterialAId: string;
+let usageMaterialBId: string;
 
 beforeAll(async () => {
   await cleanup();
@@ -119,8 +124,22 @@ beforeAll(async () => {
   });
   materialBId = b.body.material.id;
 
+  const ua = await m.post('/api/v1/materials').send({
+    name: TEST_MAT_USAGE_A, categoryId, unit: 'kg', currentPrice: '2500.00', minimumStock: '10.00',
+  });
+  usageMaterialAId = ua.body.material.id;
+
+  const ub = await m.post('/api/v1/materials').send({
+    name: TEST_MAT_USAGE_B, categoryId, unit: 'kg', currentPrice: '1500.00', minimumStock: '5.00',
+  });
+  usageMaterialBId = ub.body.material.id;
+
   const sup = await m.post('/api/v1/suppliers').send({ name: TEST_SUPPLIER });
   supplierId = sup.body.supplier.id;
+
+  const o = await loginAs(OWNER);
+  const oMe = await o.get('/api/v1/auth/me');
+  ownerId = oMe.body.user.id;
 });
 
 afterAll(cleanup);
@@ -493,5 +512,186 @@ describe('Stock movement — type/direction invariants', () => {
     expect(res.status).toBe(201);
     expect(res.body.movement.type).toBe('CONSUMPTION');
     expect(res.body.movement.direction).toBe('OUT');
+  });
+});
+
+describe('Stock usage -- period aggregation', () => {
+  const D_USAGE_SUN  = '2025-04-06';
+  const D_USAGE_MON  = '2025-04-07';
+  const D_USAGE_MID  = '2025-04-15';
+  const D_USAGE_DEC  = '2025-05-01';
+  const D_USAGE_PAST = '2020-01-15';
+
+  async function seedMovement(opts: {
+    materialId: string;
+    type: 'OPENING' | 'CONSUMPTION' | 'WASTE' | 'ADJUSTMENT';
+    direction: 'IN' | 'OUT';
+    businessDate: string;
+    quantity: string;
+  }) {
+    const mgr = await loginAs(MANAGER);
+    const res = await mgr.post('/api/v1/stock-movements').send({
+      materialId: opts.materialId,
+      type: opts.type,
+      direction: opts.direction,
+      businessDate: opts.businessDate,
+      quantity: opts.quantity,
+    });
+    if (res.status !== 201) {
+      throw new Error('seedMovement failed: ' + res.status + ' ' + JSON.stringify(res.body));
+    }
+  }
+
+  async function usageAs(actor: typeof OWNER, query: string) {
+    const agent = await loginAs(actor);
+    return agent.get('/api/v1/stock-movements/usage?' + query);
+  }
+
+  it('19. daily window: opening reflects prior net; consumed reflects the day only', async () => {
+    await seedMovement({ materialId: usageMaterialAId, type: 'OPENING', direction: 'IN', businessDate: D_USAGE_MID, quantity: '100.000' });
+    await seedMovement({ materialId: usageMaterialAId, type: 'CONSUMPTION', direction: 'OUT', businessDate: D_USAGE_MID, quantity: '10.000' });
+    await seedMovement({ materialId: usageMaterialAId, type: 'CONSUMPTION', direction: 'OUT', businessDate: D_USAGE_DEC, quantity: '5.000' });
+
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_DEC + '&materialId=' + usageMaterialAId);
+    expect(res.status).toBe(200);
+    expect(res.body.from).toBe(D_USAGE_DEC);
+    expect(res.body.to).toBe(D_USAGE_DEC);
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialAId);
+    expect(row).toBeTruthy();
+    expect(row.opening).toBe('90.000');
+    expect(row.consumed).toBe('-5.000');
+    expect(row.closing).toBe('85.000');
+  });
+
+  it('20. weekly Monday-Sunday: Sunday anchor excludes the next Monday', async () => {
+    const res = await usageAs(OWNER, 'period=weekly&date=' + D_USAGE_SUN + '&materialId=' + usageMaterialAId);
+    expect(res.status).toBe(200);
+    expect(res.body.from).toBe('2025-03-31');
+    expect(res.body.to).toBe('2025-04-06');
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialAId);
+    expect(row.consumed).toBe('0.000');
+    expect(row.purchasesNet).toBe('0.000');
+  });
+
+  it('21. monthly calendar boundaries: November 1-30, December 1-31', async () => {
+    const nov = await usageAs(OWNER, 'period=monthly&date=2024-11-15&materialId=' + usageMaterialAId);
+    expect(nov.body.from).toBe('2024-11-01');
+    expect(nov.body.to).toBe('2024-11-30');
+
+    const dec = await usageAs(OWNER, 'period=monthly&date=2024-12-01&materialId=' + usageMaterialAId);
+    expect(dec.body.from).toBe('2024-12-01');
+    expect(dec.body.to).toBe('2024-12-31');
+  });
+
+  it('22. columns reconcile to closing and columnsConsistent is true', async () => {
+    await seedMovement({ materialId: usageMaterialBId, type: 'OPENING', direction: 'IN', businessDate: D_USAGE_MID, quantity: '50.000' });
+    await seedMovement({ materialId: usageMaterialBId, type: 'WASTE', direction: 'OUT', businessDate: D_USAGE_MID, quantity: '2.000' });
+    await seedMovement({ materialId: usageMaterialBId, type: 'ADJUSTMENT', direction: 'IN', businessDate: D_USAGE_MID, quantity: '3.000' });
+    await seedMovement({ materialId: usageMaterialBId, type: 'ADJUSTMENT', direction: 'OUT', businessDate: D_USAGE_MID, quantity: '1.000' });
+
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_MID + '&materialId=' + usageMaterialBId);
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialBId);
+    expect(row.columnsConsistent).toBe(true);
+    const opening = parseFloat(row.opening);
+    const closing = parseFloat(row.closing);
+    const cols =
+      parseFloat(row.purchasesNet) +
+      parseFloat(row.openingEntriesNet) +
+      parseFloat(row.consumed) +
+      parseFloat(row.wasted) +
+      parseFloat(row.adjustedNet);
+    expect(closing).toBeCloseTo(opening + cols, 3);
+  });
+
+  it('23. material filter returns only the requested material', async () => {
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_MID + '&materialId=' + usageMaterialAId);
+    const ids = res.body.rows.map((r: { materialId: string }) => r.materialId);
+    expect(ids).toEqual([usageMaterialAId]);
+  });
+
+  it('24. no 500-row cap: 550 movements all counted', async () => {
+    const rows = Array.from({ length: 550 }, () => ({
+      materialId: usageMaterialBId,
+      type: 'CONSUMPTION' as const,
+      direction: 'OUT' as const,
+      businessDate: new Date(D_USAGE_DEC + 'T00:00:00.000Z'),
+      quantity: '0.001',
+      createdBy: ownerId,
+    }));
+    await prisma.stockMovement.createMany({ data: rows });
+    await prisma.material.update({
+      where: { id: usageMaterialBId },
+      data: { currentStock: { decrement: 0.55 } },
+    });
+
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_DEC + '&materialId=' + usageMaterialBId);
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialBId);
+    expect(row.consumed).toBe('-0.550');
+  });
+
+  it('25. in-period OPENING entries land in openingEntriesNet, not opening', async () => {
+    await seedMovement({ materialId: usageMaterialAId, type: 'OPENING', direction: 'IN', businessDate: D_USAGE_SUN, quantity: '999.000' });
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_SUN + '&materialId=' + usageMaterialAId);
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialAId);
+    expect(row.openingEntriesNet).toBe('999.000');
+    expect(parseFloat(row.opening)).toBeLessThan(999);
+  });
+
+  it('26. purchase reversal nets to zero and history stays complete', async () => {
+    const mgr = await loginAs(MANAGER);
+    const created = await mgr.post('/api/v1/purchase-invoices/complete').send({
+      supplierId,
+      invoiceNumber: 'USAGE-REV-' + Date.now(),
+      date: D_USAGE_MID,
+      businessDate: D_USAGE_MID,
+      notes: null,
+      postNow: true,
+      items: [{ materialId: usageMaterialAId, quantity: '10.000', unitPrice: '100.00', notes: null }],
+    });
+    expect(created.status).toBe(201);
+    const invId = created.body.invoice.id;
+
+    const cancelled = await mgr.post('/api/v1/purchase-invoices/' + invId + '/cancel').send({ reason: 'usage test reversal' });
+    expect(cancelled.status).toBe(200);
+
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_MID + '&materialId=' + usageMaterialAId);
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialAId);
+    // The reversal is booked as ADJUSTMENT/OUT (see
+    // reversePurchaseMovementsForInvoice), so the columns show the
+    // purchase IN on one line and the offsetting adjustment OUT on
+    // another. Total change still nets to zero.
+    expect(row.purchasesNet).toBe('10.000');
+    expect(row.adjustedNet).toBe('-10.000');
+    expect(row.historyComplete).toBe(true);
+  });
+
+  it('27. historyComplete is false when currentStock is desynced from the ledger', async () => {
+    const before = await prisma.material.findUniqueOrThrow({ where: { id: usageMaterialBId } });
+    await prisma.material.update({
+      where: { id: usageMaterialBId },
+      data: { currentStock: before.currentStock.plus(42) },
+    });
+
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_DEC + '&materialId=' + usageMaterialBId);
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialBId);
+    expect(row.historyComplete).toBe(false);
+
+    await prisma.material.update({
+      where: { id: usageMaterialBId },
+      data: { currentStock: before.currentStock },
+    });
+  });
+
+  it('28. variance is null for a period entirely before today', async () => {
+    const res = await usageAs(OWNER, 'period=daily&date=' + D_USAGE_PAST + '&materialId=' + usageMaterialAId);
+    expect(res.body.includesToday).toBe(false);
+    const row = res.body.rows.find((r: { materialId: string }) => r.materialId === usageMaterialAId);
+    expect(row.variance).toBeNull();
+  });
+
+  it('29. rejects an impossible calendar date', async () => {
+    const res = await usageAs(OWNER, 'period=daily&date=2026-02-31');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 });

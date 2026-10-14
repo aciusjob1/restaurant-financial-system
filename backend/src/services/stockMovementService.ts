@@ -351,3 +351,240 @@ export async function getStockValuation() {
     totalValue: toMoneyString(total.toDecimalPlaces(2)),
   };
 }
+
+// === Period aggregation for the inventory usage view ===
+//
+// Computes per-material movement within a period. Design notes:
+//
+// * Opening balance = signed sum of all movements strictly before `from`.
+//   That is the ledger's view of the starting stock.
+//
+// * "Closing" is derived from the raw signed sum of period movements
+//   (opening + net in period), NOT from summing per-type columns. If the
+//   per-type columns ever disagree with the signed sum, that is a data
+//   integrity problem and we flag it.
+//
+// * openingReconstructed = currentStock - netInPeriod. If this differs
+//   from openingFromLedger, the ledger does not fully explain the balance
+//   (e.g. a material whose stock predates its first movement row).
+//   historyComplete captures that.
+//
+// * periods do NOT go through listMovements(). That function applies a
+//   take cap and would truncate a month. We read every movement inside
+//   [from, to] and group in memory.
+
+type UsagePeriod = 'daily' | 'weekly' | 'monthly';
+
+function utcToday(): Date {
+  const n = new Date();
+  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
+}
+
+function periodRangeUtc(period: UsagePeriod, anchor: Date): { from: Date; to: Date } {
+  const y = anchor.getUTCFullYear();
+  const m = anchor.getUTCMonth();
+  const d = anchor.getUTCDate();
+  const day = new Date(Date.UTC(y, m, d));
+
+  if (period === 'daily') return { from: day, to: day };
+
+  if (period === 'weekly') {
+    // Monday-start. JS getUTCDay: Sun=0 .. Sat=6. Days-since-Monday: Mon=0 .. Sun=6.
+    const dow = (day.getUTCDay() + 6) % 7;
+    const monday = new Date(day);
+    monday.setUTCDate(day.getUTCDate() - dow);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    return { from: monday, to: sunday };
+  }
+
+  // monthly -- calendar month, first through last day
+  const first = new Date(Date.UTC(y, m, 1));
+  const last = new Date(Date.UTC(y, m + 1, 0));
+  return { from: first, to: last };
+}
+
+function dateOnlyUtc(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export async function getStockUsage(opts: {
+  period: UsagePeriod;
+  anchorDate: string;
+  materialId?: string;
+}) {
+  // Clamp future anchors to today. An "October 2027" period is not a
+  // thing the manager can meaningfully review, and it would also break
+  // the includesToday check below.
+  const rawAnchor = parseBusinessDate(opts.anchorDate);
+  const today = utcToday();
+  const anchor = rawAnchor.getTime() > today.getTime() ? today : rawAnchor;
+
+  const { from, to } = periodRangeUtc(opts.period, anchor);
+
+  // Opening: signed sum of all movements strictly before `from`.
+  // groupBy returns (materialId, direction, _sum.quantity) -- we apply
+  // the sign in JS. Indexed on [materialId, businessDate].
+  const openingGroups = await prisma.stockMovement.groupBy({
+    by: ['materialId', 'direction'],
+    where: {
+      businessDate: { lt: from },
+      ...(opts.materialId ? { materialId: opts.materialId } : {}),
+    },
+    _sum: { quantity: true },
+  });
+  const openingByMaterial = new Map<string, Prisma.Decimal>();
+  for (const g of openingGroups) {
+    const q = g._sum.quantity ?? toDecimal('0');
+    const signed = g.direction === 'IN' ? q : q.negated();
+    const cur = openingByMaterial.get(g.materialId) ?? toDecimal('0');
+    openingByMaterial.set(g.materialId, cur.plus(signed));
+  }
+
+  // Signed sum of everything from `from` onward (per material). Used to
+  // reconstruct the opening balance from currentStock and to detect
+  // divergence between the ledger and the cached balance. Reading only
+  // the period is not enough -- movements AFTER `to` still affect
+  // currentStock today.
+  const fromOnwardGroups = await prisma.stockMovement.groupBy({
+    by: ['materialId', 'direction'],
+    where: {
+      businessDate: { gte: from },
+      ...(opts.materialId ? { materialId: opts.materialId } : {}),
+    },
+    _sum: { quantity: true },
+  });
+  const netFromOnwardByMaterial = new Map<string, Prisma.Decimal>();
+  for (const g of fromOnwardGroups) {
+    const q = g._sum.quantity ?? toDecimal('0');
+    const signed = g.direction === 'IN' ? q : q.negated();
+    const cur = netFromOnwardByMaterial.get(g.materialId) ?? toDecimal('0');
+    netFromOnwardByMaterial.set(g.materialId, cur.plus(signed));
+  }
+
+  // Every movement inside the period, no take limit.
+  const periodRows = await prisma.stockMovement.findMany({
+    where: {
+      businessDate: { gte: from, lte: to },
+      ...(opts.materialId ? { materialId: opts.materialId } : {}),
+    },
+    select: {
+      materialId: true,
+      type: true,
+      direction: true,
+      quantity: true,
+    },
+  });
+
+  // Materials for name/unit/category/currentStock/currentPrice. Every
+  // active material appears in the result even with zero movements, so
+  // "no usage this period" is visible rather than a missing row.
+  const materials = await prisma.material.findMany({
+    where: opts.materialId ? { id: opts.materialId } : { isActive: true },
+    include: { category: { select: { name: true } } },
+    orderBy: [{ name: 'asc' }],
+  });
+
+  type Acc = {
+    purchases: Prisma.Decimal;
+    openingEntries: Prisma.Decimal;
+    consumed: Prisma.Decimal;
+    wasted: Prisma.Decimal;
+    adjusted: Prisma.Decimal;
+    net: Prisma.Decimal;
+  };
+  const zero = (): Acc => ({
+    purchases: toDecimal('0'),
+    openingEntries: toDecimal('0'),
+    consumed: toDecimal('0'),
+    wasted: toDecimal('0'),
+    adjusted: toDecimal('0'),
+    net: toDecimal('0'),
+  });
+  const byMaterial = new Map<string, Acc>();
+  for (const r of periodRows) {
+    const a = byMaterial.get(r.materialId) ?? zero();
+    const signed = r.direction === 'IN' ? r.quantity : r.quantity.negated();
+    a.net = a.net.plus(signed);
+    switch (r.type) {
+      case 'PURCHASE':     a.purchases = a.purchases.plus(signed); break;
+      case 'OPENING':      a.openingEntries = a.openingEntries.plus(signed); break;
+      case 'CONSUMPTION':  a.consumed = a.consumed.plus(signed); break;
+      case 'WASTE':        a.wasted = a.wasted.plus(signed); break;
+      case 'ADJUSTMENT':   a.adjusted = a.adjusted.plus(signed); break;
+    }
+    byMaterial.set(r.materialId, a);
+  }
+
+  // includesToday is true only when today falls inside [from, to].
+  const todayTs = today.getTime();
+  const includesToday = from.getTime() <= todayTs && to.getTime() >= todayTs;
+
+  let totalConsumedQty = toDecimal('0');
+  let totalEstValue = toDecimal('0');
+
+  const rows = materials.map((m) => {
+    const a = byMaterial.get(m.id) ?? zero();
+    const openingFromLedger = openingByMaterial.get(m.id) ?? toDecimal('0');
+
+    // closing derived from the raw signed sum, not from summing columns.
+    const closing = openingFromLedger.plus(a.net);
+
+    // Cross-check: sum of per-type columns should equal a.net.
+    const columnsSum = a.purchases
+      .plus(a.openingEntries)
+      .plus(a.consumed)
+      .plus(a.wasted)
+      .plus(a.adjusted);
+    const columnsConsistent = columnsSum.equals(a.net);
+
+    // Reconstruct opening from currentStock minus everything that has
+    // happened from `from` onward. This is the correct "ledger explains
+    // current balance" check; subtracting only the period's net would be
+    // wrong when movements exist after `to`.
+    const netFromOnward = netFromOnwardByMaterial.get(m.id) ?? toDecimal('0');
+    const openingReconstructed = m.currentStock.minus(netFromOnward);
+    const historyComplete = openingReconstructed.equals(openingFromLedger);
+
+    const estValue = a.consumed.times(m.currentPrice).toDecimalPlaces(2);
+    totalConsumedQty = totalConsumedQty.plus(a.consumed);
+    totalEstValue = totalEstValue.plus(estValue);
+
+    const variance = includesToday ? closing.minus(m.currentStock) : null;
+
+    return {
+      materialId: m.id,
+      materialNumber: m.materialNumber,
+      name: m.name,
+      unit: m.unit,
+      categoryName: m.category.name,
+
+      opening: openingFromLedger.toFixed(3),
+      purchasesNet: a.purchases.toFixed(3),
+      openingEntriesNet: a.openingEntries.toFixed(3),
+      consumed: a.consumed.toFixed(3),
+      wasted: a.wasted.toFixed(3),
+      adjustedNet: a.adjusted.toFixed(3),
+      closing: closing.toFixed(3),
+
+      currentStock: m.currentStock.toFixed(3),
+      variance: variance === null ? null : variance.toFixed(3),
+      estConsumptionValue: toMoneyString(estValue),
+
+      historyComplete,
+      columnsConsistent,
+    };
+  });
+
+  return {
+    period: opts.period,
+    from: dateOnlyUtc(from),
+    to: dateOnlyUtc(to),
+    includesToday,
+    rows,
+    totals: {
+      consumedQty: totalConsumedQty.toFixed(3),
+      estConsumptionValue: toMoneyString(totalEstValue.toDecimalPlaces(2)),
+    },
+  };
+}

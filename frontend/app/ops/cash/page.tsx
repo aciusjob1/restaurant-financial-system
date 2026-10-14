@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { DecimalField, FormError } from '@/components/ops/Form';
+import { WaiterCollectionForm } from '@/components/kiosk/WaiterCollectionForm';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
 import type { Dict } from '@/lib/i18n/dictionaries';
@@ -83,6 +85,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default function CashPage() {
   const { t, tError } = useT();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState<string | null>(null);
   const [err, setErr] = useState<{ code: string; message: string } | null>(null);
@@ -90,6 +93,7 @@ export default function CashPage() {
   const [myRole, setMyRole] = useState('');
   const [todayClosing, setTodayClosing] = useState<Closing | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [recordingFor, setRecordingFor] = useState<{ userId: string; waiterName: string } | null>(null);
   const [closeDayConfirming, setCloseDayConfirming] = useState(false);
   const [insufficientForm, setInsufficientForm] = useState<InsufficientForm>(null);
   const [rowErr, setRowErr] = useState<{ userId: string; code: string; message: string } | null>(null);
@@ -276,20 +280,34 @@ export default function CashPage() {
                         )}
                       </div>
 
-                      {isManager && r.receipt && r.receipt.status === 'PENDING' && !isInsufficientFormOpen && (
-                        <div className='flex gap-2 shrink-0'>
-                          <button type='button' onClick={() => approve(r)} disabled={isBusy}
-                            className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                            {t('ops.cashFlow.row.action.approve')}
+                      {isManager && (
+                        <div className='flex gap-2 shrink-0 flex-wrap justify-end'>
+                          {r.receipt && r.receipt.status === 'PENDING' && !isInsufficientFormOpen && (
+                            <>
+                              <button type='button' onClick={() => approve(r)} disabled={isBusy}
+                                className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+                                {t('ops.cashFlow.row.action.approve')}
+                              </button>
+                              <button type='button' onClick={() => openInsufficientForm(r)} disabled={isBusy}
+                                className='rounded-lg border border-red-300 text-red-800 px-3 py-1.5 text-sm disabled:opacity-60'>
+                                {t('ops.cashFlow.row.action.insufficient')}
+                              </button>
+                              <button type='button' onClick={() => markNoNetcash(r)} disabled={isBusy}
+                                className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+                                {t('ops.cashFlow.row.action.noNetcash')}
+                              </button>
+                            </>
+                          )}
+                          {!r.receipt && (
+                          <button
+                            type='button'
+                            onClick={() => setRecordingFor({ userId: r.userId, waiterName: r.waiterName })}
+                            disabled={isBusy}
+                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'
+                          >
+                            {t('ops.cashFlow.row.action.recordOnBehalf')}
                           </button>
-                          <button type='button' onClick={() => openInsufficientForm(r)} disabled={isBusy}
-                            className='rounded-lg border border-red-300 text-red-800 px-3 py-1.5 text-sm disabled:opacity-60'>
-                            {t('ops.cashFlow.row.action.insufficient')}
-                          </button>
-                          <button type='button' onClick={() => markNoNetcash(r)} disabled={isBusy}
-                            className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
-                            {t('ops.cashFlow.row.action.noNetcash')}
-                          </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -362,6 +380,14 @@ export default function CashPage() {
             )}
           </section>
         </>
+      )}
+          {recordingFor && (
+        <WaiterCollectionForm
+          userId={recordingFor.userId}
+          waiterName={recordingFor.waiterName}
+          onSuccess={() => { setRecordingFor(null); load(); }}
+          onCancel={() => setRecordingFor(null)}
+        />
       )}
     </OpsShell>
   );
