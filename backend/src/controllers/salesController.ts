@@ -91,8 +91,18 @@ export async function importCsv(req: Request, res: Response) {
 export async function getMySummary(req: Request, res: Response) {
   const q = req.query as MySummaryQuery;
   const businessDate = q.businessDate ?? new Date().toISOString().slice(0, 10);
-  const result = await salesService.listMySummary(req.user!.id, businessDate);
-  res.json({ success: true, ...(result ?? { summary: null, activeExpenses: [] }) });
+  // Managers and owners may fetch another user's summary by passing
+  // userId. Waiters always get their own row regardless of what they
+  // pass, so this cannot be used to escalate.
+  const targetUserId =
+    q.userId && (req.user!.role === 'MANAGER' || req.user!.role === 'OWNER')
+      ? q.userId
+      : req.user!.id;
+  const result = await salesService.listMySummary(targetUserId, businessDate);
+  res.json({
+    success: true,
+    ...(result ?? { summary: null, activeExpenses: [], mpesaEntries: [] }),
+  });
 }
 
 export async function submitWaiterReport(req: Request, res: Response) {

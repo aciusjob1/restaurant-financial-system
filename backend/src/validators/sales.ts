@@ -72,6 +72,9 @@ export type ListSalesSummariesQuery = z.infer<typeof ListSalesSummariesQuerySche
 // can pre-populate the form for resubmission.
 export const MySummaryQuerySchema = z.object({
   businessDate: DateOnly.optional(),
+  // MANAGER/OWNER may pass userId to fetch another user's summary.
+  // The controller rejects the override for any other role.
+  userId: z.string().min(1).optional(),
 });
 export type MySummaryQuery = z.infer<typeof MySummaryQuerySchema>;
 
