@@ -14,20 +14,7 @@ import argon2 from 'argon2';
 // `import.meta.url` is not available. Use process.cwd() instead.
 dotenv.config({ path: resolve(process.cwd(), 'backend', '.env') });
 
-const E2E_USERS = [
-  {
-    username: 'e2e-waiter',
-    password: 'E2eWaiter!234',
-    fullName: 'E2E Waiter',
-    role: 'WAITER' as const,
-  },
-  {
-    username: 'e2e-manager',
-    password: 'E2eManager!234',
-    fullName: 'E2E Manager',
-    role: 'MANAGER' as const,
-  },
-];
+import { E2E_USERS } from './helpers/users';
 
 /**
  * Playwright global setup.
