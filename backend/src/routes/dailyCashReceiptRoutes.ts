@@ -9,7 +9,14 @@ export const dailyCashReceiptRouter = Router();
 
 dailyCashReceiptRouter.use(requireAuth);
 dailyCashReceiptRouter.get('/mine', asyncHandler(controller.getMine));
-dailyCashReceiptRouter.get('/', asyncHandler(controller.list));
+dailyCashReceiptRouter.get(
+  '/',
+  // Same role set as /ops/cash in the UI. Without this, any
+  // authenticated user (including a waiter) could list every waiter's
+  // daily cash for a date. The UI hid the page; the API must gate it.
+  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  asyncHandler(controller.list)
+);
 dailyCashReceiptRouter.post(
   '/',
   requireRole('MANAGER', 'OWNER'),
