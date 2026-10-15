@@ -1,0 +1,13 @@
+# Gitleaks configuration for this repository.
+#
+# Extend the default ruleset so we still catch real secrets everywhere.
+# Then allowlist files that are templates and can never contain a
+# real secret.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Template files whose values are placeholders by definition."
+paths = [
+  '''backend/\.env\.example$''',
+]
