@@ -45,7 +45,17 @@ function serializeRecord(r: {
   approvedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-}, aggregates?: { paidTotal?: Prisma.Decimal; unsettledAdvances?: Array<{ id: string; amount: Prisma.Decimal; businessDate: Date }> }) {
+}, aggregates?: {
+  paidTotal?: Prisma.Decimal;
+  unsettledAdvances?: Array<{ id: string; amount: Prisma.Decimal; businessDate: Date }>;
+  settledAdvances?: Array<{
+    id: string;
+    amount: Prisma.Decimal;
+    businessDate: Date;
+    settledAt: Date | null;
+    settledBy: { salaryNumber: string } | null;
+  }>;
+}) {
   return {
     id: r.id,
     salaryNumber: r.salaryNumber,
@@ -70,6 +80,15 @@ function serializeRecord(r: {
           id: a.id,
           amount: toMoneyString(a.amount),
           businessDate: toDateOnly(a.businessDate),
+        }))
+      : undefined,
+    settledAdvances: aggregates?.settledAdvances
+      ? aggregates.settledAdvances.map((a) => ({
+          id: a.id,
+          amount: toMoneyString(a.amount),
+          businessDate: toDateOnly(a.businessDate),
+          settledAt: a.settledAt ? toDateOnly(a.settledAt) : null,
+          salaryNumber: a.settledBy?.salaryNumber ?? null,
         }))
       : undefined,
   };
@@ -193,8 +212,14 @@ export async function getSalaryById(id: string) {
       employee: {
         select: {
           salaryAdvances: {
-            where: { settledById: null },
-            select: { id: true, amount: true, businessDate: true },
+            select: {
+              id: true,
+              amount: true,
+              businessDate: true,
+              settledAt: true,
+              settledBy: { select: { salaryNumber: true } },
+            },
+            orderBy: [{ businessDate: 'desc' }],
           },
         },
       },
@@ -202,9 +227,13 @@ export async function getSalaryById(id: string) {
   });
   if (!row) throw new ApiError(404, 'NOT_FOUND', 'Salary record not found.');
   const paidTotal = row.payments.reduce((acc, p) => acc.plus(p.amount), toDecimal('0'));
+  const allAdvances = row.employee.salaryAdvances;
+  const unsettledAdvances = allAdvances.filter((a) => a.settledAt === null);
+  const settledAdvances = allAdvances.filter((a) => a.settledAt !== null);
   return serializeRecord(row, {
     paidTotal,
-    unsettledAdvances: row.employee.salaryAdvances,
+    unsettledAdvances,
+    settledAdvances,
   });
 }
 

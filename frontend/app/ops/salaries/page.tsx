@@ -26,6 +26,14 @@ type Employee = {
 
 type UnsettledAdvance = { id: string; amount: string; businessDate: string };
 
+type SettledAdvance = {
+  id: string;
+  amount: string;
+  businessDate: string;
+  settledAt: string | null;
+  salaryNumber: string | null;
+};
+
 type Salary = {
   id: string;
   salaryNumber: string;
@@ -45,6 +53,7 @@ type Salary = {
   createdAt: string;
   paidTotal?: string;
   unsettledAdvances?: UnsettledAdvance[];
+  settledAdvances?: SettledAdvance[];
 };
 
 type Payment = {
@@ -317,6 +326,7 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
   const [advances, setAdvances] = useState<UnsettledAdvance[]>([]);
+  const [settledAdvances, setSettledAdvances] = useState<SettledAdvance[]>([]);
 
   const [editLabel, setEditLabel] = useState(record.label);
   const [editStart, setEditStart] = useState(record.periodStart);
@@ -359,8 +369,14 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
 
   useEffect(() => {
     apiFetch<{ success: true; salary: Salary }>('/api/v1/salaries/' + record.id)
-      .then((r) => setAdvances(r.salary.unsettledAdvances ?? []))
-      .catch(() => setAdvances([]));
+      .then((r) => {
+        setAdvances(r.salary.unsettledAdvances ?? []);
+        setSettledAdvances(r.salary.settledAdvances ?? []);
+      })
+      .catch(() => {
+        setAdvances([]);
+        setSettledAdvances([]);
+      });
   }, [record.id]);
 
   async function saveEdit(e: FormEvent) {
@@ -478,6 +494,25 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
         </div>
       )}
 
+      {/* Settled advances (read-only history) */}
+      {settledAdvances.length > 0 && (
+        <div className='rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-1 text-sm'>
+          <div className='font-medium text-slate-700'>{t('ops.salaries.settledAdvanceHeading')}</div>
+          <div className='text-slate-600'>{t('ops.salaries.settledAdvanceIntro')}</div>
+          <ul className='font-mono text-slate-700'>
+            {settledAdvances.map((a) => (
+              <li key={a.id}>
+                {a.businessDate} {'\u2014'} {a.amount}
+                <span className='font-sans text-xs text-slate-500'>
+                  {' \u00b7 '}{t('ops.salaries.settledAdvanceAbsorbedBy')}{' '}
+                  {a.salaryNumber ?? '\u2014'}
+                  {a.settledAt ? ' \u00b7 ' + a.settledAt : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {/* Edit form — DRAFT only */}
       {isDraft && (
         <form onSubmit={saveEdit} className='rounded-xl border border-slate-200 bg-white p-4 space-y-3'>
