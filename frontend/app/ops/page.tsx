@@ -10,7 +10,7 @@ type Domain = { href: string; titleKey: keyof Dict; descriptionKey: keyof Dict }
 const DOMAINS: Domain[] = [
   { href: '/ops/cash',       titleKey: 'ops.domains.cash.title',       descriptionKey: 'ops.domains.cash.description' },
   { href: '/ops/sales',      titleKey: 'ops.domains.sales.title',      descriptionKey: 'ops.domains.sales.description' },
-  { href: '/ops/purchasing', titleKey: 'ops.domains.purchasing.title', descriptionKey: 'ops.domains.purchasing.description' },
+  { href: '/ops/inventory', titleKey: 'ops.domains.purchasing.title', descriptionKey: 'ops.domains.purchasing.description' },
   { href: '/ops/expenses',   titleKey: 'ops.domains.expenses.title',   descriptionKey: 'ops.domains.expenses.description' },
   { href: '/ops/salaries',   titleKey: 'ops.domains.salaries.title',   descriptionKey: 'ops.domains.salaries.description' },
   { href: '/ops/staff',      titleKey: 'ops.domains.staff.title',      descriptionKey: 'ops.domains.staff.description' },

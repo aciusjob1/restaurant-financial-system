@@ -51,9 +51,8 @@ const LINKS: LinkSpec[] = [
   // Sales
   { href: '/ops/sales',                labelKey: 'nav.ops.sales',              sectionKey: 'nav.section.sales',          icon: ShoppingCart },
 
-  // Purchasing & Inventory
-  { href: '/ops/purchasing',           labelKey: 'nav.ops.purchasing',         sectionKey: 'nav.section.purchasing',     icon: Truck },
-  { href: '/ops/inventory',            labelKey: 'nav.ops.inventory',          icon: Package },
+  // Inventory (stock, purchases, supplier payments)
+  { href: '/ops/inventory',            labelKey: 'nav.ops.inventory',          sectionKey: 'nav.section.purchasing',     icon: Package },
 
   // Expenses
   { href: '/ops/expenses',             labelKey: 'nav.ops.expenses',           sectionKey: 'nav.section.expenses',       icon: Receipt },

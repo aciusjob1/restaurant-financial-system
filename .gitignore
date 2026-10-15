@@ -19,3 +19,5 @@ frontend/tsconfig.tsbuildinfo
 test-results/
 trace-extract/
 playwright-report/
+backend/scripts/create-waiter-asha.mjs
+backend/scripts/set-asha-pin.mjs
