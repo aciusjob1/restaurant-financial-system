@@ -21,3 +21,6 @@ trace-extract/
 playwright-report/
 backend/scripts/create-waiter-asha.mjs
 backend/scripts/set-asha-pin.mjs
+
+# Gitleaks scan artifact (regenerated on each run)
+.gitleaks-report.json
