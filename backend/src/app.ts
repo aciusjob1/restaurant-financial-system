@@ -29,6 +29,7 @@ import {
 import { reportsRouter } from './routes/reportsRoutes.js';
 import { settingsRouter } from './routes/settingsRoutes.js';
 import { backupRouter } from './routes/backupRoutes.js';
+import { systemRouter } from './routes/systemRoutes.js';
 import { stockMovementRouter } from './routes/stockMovementRoutes.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
@@ -85,6 +86,7 @@ app.use('/api/v1/stock-movements', stockMovementRouter);
 app.use('/api/v1/reports', reportsRouter);
   app.use('/api/v1/settings', settingsRouter);
   app.use('/api/v1/backups', backupRouter);
+  app.use('/api/v1/system', systemRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
