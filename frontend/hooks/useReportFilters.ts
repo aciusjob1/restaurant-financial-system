@@ -26,6 +26,8 @@ export function useReportFilters() {
       const next = new URLSearchParams(searchParams.toString());
       if (value === null || value === '') next.delete(key);
       else next.set(key, value);
+      // Any filter change invalidates the current page.
+      if (key !== 'offset') next.delete('offset');
       router.push(`${pathname}?${next.toString()}`);
     },
     [router, pathname, searchParams]

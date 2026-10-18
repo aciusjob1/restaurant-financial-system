@@ -14,8 +14,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
-import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
-import { UserMenu } from '@/components/ops/UserMenu';
+import { AppHeader } from '@/components/ui/AppHeader';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
 import { useRestaurantName } from '@/hooks/useRestaurantName';
@@ -117,16 +116,8 @@ export function ReportShell({
       storageKey='reports-shell-collapsed'
       me={me}
     >
-      <div className='flex justify-between items-center gap-3 px-4 pt-4 print:hidden min-h-[3rem]'>
-        {restaurantName && (
-          <div className='text-base font-semibold uppercase tracking-[0.16em] text-slate-600 truncate'>
-            {restaurantName}
-          </div>
-        )}
-        <div className='flex items-center gap-3 shrink-0'>
-          <LanguagePicker />
-          {me && <UserMenu fullName={me.fullName} role={me.role} />}
-        </div>
+            <div className='print:hidden'>
+        <AppHeader restaurantName={restaurantName} me={me} />
       </div>
 
       {printTitle && (

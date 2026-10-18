@@ -1,11 +1,12 @@
 'use client';
 
 import { Suspense, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { ReportShell } from '@/components/reports/ReportShell';
 import { FilterBar } from '@/components/reports/FilterBar';
 import { DataTable, type Column } from '@/components/reports/DataTable';
 import { TotalsRow } from '@/components/reports/TotalsRow';
+import { Pager } from '@/components/reports/Pager';
 import {
   LoadingState,
   EmptyState,
@@ -45,17 +46,30 @@ function buildColumns(t: (k: keyof Dict) => string): Array<Column<Reconciliation
 
 function ReconciliationsContent() {
   const { t } = useT();
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const def = defaultRange();
   const from = searchParams.get('from') ?? def.from;
   const to = searchParams.get('to') ?? def.to;
+  const offset = Number(searchParams.get('offset') ?? '0');
+  const limit = 100;
 
   const query = useMemo(() => {
     const p = new URLSearchParams();
     p.set('from', from);
     p.set('to', to);
+    p.set('limit', String(limit));
+    p.set('offset', String(offset));
     return p.toString();
-  }, [from, to]);
+  }, [from, to, offset, limit]);
+
+  const goToOffset = (nextOffset: number) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (nextOffset <= 0) next.delete('offset');
+    else next.set('offset', String(nextOffset));
+    router.push(`${pathname}?${next.toString()}`);
+  };
 
   const state = useReport<ReconciliationsResponse>(REPORT_PATHS.reconciliations, query);
   const columns = useMemo(() => buildColumns(t), [t]);
@@ -82,6 +96,13 @@ function ReconciliationsContent() {
               { label: t('totals.mobileDiff'), value: state.data.totals.mobileDifference },
               { label: t('totals.rows'),       value: String(state.data.totals.count) },
             ]}
+          />
+
+          <Pager
+            offset={offset}
+            limit={limit}
+            total={state.data.totals.count}
+            onChange={goToOffset}
           />
 
           {state.data.rows.length === 0 ? (

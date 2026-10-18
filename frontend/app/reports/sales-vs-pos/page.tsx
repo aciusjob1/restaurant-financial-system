@@ -6,6 +6,7 @@ import { ReportShell } from '@/components/reports/ReportShell';
 import { FilterBar } from '@/components/reports/FilterBar';
 import { DataTable, type Column } from '@/components/reports/DataTable';
 import { TotalsRow } from '@/components/reports/TotalsRow';
+import { Pager } from '@/components/reports/Pager';
 import {
   LoadingState,
   EmptyState,
@@ -13,6 +14,7 @@ import {
   ReportHeader,
 } from '@/components/reports/StateViews';
 import { useReport } from '@/hooks/useReport';
+import { usePagination } from '@/hooks/usePagination';
 import {
   REPORT_PATHS,
   defaultRange,
@@ -33,9 +35,11 @@ function buildColumns(t: (k: keyof Dict) => string): Array<Column<SalesVsPosRow>
     { key: 'post',  header: t('table.posTotal'),      align: 'right', render: (r) => r.posTotal },
     { key: 'posc',  header: t('table.posCash'),       align: 'right', render: (r) => r.posCash },
     { key: 'posm',  header: t('table.posMobile'),     align: 'right', render: (r) => r.posMobile },
+    { key: 'poso',  header: t('table.posOther'),      align: 'right', render: (r) => r.posOther },
     { key: 'collt', header: t('table.collTotal'),     align: 'right', render: (r) => r.collectionsTotal },
     { key: 'collc', header: t('table.collCash'),      align: 'right', render: (r) => r.collectionsCash },
     { key: 'collm', header: t('table.collMobile'),    align: 'right', render: (r) => r.collectionsMobile },
+    { key: 'collo', header: t('table.collOther'),     align: 'right', render: (r) => r.collectionsOther },
     { key: 'cv',    header: t('table.cashVar'),       align: 'right',
       render: (r) => <span className={diffClass(r.cashVariance)}>{r.cashVariance}</span> },
     { key: 'mv',    header: t('table.mobileVar'),     align: 'right',
@@ -52,13 +56,16 @@ function SalesVsPosContent() {
   const def = defaultRange();
   const from = searchParams.get('from') ?? def.from;
   const to = searchParams.get('to') ?? def.to;
+  const { offset, limit, goToOffset } = usePagination();
 
   const query = useMemo(() => {
     const p = new URLSearchParams();
     p.set('from', from);
     p.set('to', to);
+    p.set('limit', String(limit));
+    p.set('offset', String(offset));
     return p.toString();
-  }, [from, to]);
+  }, [from, to, offset, limit]);
 
   const state = useReport<SalesVsPosResponse>(REPORT_PATHS.salesVsPos, query);
   const columns = useMemo(() => buildColumns(t), [t]);
@@ -86,6 +93,13 @@ function SalesVsPosContent() {
               { label: t('totals.otherVariance'),  value: state.data.totals.otherVariance },
               { label: t('totals.days'),           value: String(state.data.totals.rowCount) },
             ]}
+          />
+
+          <Pager
+            offset={offset}
+            limit={limit}
+            total={state.data.totals.rowCount}
+            onChange={goToOffset}
           />
 
           {state.data.rows.length === 0 ? (

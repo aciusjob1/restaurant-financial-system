@@ -66,6 +66,31 @@ function errOf(e: unknown): { code: string; message: string } {
   return { code: 'ERR', message: 'Request failed' };
 }
 
+// Usernames may only contain [A-Za-z0-9_.-] per the backend validator.
+// Users naturally type a space when writing a name as a username;
+// fold spaces to underscores so the common case succeeds instead of
+// round-tripping a 400. Other invalid characters (@, !, etc.) are
+// deliberately left unchanged so the server still rejects them.
+function normalizeUsername(v: string): string {
+  return v.replace(/\s+/g, '_');
+}
+
+// A throwaway password for WAITER accounts. The waiter logs in via
+// /login/pin — PIN-only — so this password is never shown, never
+// used, and never meant to be retrievable. It exists only to satisfy
+// CreateUserSchema.password (min 12 chars). Two concatenated UUIDs
+// give a 72-char string from a cryptographically secure source.
+function generateEphemeralPassword(): string {
+  return crypto.randomUUID() + crypto.randomUUID();
+}
+
+// Mirrors SetPinSchema's /^\d{6}$/. The server remains authoritative;
+// this is a fast client-side gate so an obviously invalid PIN does
+// not round-trip to the API and produce a generic error.
+function isValidPin(p: string): boolean {
+  return /^\d{6}$/.test(p);
+}
+
 type CreateMode = 'staff' | 'account';
 
 export default function StaffPage() {
@@ -96,6 +121,7 @@ export default function StaffPage() {
   const [giveLogin, setGiveLogin] = useState(false);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [loginPin, setLoginPin] = useState('');
   const [loginRole, setLoginRole] = useState<'WAITER' | 'MANAGER'>('WAITER');
   const [acctUsername, setAcctUsername] = useState('');
   const [acctFullName, setAcctFullName] = useState('');
@@ -127,6 +153,7 @@ export default function StaffPage() {
   const [creatingLoginFor, setCreatingLoginFor] = useState<Employee | null>(null);
   const [newLoginUsername, setNewLoginUsername] = useState('');
   const [newLoginPassword, setNewLoginPassword] = useState('');
+  const [newLoginPin, setNewLoginPin] = useState('');
   const [newLoginRole, setNewLoginRole] = useState<'WAITER' | 'MANAGER'>('WAITER');
   const [createLoginBusy, setCreateLoginBusy] = useState(false);
 
@@ -271,6 +298,7 @@ export default function StaffPage() {
   function clearCreate() {
     setFullName(''); setPhone(''); setNotes('');
     setGiveLogin(false); setLoginUsername(''); setLoginPassword(''); setLoginRole('WAITER');
+    setLoginPin('');
     setAcctUsername(''); setAcctFullName(''); setAcctPhone(''); setAcctRole('WAITER'); setAcctPassword('');
   }
 
@@ -286,10 +314,54 @@ export default function StaffPage() {
         notes: notes.trim() === '' ? null : notes.trim(),
       };
       const useLogin = isOwner && giveLogin;
-      if (useLogin) {
-        body.login = { username: loginUsername.trim(), password: loginPassword, role: loginRole };
+      if (useLogin && loginRole === 'WAITER' && !isValidPin(loginPin)) {
+        setErr({ code: 'PIN_REQUIRED', message: t('ops.staff.pinRequired') });
+        setCreateBusy(false);
+        return;
       }
-      await apiFetch('/api/v1/employees', { method: 'POST', body: JSON.stringify(body) });
+      if (useLogin) {
+        body.login = {
+          username: loginUsername.trim(),
+          password: loginRole === 'WAITER' ? generateEphemeralPassword() : loginPassword,
+          role: loginRole,
+        };
+      }
+      const res = await apiFetch<{ success: true; employee: { id: string; userId: string | null } }>(
+        '/api/v1/employees',
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+
+      // If we created a WAITER login, set the PIN now. The account
+      // exists with a throwaway password; the PIN is what the waiter
+      // actually uses to sign in. A failure here is recoverable via
+      // the Set PIN action on the new row — the account and the
+      // employee link already exist.
+      if (useLogin && loginRole === 'WAITER') {
+        if (!res.employee.userId) {
+          clearCreate();
+          setErr({
+            code: 'USER_NOT_LINKED',
+            message: t('ops.staff.flash.createdWithLoginPinFailed'),
+          });
+          loadAll();
+          return;
+        }
+        try {
+          await apiFetch('/api/v1/auth/set-pin', {
+            method: 'POST',
+            body: JSON.stringify({ userId: res.employee.userId, pin: loginPin }),
+          });
+        } catch {
+          clearCreate();
+          setErr({
+            code: 'PIN_SET_FAILED',
+            message: t('ops.staff.flash.createdWithLoginPinFailed'),
+          });
+          loadAll();
+          return;
+        }
+      }
+
       clearCreate();
       setFlash(useLogin ? t('ops.staff.flash.createdWithLogin') : t('ops.staff.flash.created'));
       loadAll();
@@ -423,6 +495,7 @@ export default function StaffPage() {
   function startCreateLogin(emp: Employee) {
     setCreatingLoginFor(emp);
     setNewLoginUsername(''); setNewLoginPassword(''); setNewLoginRole('WAITER');
+    setNewLoginPin('');
     setErr(null); setFlash(null);
   }
   async function submitCreateLogin(e: FormEvent) {
@@ -430,6 +503,14 @@ export default function StaffPage() {
     if (!creatingLoginFor) return;
     setErr(null); setFlash(null); setCreateLoginBusy(true);
     const username = newLoginUsername.trim();
+
+    // Validate PIN before any server call for WAITER logins.
+    if (newLoginRole === 'WAITER' && !isValidPin(newLoginPin)) {
+      setErr({ code: 'PIN_REQUIRED', message: t('ops.staff.pinRequired') });
+      setCreateLoginBusy(false);
+      return;
+    }
+
     try {
       const userRes = await apiFetch<{ success: true; user: User }>('/api/v1/users', {
         method: 'POST',
@@ -438,28 +519,46 @@ export default function StaffPage() {
           fullName: creatingLoginFor.fullName,
           phone: creatingLoginFor.phone,
           role: newLoginRole,
-          password: newLoginPassword,
+          password: newLoginRole === 'WAITER' ? generateEphemeralPassword() : newLoginPassword,
         }),
       });
+
+      // Collect problems so we can surface every failure instead of
+      // letting the last one clobber the first.
+      const problems: string[] = [];
+
+      // Step 2: set the PIN for a WAITER login. Failure is recoverable
+      // via the Set PIN action on the resulting row, so we record it
+      // and continue.
+      if (newLoginRole === 'WAITER') {
+        try {
+          await apiFetch('/api/v1/auth/set-pin', {
+            method: 'POST',
+            body: JSON.stringify({ userId: userRes.user.id, pin: newLoginPin }),
+          });
+        } catch {
+          problems.push(t('ops.staff.flash.loginCreatedPinFailed') + ' ' + username + '.');
+        }
+      }
+
+      // Step 3: link the employee to the user. Failure here is the
+      // existing LOGIN_CREATED_NOT_LINKED case.
       try {
         await apiFetch('/api/v1/employees/' + creatingLoginFor.id, {
           method: 'PATCH',
           body: JSON.stringify({ userId: userRes.user.id }),
         });
-        setCreatingLoginFor(null);
-        setFlash(t('ops.staff.flash.loginCreated'));
-        loadAll();
       } catch {
-        // Account created, link failed. The two-step flow has no rollback.
-        // The account now exists as a user-only row below. This page does
-        // not offer a way to link it to this staff record afterward.
-        setCreatingLoginFor(null);
-        setErr({
-          code: 'LOGIN_CREATED_NOT_LINKED',
-          message: t('ops.staff.flash.loginCreatedNotLinked') + ' ' + username,
-        });
-        loadAll();
+        problems.push(t('ops.staff.flash.loginCreatedNotLinked') + ' ' + username);
       }
+
+      setCreatingLoginFor(null);
+      if (problems.length > 0) {
+        setErr({ code: 'PARTIAL_SUCCESS', message: problems.join(' ') });
+      } else {
+        setFlash(t('ops.staff.flash.loginCreated'));
+      }
+      loadAll();
     } catch (e2) { setErr(errOf(e2)); }
     finally { setCreateLoginBusy(false); }
   }
@@ -523,7 +622,7 @@ export default function StaffPage() {
         <form onSubmit={saveEditStaff} className='rounded-2xl border border-slate-200 bg-white p-5 space-y-4'>
           <h2 className='text-base font-medium text-slate-900'>{t('ops.staff.editHeading')}</h2>
           <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
-            <TextField label={t('form.fullName')} value={editFullName} onChange={setEditFullName} required />
+            <TextField label={t('form.fullName')} value={editFullName} onChange={setEditFullName} required titleCase />
             <TextField label={t('form.phoneOptional')} value={editPhone} onChange={setEditPhone} />
             <SelectField
               label={t('form.position')}
@@ -552,7 +651,7 @@ export default function StaffPage() {
             {t('ops.users.editHeadingPrefix')}{editingAcct.username}
           </h2>
           <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-            <TextField label={t('form.fullName')} value={editAcctFullName} onChange={setEditAcctFullName} required />
+            <TextField label={t('form.fullName')} value={editAcctFullName} onChange={setEditAcctFullName} required titleCase />
             <TextField label={t('form.phoneOptional')} value={editAcctPhone} onChange={setEditAcctPhone} />
             {isOwner && editingAcct.id !== me?.id && (
               <SelectField
@@ -626,15 +725,25 @@ export default function StaffPage() {
             {t('ops.staff.createLoginHeading')}{creatingLoginFor.fullName}
           </h2>
           <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
-            <TextField label={t('form.username')} value={newLoginUsername} onChange={setNewLoginUsername} required />
-            <TextField
-              label={t('form.initialPassword')}
-              type='password'
-              value={newLoginPassword}
-              onChange={setNewLoginPassword}
-              required
-              autoComplete='new-password'
-            />
+            <TextField label={t('form.username')} value={newLoginUsername} onChange={setNewLoginUsername} required normalizeBlur={normalizeUsername} />
+            {newLoginRole === 'WAITER' ? (
+              <TextField
+                label={t('ops.staff.setPinLabel')}
+                value={newLoginPin}
+                onChange={(v) => setNewLoginPin(v.replace(/\D/g, '').slice(0, 6))}
+                required
+                placeholder='000000'
+              />
+            ) : (
+              <TextField
+                label={t('form.initialPassword')}
+                type='password'
+                value={newLoginPassword}
+                onChange={setNewLoginPassword}
+                required
+                autoComplete='new-password'
+              />
+            )}
             <SelectField
               label={t('form.role')}
               value={newLoginRole}
@@ -684,7 +793,7 @@ export default function StaffPage() {
           {createMode === 'staff' ? (
             <form onSubmit={createStaff} className='space-y-4'>
               <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
-                <TextField label={t('form.fullName')} value={fullName} onChange={setFullName} required />
+                <TextField label={t('form.fullName')} value={fullName} onChange={setFullName} required titleCase />
                 <TextField label={t('form.phoneOptional')} value={phone} onChange={setPhone} />
                 <SelectField
                   label={t('form.position')}
@@ -708,15 +817,25 @@ export default function StaffPage() {
                   </label>
                   {giveLogin && (
                     <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
-                      <TextField label={t('form.username')} value={loginUsername} onChange={setLoginUsername} required />
-                      <TextField
-                        label={t('form.initialPassword')}
-                        type='password'
-                        value={loginPassword}
-                        onChange={setLoginPassword}
-                        required
-                        autoComplete='new-password'
-                      />
+                      <TextField label={t('form.username')} value={loginUsername} onChange={setLoginUsername} required normalizeBlur={normalizeUsername} />
+                      {loginRole === 'WAITER' ? (
+                        <TextField
+                          label={t('ops.staff.setPinLabel')}
+                          value={loginPin}
+                          onChange={(v) => setLoginPin(v.replace(/\D/g, '').slice(0, 6))}
+                          required
+                          placeholder='000000'
+                        />
+                      ) : (
+                        <TextField
+                          label={t('form.initialPassword')}
+                          type='password'
+                          value={loginPassword}
+                          onChange={setLoginPassword}
+                          required
+                          autoComplete='new-password'
+                        />
+                      )}
                       <SelectField
                         label={t('form.role')}
                         value={loginRole}
@@ -740,8 +859,8 @@ export default function StaffPage() {
             <form onSubmit={createAccountOnly} className='space-y-4'>
               <p className='text-xs text-slate-500'>{t('ops.staff.mode.accountNote')}</p>
               <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-                <TextField label={t('form.username')} value={acctUsername} onChange={setAcctUsername} required />
-                <TextField label={t('form.fullName')} value={acctFullName} onChange={setAcctFullName} required />
+                <TextField label={t('form.username')} value={acctUsername} onChange={setAcctUsername} required normalizeBlur={normalizeUsername} />
+                <TextField label={t('form.fullName')} value={acctFullName} onChange={setAcctFullName} required titleCase />
                 <TextField label={t('form.phoneOptional')} value={acctPhone} onChange={setAcctPhone} />
                 <SelectField
                   label={t('form.role')}

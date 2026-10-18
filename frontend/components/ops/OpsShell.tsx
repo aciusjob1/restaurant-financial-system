@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  Wifi,
   Banknote,
   Briefcase,
   Clock,
@@ -29,8 +30,7 @@ import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
 import { useRestaurantName } from '@/hooks/useRestaurantName';
-import { LanguagePicker } from '@/lib/i18n/LanguagePicker';
-import { UserMenu } from '@/components/ops/UserMenu';
+import { AppHeader } from '@/components/ui/AppHeader';
 import type { Dict } from '@/lib/i18n/dictionaries';
 
 type MeResponse = {
@@ -65,6 +65,7 @@ const LINKS: LinkSpec[] = [
 
   // Settings (bottom, ungrouped)
   { href: '/ops/settings',             labelKey: 'nav.ops.settings',           icon: UserCog },
+  { href: '/ops/system-access', labelKey: 'nav.ops.systemAccess', icon: Wifi },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {
@@ -128,17 +129,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
       storageKey='ops-shell-collapsed'
       me={me}
     >
-      <div className='flex justify-between items-center gap-3 px-4 pt-4 min-h-[3rem]'>
-        {restaurantName && (
-          <div className='text-base font-semibold uppercase tracking-[0.16em] text-slate-600 truncate'>
-            {restaurantName}
-          </div>
-        )}
-        <div className='flex items-center gap-3 shrink-0'>
-          <LanguagePicker />
-          {me && <UserMenu fullName={me.fullName} role={me.role} />}
-        </div>
-      </div>
+            <AppHeader restaurantName={restaurantName} me={me} />
       {children}
     </AppSidebar>
   );

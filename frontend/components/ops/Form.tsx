@@ -28,6 +28,10 @@ export function TextField(p: FieldBase & {
   autoComplete?: string;
   type?: 'text' | 'password' | 'email' | 'tel';
   titleCase?: boolean;
+  // Optional value transform applied on blur, before titleCase.
+  // Used by username fields to fold spaces to underscores without
+  // rewriting other characters the server may still want to reject.
+  normalizeBlur?: (v: string) => string;
 }) {
   return (
     <Label text={p.label}>
@@ -36,9 +40,11 @@ export function TextField(p: FieldBase & {
         className={INPUT_CLS}
         value={p.value}
         onChange={(e) => p.onChange(e.target.value)}
-        onBlur={p.titleCase
+        onBlur={p.titleCase || p.normalizeBlur
           ? (e) => {
-              const next = titleCaseName(e.target.value);
+              let next = e.target.value;
+              if (p.normalizeBlur) next = p.normalizeBlur(next);
+              if (p.titleCase) next = titleCaseName(next);
               if (next !== p.value) p.onChange(next);
             }
           : undefined}
