@@ -24,3 +24,8 @@ backend/scripts/set-asha-pin.mjs
 
 # Gitleaks scan artifact (regenerated on each run)
 .gitleaks-report.json
+
+# Local scaffolding (patch backups, patch build scripts)
+*.bak-*
+patch/
+
