@@ -257,34 +257,6 @@ export default function DashboardPage() {
       <header>
         <h1 className="text-2xl font-semibold">{t('dashboard.title')}</h1>
       </header>
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex-1">
-            <div className="text-xs uppercase tracking-wide text-slate-500">
-              {t('dashboard.todayShift.label')}
-            </div>
-            <div className="mt-1 text-sm text-slate-900">
-              {shiftLoading ? t('common.loading')
-                : !me ? t('dashboard.todayShift.unknown')
-                : todayShift
-                  ? `${t('dashboard.todayShift.statusPrefix')} ${t(('shiftStatus.' + todayShift.status.toLowerCase()) as never)}`
-                  : t('dashboard.todayShift.none')}
-            </div>
-          </div>
-          {!shiftLoading && !todayShift && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-              {t('dashboard.todayShift.autoOpen')}
-            </div>
-          )}
-        </div>
-        {shiftFlash && (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
-            {shiftFlash}
-          </div>
-        )}
-      </section>
-
-
 
       <section className="space-y-3">
         {/* Filter bar */}

@@ -54,12 +54,13 @@ function makeStop(name: string, proc: ChildProcess): () => Promise<void> {
 export function startBackend(port: number): ManagedChild {
   const cwd = path.join(repoRoot(), 'backend');
   const entry = path.join(cwd, 'dist', 'server.js');
+  const isDev = process.env.RFS_DEV === '1';
 
   const proc = spawn(process.execPath, [entry], {
     cwd,
     env: {
       ...process.env,
-      NODE_ENV: process.env.NODE_ENV ?? 'development',
+      NODE_ENV: isDev ? 'development' : 'production',
       PORT: String(port),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -83,12 +84,16 @@ export function startFrontend(port: number): ManagedChild {
   const cwd = path.join(repoRoot(), 'frontend');
   const nextBin = path.join(cwd, 'node_modules', 'next', 'dist', 'bin', 'next');
 
-  const args = ['dev', '-H', '0.0.0.0', '-p', String(port)];
+  // Dev mode runs "next dev" (compiles on request). Production runs "next start".
+  const isDev = process.env.RFS_DEV === '1';
+  const args = isDev
+    ? ['dev', '-H', '0.0.0.0', '-p', String(port)]
+    : ['start', '-H', '0.0.0.0', '-p', String(port)];
   const proc = spawn(process.execPath, [nextBin, ...args], {
     cwd,
     env: {
       ...process.env,
-      NODE_ENV: process.env.NODE_ENV ?? 'development',
+      NODE_ENV: isDev ? 'development' : 'production',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,

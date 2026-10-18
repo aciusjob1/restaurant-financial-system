@@ -14,6 +14,9 @@
         "frontend:dev": "pnpm --filter @rfs/frontend dev",
         "electron:dev": "pnpm --filter @rfs/electron dev",
         "dev": "concurrently -n api,web -c blue,green \"pnpm backend:dev\" \"pnpm frontend:dev\"",
+        "prod:build": "pnpm --filter @rfs/backend build && pnpm --filter @rfs/frontend build && pnpm --filter @rfs/electron build",
+        "prod:start": "pnpm --filter @rfs/electron start",
+        "electron:prod": "pnpm prod:build && pnpm prod:start",
         "e2e": "playwright test",
         "e2e:headed": "playwright test --headed"
     },

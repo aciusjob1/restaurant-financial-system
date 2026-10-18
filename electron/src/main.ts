@@ -47,7 +47,10 @@ async function createWindow() {
   }
   console.log('[electron] backend healthy');
 
-  // Frontend next.
+  // Must be set before the Next dev server starts (see next.config.mjs).
+  process.env.RFS_API_PORT = String(apiPort);
+
+  // Frontend next (RFS_API_PORT already set above).
   console.log('[electron] starting frontend…');
   frontend = startFrontend(webPort);
   const webOk = await waitForHttp('http://127.0.0.1:' + webPort + '/login', 60_000);
@@ -66,12 +69,6 @@ async function createWindow() {
   }
   console.log('[electron] frontend ready');
 
-  // Env var so the renderer knows which API port to call.
-  // Note: NEXT_PUBLIC_API_BASE_URL is baked into the frontend bundle at
-  // dev-server start, so this env only affects the window URL — the
-  // frontend's API base still comes from frontend/.env.local. Phase 3/4
-  // will wire this properly for packaged runs.
-  process.env.RFS_API_PORT = String(apiPort);
 
   mainWindow = new BrowserWindow({
     width: 1280,
