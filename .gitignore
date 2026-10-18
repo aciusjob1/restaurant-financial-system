@@ -29,3 +29,7 @@ backend/scripts/set-asha-pin.mjs
 *.bak-*
 patch/
 
+*.bak2-*
+*.bak3-*
+
+*.bak*
