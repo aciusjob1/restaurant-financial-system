@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'node:path';
-import getPort from 'get-port';
+import { pickPort } from './port.js';
 import { startBackend, startFrontend, type ManagedChild } from './spawn.js';
 
 let backend: ManagedChild | null = null;
@@ -24,8 +24,8 @@ async function waitForHttp(url: string, timeoutMs: number): Promise<boolean> {
 
 async function createWindow() {
   console.log('[electron] picking ports…');
-  const apiPort = await getPort({ port: [4000, 4100, 4200, 4300, 4400] });
-  const webPort = await getPort({ port: [3000, 3100, 3200, 3300, 3400] });
+  const apiPort = await pickPort([4000, 4100, 4200, 4300, 4400]);
+  const webPort = await pickPort([3000, 3100, 3200, 3300, 3400]);
   console.log('[electron] api=' + apiPort + ' web=' + webPort);
 
   // Backend first — the frontend will talk to it.
