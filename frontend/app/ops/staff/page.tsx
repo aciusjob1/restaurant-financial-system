@@ -961,7 +961,13 @@ export default function StaffPage() {
                           {t('ops.staff.actions.editAccount')}
                         </button>
                       )}
-                      {u && canReset(u) && (
+                      {u && u.role === 'WAITER' && canSetPin(u) && (
+                        <button type='button' onClick={() => startSetPin(u)}
+                          className='rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50'>
+                          {t('ops.staff.actions.setPin')}
+                        </button>
+                      )}
+                      {u && u.role !== 'WAITER' && canReset(u) && (
                         <button type='button' onClick={() => startReset(u)}
                           className='rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50'>
                           {t('ops.staff.actions.resetPassword')}
