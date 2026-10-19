@@ -5,9 +5,28 @@ const DEFAULT_LIMIT = 100;
 const DEFAULT_OFFSET = 0;
 
 function page(q: Record<string, unknown>): { limit: number; offset: number } {
-  const l = typeof q.limit === 'number' ? q.limit : DEFAULT_LIMIT;
-  const o = typeof q.offset === 'number' ? q.offset : DEFAULT_OFFSET;
-  return { limit: l, offset: o };
+  const parseNum = (v: unknown): number | undefined => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+    return undefined;
+  };
+
+  const rawLimit = parseNum(q.limit);
+  const rawOffset = parseNum(q.offset);
+  const rawPage = parseNum(q.page);
+
+  const limit = rawLimit !== undefined && rawLimit > 0
+    ? Math.min(rawLimit, 1000)
+    : DEFAULT_LIMIT;
+
+  let offset = 0;
+  if (rawOffset !== undefined && rawOffset >= 0) offset = rawOffset;
+  else if (rawPage !== undefined && rawPage >= 1) offset = (rawPage - 1) * limit;
+
+  return { limit, offset };
 }
 
 // 1

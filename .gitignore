@@ -33,3 +33,18 @@ patch/
 *.bak3-*
 
 *.bak*
+
+# Build output (pnpm deploy)
+backend-deployed/
+
+# Build output (pnpm deploy)
+frontend-deployed/
+
+# Build output
+dist-installer/
+
+# Build output
+electron/backend-deployed/
+
+# Build output
+electron/frontend-deployed/

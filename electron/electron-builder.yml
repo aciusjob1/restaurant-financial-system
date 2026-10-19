@@ -1,0 +1,30 @@
+appId: com.rfs.restaurant-financial-system
+productName: RFS
+copyright: Copyright © 2026
+
+directories:
+  output: ../dist-installer
+  buildResources: .
+
+files:
+  - "dist/**/*"
+  - "package.json"
+  - "!**/*.map"
+
+afterPack: ./after-pack.js
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: RFS-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: RFS
+  runAfterFinish: false
