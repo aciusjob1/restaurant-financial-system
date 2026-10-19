@@ -6,6 +6,9 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   SESSION_COOKIE_NAME: z.string().min(1).default('rfs_session'),
+  // Secure cookie flag — set COOKIE_SECURE=true only when serving over HTTPS.
+  // NODE_ENV=production does not imply HTTPS; LAN deployments run over plain HTTP.
+  COOKIE_SECURE: z.enum(['true', 'false']).default('false'),
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 chars'),
   PIN_LOOKUP_SECRET: z.string().min(32, 'PIN_LOOKUP_SECRET must be at least 32 chars'),

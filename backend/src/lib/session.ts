@@ -43,7 +43,7 @@ export async function revokeSessionByToken(token: string): Promise<void> {
 export function setSessionCookie(res: Response, token: string, expiresAt: Date): void {
   res.cookie(env.SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isProd,
+    secure: env.COOKIE_SECURE === 'true',
     sameSite: 'lax',
     path: '/',
     expires: expiresAt,
@@ -53,7 +53,7 @@ export function setSessionCookie(res: Response, token: string, expiresAt: Date):
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(env.SESSION_COOKIE_NAME, {
     httpOnly: true,
-    secure: isProd,
+    secure: env.COOKIE_SECURE === 'true',
     sameSite: 'lax',
     path: '/',
   });
