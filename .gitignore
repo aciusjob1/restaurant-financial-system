@@ -1,50 +1,23 @@
+﻿# Dependencies
 node_modules/
-.next/
+
+# Build artifacts
 dist/
-build/
-*.log
-.env
-.env.*
-!.env.example
-*.db
-*.db-journal
-.DS_Store
-
-# TypeScript build info
-tsconfig.tsbuildinfo
-frontend/tsconfig.tsbuildinfo
-
-
-# Playwright
-test-results/
-trace-extract/
-playwright-report/
-backend/scripts/create-waiter-asha.mjs
-backend/scripts/set-asha-pin.mjs
-
-# Gitleaks scan artifact (regenerated on each run)
-.gitleaks-report.json
-
-# Local scaffolding (patch backups, patch build scripts)
-*.bak-*
-patch/
-
-*.bak2-*
-*.bak3-*
-
-*.bak*
-
-# Build output (pnpm deploy)
-backend-deployed/
-
-# Build output (pnpm deploy)
-frontend-deployed/
-
-# Build output
 dist-installer/
+backend-deployed/
+frontend-deployed/
+backend/dist/
+frontend/.next/
+electron/dist/
 
-# Build output
-electron/backend-deployed/
+# Database Binaries
+vendor/
 
-# Build output
-electron/frontend-deployed/
+# Screenshots and Logs
+*.png
+*.log
+
+# Environment variables (NEVER commit these)
+.env
+.env.local
+.env.production
