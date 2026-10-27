@@ -37,7 +37,10 @@ export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
-  app.set('trust proxy', 1);
+  // Only the local Next.js proxy may supply X-Forwarded-For. Trusting one
+  // hop from any peer let LAN clients spoof their IP and bypass the
+  // IP-keyed rate limiters.
+  app.set('trust proxy', 'loopback');
 
   app.use(
   helmet({

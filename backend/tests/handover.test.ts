@@ -511,10 +511,12 @@ describe('Owner autoConfirmHandovers preference', () => {
     await o.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
   });
 
-  it('MANAGER with autoConfirmHandovers ON still creates a PENDING handover', async () => {
+  it('MANAGER cannot enable autoConfirmHandovers; handover stays PENDING', async () => {
     const m = await loginAs(MANAGER);
     const mId = await currentUserId(m);
-    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
+    const pref = await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: true });
+    expect(pref.status).toBe(403);
+    expect(pref.body.code).toBe('AUTO_FLAGS_OWNER_ONLY');
 
     const w = await loginAs(ON_BEHALF_WAITER);
     const waiterId = await currentUserId(w);
@@ -528,7 +530,5 @@ describe('Owner autoConfirmHandovers preference', () => {
     expect(res.status).toBe(201);
     expect(res.body.handover.status).toBe('PENDING');
     expect(res.body.handover.confirmedAt).toBeNull();
-
-    await m.patch('/api/v1/auth/me').send({ autoConfirmHandovers: false });
   });
 });

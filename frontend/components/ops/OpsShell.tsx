@@ -130,7 +130,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
       me={me}
     >
             <AppHeader restaurantName={restaurantName} me={me} />
-      {children}
+      <div className='p-6'>{children}</div>
     </AppSidebar>
   );
 }

@@ -206,19 +206,23 @@ async function runShiftClose(
   const ownerAutoReview = ownerPref?.autoReviewReconciliations === true;
 
   // ── Compute the numbers ────────────────────────────────────
-  // For 'complete-shift', we work off existing collections and a supplied
-  // cashHandedOver — this mode is unchanged.
+  // For 'complete-shift', expected cash comes from recorded sales (or cash
+  // collections when no summary exists) minus mobile money and cash
+  // expenses; the supplied cashHandedOver is the ACTUAL counted amount.
   // For 'close-money' / 'submit', we compute from mpesa entries and
   // expenses, and cash is derived — no client override.
 
   let salesTotal = toDecimal('0');
   let totalMobileMoney = toDecimal('0');
   let totalExpenses = toDecimal('0');
-  let netCash = toDecimal('0');
+  let cashExpenses = toDecimal('0');
+  let expectedCash = toDecimal('0');
+  let actualCash = toDecimal('0');
+  let actualMobile = toDecimal('0');
   let mpesaRowsToCreate: MpesaEntryInput[] = [];
 
   if (mode === 'complete-shift') {
-    // Legacy path: existing collections + supplied cash.
+    // Legacy path: existing collections + supplied cash count.
     let existingCash = toDecimal('0');
     let existingMobile = toDecimal('0');
     for (const c of existingCollections) {
@@ -229,10 +233,25 @@ async function runShiftClose(
       }
     }
     for (const e of expenseInputs) {
-      if (e.paymentMethod === 'CASH') totalExpenses = totalExpenses.plus(toDecimal(e.amount));
+      const amount = toDecimal(e.amount);
+      totalExpenses = totalExpenses.plus(amount);
+      if (e.paymentMethod === 'CASH') cashExpenses = cashExpenses.plus(amount);
+    }
+
+    // Expected drawer cash comes from recorded sales when a summary
+    // exists, otherwise from recorded cash collections. The counted cash
+    // supplied by the caller is the ACTUAL figure, never the expectation.
+    const sales = await totalSalesForUserAndDate(shift.userId, shift.businessDate);
+    salesTotal = sales ?? toDecimal('0');
+    expectedCash = sales !== null
+      ? sales.minus(existingMobile).minus(cashExpenses)
+      : existingCash.minus(cashExpenses);
+    actualCash = toDecimal(input.cashHandedOver ?? '0');
+    if (actualCash.isNegative()) {
+      throw new ApiError(400, 'INVALID_CASH_COUNT', 'Counted cash cannot be negative.');
     }
     totalMobileMoney = existingMobile;
-    netCash = toDecimal(input.cashHandedOver ?? '0');
+    actualMobile = existingMobile;
   } else {
     const fetchedSales = await totalSalesForUserAndDate(shift.userId, shift.businessDate);
     // Guarded above, but re-check for type safety.
@@ -242,9 +261,17 @@ async function runShiftClose(
     salesTotal = fetchedSales;
 
     for (const m of mpesaEntries) totalMobileMoney = totalMobileMoney.plus(toDecimal(m.amount));
-    for (const e of expenseInputs) totalExpenses = totalExpenses.plus(toDecimal(e.amount));
+    for (const e of expenseInputs) {
+      const amount = toDecimal(e.amount);
+      totalExpenses = totalExpenses.plus(amount);
+      if (e.paymentMethod === 'CASH') cashExpenses = cashExpenses.plus(amount);
+    }
 
-    netCash = salesTotal.minus(totalMobileMoney).minus(totalExpenses);
+    // Only cash expenses leave the drawer. Mobile/bank expenses are
+    // already accounted for by their payment channel.
+    expectedCash = salesTotal.minus(totalMobileMoney).minus(cashExpenses);
+    actualCash = expectedCash;
+    actualMobile = totalMobileMoney;
 
     mpesaRowsToCreate = mpesaEntries;
   }
@@ -302,6 +329,7 @@ async function runShiftClose(
             businessDate: created.businessDate,
             recordedBy: input.actor.id,
             notes: created.notes,
+            source: 'PAYROLL',
           });
         }
         expenseCount += 1;
@@ -312,12 +340,12 @@ async function runShiftClose(
           shiftId: shift.id,
           userId: shift.userId,
           createdBy: input.actor.id,
-          expectedCash: netCash,
+          expectedCash,
           expectedMobile: totalMobileMoney,
-          actualCash: netCash,
-          actualMobile: totalMobileMoney,
-          cashDifference: toDecimal('0'),
-          mobileDifference: toDecimal('0'),
+          actualCash,
+          actualMobile,
+          cashDifference: actualCash.minus(expectedCash),
+          mobileDifference: actualMobile.minus(totalMobileMoney),
           status: ownerAutoReview ? 'REVIEWED' : 'SUBMITTED',
           notes: input.notes ?? null,
           submittedAt: now,
@@ -338,12 +366,12 @@ async function runShiftClose(
       reconciliation: {
         id: result.recon.id,
         shiftId: result.recon.shiftId,
-        expectedCash: toMoneyString(netCash),
+        expectedCash: toMoneyString(expectedCash),
         expectedMobile: toMoneyString(totalMobileMoney),
-        actualCash: toMoneyString(netCash),
-        actualMobile: toMoneyString(totalMobileMoney),
-        cashDifference: '0.00',
-        mobileDifference: '0.00',
+        actualCash: toMoneyString(actualCash),
+        actualMobile: toMoneyString(actualMobile),
+        cashDifference: toMoneyString(actualCash.minus(expectedCash)),
+        mobileDifference: toMoneyString(actualMobile.minus(totalMobileMoney)),
         status: result.recon.status,
       },
       // Computed summary for the client to display.
@@ -351,7 +379,8 @@ async function runShiftClose(
         totalSales: toMoneyString(salesTotal),
         totalMobileMoney: toMoneyString(totalMobileMoney),
         totalExpenses: toMoneyString(totalExpenses),
-        netCash: toMoneyString(netCash),
+        cashExpenses: toMoneyString(cashExpenses),
+        netCash: toMoneyString(expectedCash),
       },
       handover: null,
       created: {

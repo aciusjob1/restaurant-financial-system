@@ -40,6 +40,9 @@ type Closing = {
   reconciliationCount: number;
   pendingReviewCount: number;
 
+  totalExpenses: string;
+  totalCashExpenses: string;
+
   closedBy: string;
   closedAt: string;
   reopenedBy: string | null;
@@ -180,7 +183,12 @@ export default function DailyClosingDetailPage() {
 
       {/* Expected vs Actual */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
-        <h2 className="text-sm font-medium text-slate-700">Expected vs actual (waiter view)</h2>
+        <h2 className="text-sm font-medium text-slate-700">Expected vs actual</h2>
+        <div className="text-xs text-slate-500">
+          Expected cash = cash sales − approved cash expenses ({closing.totalCashExpenses} cash of{' '}
+          {closing.totalExpenses} total expenses). Actual cash comes from decided waiter cash receipts,
+          or from reconciliations when no receipt was decided.
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
@@ -279,7 +287,8 @@ export default function DailyClosingDetailPage() {
         </div>
         {closing.pendingReviewCount > 0 && (
           <div className="text-xs text-amber-700">
-            {closing.pendingReviewCount} reconciliation(s) were still SUBMITTED when this day was closed.
+            {closing.pendingReviewCount} item(s) were still pending review when this day was closed
+            (submitted reconciliations and pending cash receipts).
           </div>
         )}
       </div>

@@ -19,7 +19,7 @@ type SalesSummary = {
   createdAt: string;
 };
 
-type User = { id: string; fullName: string; role: string; isActive?: boolean };
+type User = { id: string; fullName: string; role: string; isActive?: boolean; hasPin?: boolean };
 
 function todayISO(): string {
   const d = new Date();
@@ -71,7 +71,7 @@ export default function SalesPage() {
     ])
       .then(([sRes, uRes]) => {
         setSummaries(sRes.summaries);
-        setUsers(uRes.users.filter((u) => u.role === 'WAITER'));
+        setUsers(uRes.users.filter((u) => u.role === 'WAITER' && (u as any).hasPin !== false));
       })
       .catch((e) => setErr(errOf(e)))
       .finally(() => setLoading(false));
@@ -85,7 +85,7 @@ export default function SalesPage() {
   const waiters = useMemo(
     () =>
       users
-        .filter((u) => u.isActive !== false)
+        .filter((u) => u.isActive !== false && (u as any).hasPin !== false)
         .sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [users],
   );

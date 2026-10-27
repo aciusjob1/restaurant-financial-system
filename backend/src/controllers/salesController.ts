@@ -27,14 +27,24 @@ export async function getSummary(req: Request, res: Response) {
 export async function createManualSummary(req: Request, res: Response) {
   const input = req.body as ManualSalesSummaryInput;
 
+  // Waiters can only create a summary for themselves. Force their own id
+  // regardless of what userId the client sent. OWNER/MANAGER may specify
+  // a userId to enter on a waiter's behalf.
+  const isWaiter = req.user!.role === 'WAITER';
+  const effectiveUserId = isWaiter ? req.user!.id : (input.userId ?? null);
+  // A waiter also cannot choose a sourceReference or overwrite an existing
+  // row: both would let the same shift be recorded more than once.
+  const effectiveSourceReference = isWaiter ? '' : (input.sourceReference ?? '');
+  const canOverwrite = !isWaiter && input.overwrite === true;
+
   // Duplicate guard (Model B): if a MANUAL summary already exists for this
   // waiter + date + sourceReference, require an explicit overwrite flag
   // rather than silently replacing the manager's previous entry.
-  if (!input.overwrite) {
+  if (!canOverwrite) {
     const existing = await salesService.findExistingManualSummary({
       businessDate: input.businessDate,
-      userId: input.userId ?? null,
-      sourceReference: input.sourceReference ?? '',
+      userId: effectiveUserId,
+      sourceReference: effectiveSourceReference,
     });
     if (existing) {
       throw new ApiError(
@@ -54,8 +64,8 @@ export async function createManualSummary(req: Request, res: Response) {
 
   const summary = await salesService.createManualSummary({
     businessDate: input.businessDate,
-    sourceReference: input.sourceReference ?? '',
-    userId: input.userId ?? null,
+    sourceReference: effectiveSourceReference,
+    userId: effectiveUserId,
     notes: input.notes ?? null,
     lines: input.lines.map((l) => ({
       paymentMethod: l.paymentMethod as PaymentMethod,
@@ -79,6 +89,7 @@ export async function importCsv(req: Request, res: Response) {
   const result = await salesService.importFromCsv({
     csv,
     enteredBy: req.user!.id,
+    actorRole: req.user!.role,
   });
   res.status(201).json({
     success: true,

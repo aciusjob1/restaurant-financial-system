@@ -4,6 +4,9 @@ import { z } from 'zod';
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
+  // The API is reached through the Next.js proxy on the same machine.
+  // Keep it off the LAN unless a deployment explicitly opts in.
+  API_HOST: z.string().min(1).default('127.0.0.1'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   SESSION_COOKIE_NAME: z.string().min(1).default('rfs_session'),
   // Secure cookie flag — set COOKIE_SECURE=true only when serving over HTTPS.

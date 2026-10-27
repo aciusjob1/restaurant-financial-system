@@ -81,7 +81,7 @@ expenseRouter.post(
 );
 expenseRouter.get(
   '/:id',
-  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  requireRole('OWNER', 'MANAGER', 'AUDITOR', 'WAITER'),
   asyncHandler(expenseController.getExpense)
 );
 

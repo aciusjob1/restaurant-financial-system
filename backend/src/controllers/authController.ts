@@ -8,14 +8,19 @@ import {
   clearSessionCookie,
 } from '../lib/session.js';
 import { env } from '../config/env.js';
+import { ApiError } from '../errors/ApiError.js';
+import { resolveDeviceForLogin } from '../lib/device.js';
 import { closeStaleOpenShiftsForUser } from '../services/shiftAutoCloseService.js';
 import type { LoginInput, LoginPinInput, LoginPinOnlyInput, ChangePasswordInput, SetPinInput, UpdateMyProfileInput } from '../validators/auth.js';
 
 async function completeLogin(req: Request, res: Response, user: User) {
+  const device = await resolveDeviceForLogin(req, res, user.id);
   const { token, expiresAt } = await createSession({
     userId: user.id,
     ipAddress: req.ip,
     userAgent: req.get('user-agent') ?? null,
+    deviceId: device.deviceId,
+    deviceName: device.deviceName,
   });
 
   setSessionCookie(res, token, expiresAt);
@@ -58,7 +63,14 @@ export async function logout(req: Request, res: Response) {
 }
 
 export async function me(req: Request, res: Response) {
-  res.json({ success: true, user: req.user });
+  res.json({
+    success: true,
+    user: {
+      ...req.user,
+      sessionId: req.sessionId ?? null,
+      deviceId: req.deviceId ?? null,
+    },
+  });
 }
 
 export async function changeMyPassword(req: Request, res: Response) {
@@ -70,6 +82,21 @@ export async function changeMyPassword(req: Request, res: Response) {
 
 export async function updateMe(req: Request, res: Response) {
   const input = req.body as UpdateMyProfileInput;
+  // Auto-confirm preferences skip a human check on money movements, so
+  // they are an owner-only capability rather than a self-service toggle.
+  if (req.user!.role !== 'OWNER') {
+    const wantsAutoFlag =
+      input.autoApproveExpenses !== undefined ||
+      input.autoReviewReconciliations !== undefined ||
+      input.autoConfirmHandovers !== undefined;
+    if (wantsAutoFlag) {
+      throw new ApiError(
+        403,
+        'AUTO_FLAGS_OWNER_ONLY',
+        'Only OWNER can change automatic confirmation preferences.'
+      );
+    }
+  }
   const user = await updateMyProfile(req.user!.id, input);
   res.json({ success: true, user });
 }

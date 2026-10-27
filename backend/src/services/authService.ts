@@ -223,6 +223,11 @@ export async function changePassword(params: {
   const ok = await verifyPassword(user.passwordHash, params.currentPassword);
   if (!ok) throw new ApiError(400, 'INVALID_PASSWORD', 'Current password is incorrect.');
 
+  // Reuse of the current password defeats the purpose of a reset.
+  if (await verifyPassword(user.passwordHash, params.newPassword)) {
+    throw new ApiError(400, 'SAME_PASSWORD', 'New password must differ from the current password.');
+  }
+
   const passwordHash = await hashPassword(params.newPassword);
 
   await prisma.$transaction([
@@ -304,16 +309,20 @@ export async function setPin(params: {
   const pinLookup = computePinLookup(params.pin);
 
   try {
-    await prisma.user.update({
-      where: { id: target.id },
-      data: {
-        pinHash,
-        pinLookup,
-        pinSetByUserId: params.actorId,
-        pinSetAt: new Date(),
-        failedPinAttempts: 0,
-        lockedUntil: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: target.id },
+        data: {
+          pinHash,
+          pinLookup,
+          pinSetByUserId: params.actorId,
+          pinSetAt: new Date(),
+          failedPinAttempts: 0,
+          lockedUntil: null,
+        },
+      });
+      // A PIN reset invalidates existing kiosk sessions for that waiter.
+      await tx.session.deleteMany({ where: { userId: target.id } });
     });
   } catch (e) {
     // Unique violation on pinLookup: another active waiter already has this PIN.

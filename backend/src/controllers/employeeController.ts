@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import * as employeeService from '../services/employeeService.js';
+import { ApiError } from '../errors/ApiError.js';
 import type { CreateEmployeeInput, UpdateEmployeeInput } from '../validators/employee.js';
 import type { Role } from '@prisma/client';
 
@@ -42,10 +43,19 @@ export async function updateEmployee(req: Request, res: Response) {
 /**
  * Minimal active-employee list for the kiosk salary picker.
  * Gated at the route to WAITER | MANAGER | OWNER.
+ * MANAGER/OWNER may pass ?userId=<waiter> when operating the kiosk on
+ * that waiter's behalf; everyone else is always scoped to themselves.
  */
 export async function listEmployeesForKiosk(req: Request, res: Response) {
-  // Actor identity comes from the authenticated session (requireAuth at
-  // the router level). Never from the request body or query.
-  const employees = await employeeService.listEmployeesForKiosk(req.user!.id);
+  const requested = typeof req.query.userId === 'string' ? req.query.userId : undefined;
+  let targetUserId = req.user!.id;
+  if (requested && requested !== targetUserId) {
+    const role = req.user!.role as Role;
+    if (role !== 'OWNER' && role !== 'MANAGER') {
+      throw new ApiError(403, 'FORBIDDEN', 'You can only view your own kiosk employee record.');
+    }
+    targetUserId = requested;
+  }
+  const employees = await employeeService.listEmployeesForKiosk(targetUserId);
   res.json({ success: true, employees });
 }

@@ -16,6 +16,8 @@ declare global {
         autoConfirmHandovers: boolean;
       };
       sessionToken?: string;
+      sessionId?: string;
+      deviceId?: string | null;
     }
   }
 }

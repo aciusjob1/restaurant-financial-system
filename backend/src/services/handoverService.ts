@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../errors/ApiError.js';
+import { assertDayNotClosed } from './closedDayGuard.js';
 import { resolveAttributedUser } from '../utils/attributedUser.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import type { CashHandoverStatus, Prisma } from '@prisma/client';
@@ -56,7 +57,8 @@ export async function listHandovers(opts: {
   const where: Prisma.CashHandoverWhereInput = {};
 
   if (opts.actor.role === 'WAITER') {
-    where.fromUserId = opts.actor.id;
+    // A waiter may be the sender or the designated receiver.
+    where.OR = [{ fromUserId: opts.actor.id }, { toUserId: opts.actor.id }];
   } else {
     if (opts.fromUserId) where.fromUserId = opts.fromUserId;
     if (opts.toUserId) where.toUserId = opts.toUserId;
@@ -137,6 +139,14 @@ export async function createHandover(input: {
   if (receiver.role !== 'MANAGER' && receiver.role !== 'OWNER') {
     throw new ApiError(400, 'INVALID_RECEIVER', 'Receiver must be a MANAGER or OWNER.');
   }
+  if (!receiver.isActive) {
+    throw new ApiError(400, 'INVALID_RECEIVER', 'Receiver is not an active user.');
+  }
+  if (input.toUserId === attributedUserId) {
+    throw new ApiError(400, 'SELF_HANDOVER', 'You cannot hand cash over to yourself.');
+  }
+
+  await assertDayNotClosed(shift.businessDate, input.actor.role);
 
   const now = new Date();
   const row = await prisma.cashHandover.create({
@@ -170,6 +180,13 @@ export async function voidHandover(input: {
     throw new ApiError(409, 'ALREADY_VOIDED', 'Handover is already voided.');
   }
 
+  const shift = await prisma.shift.findUnique({
+    where: { id: existing.shiftId },
+    select: { businessDate: true },
+  });
+  if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+  await assertDayNotClosed(shift.businessDate, input.actor.role);
+
   const row = await prisma.cashHandover.update({
     where: { id: input.id },
     data: {
@@ -202,6 +219,22 @@ export async function confirmHandover(input: {
       'Only PENDING handovers can be confirmed (currently ' + existing.status + ').'
     );
   }
+  // Custody confirmation belongs to the designated receiver, not to any
+  // manager who happens to be signed in.
+  if (existing.toUserId !== input.actor.id) {
+    throw new ApiError(
+      403,
+      'NOT_RECEIVER',
+      'Only the designated receiver can confirm this handover.'
+    );
+  }
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: existing.shiftId },
+    select: { businessDate: true },
+  });
+  if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+  await assertDayNotClosed(shift.businessDate, input.actor.role);
 
   const row = await prisma.cashHandover.update({
     where: { id: input.id },

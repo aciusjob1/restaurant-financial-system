@@ -21,9 +21,10 @@ const WAITER = {
 };
 
 const CREATED_USERNAME = 'phase2-created';
+const PIN_WAITER_USERNAME = 'phase2-pin-waiter';
 
 async function cleanup() {
-  const usernames = [OWNER.username, WAITER.username, CREATED_USERNAME, 'phase19j2-lang', 'phase19j2-mgr'];
+  const usernames = [OWNER.username, WAITER.username, CREATED_USERNAME, PIN_WAITER_USERNAME, 'phase19j2-lang', 'phase19j2-mgr'];
   await prisma.session.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.user.deleteMany({ where: { username: { in: usernames } } });
 }
@@ -180,6 +181,74 @@ describe('PATCH /api/v1/users/:id', () => {
 
     const after = await waiterAgent.get('/api/v1/auth/me');
     expect(after.status).toBe(401);
+  });
+});
+
+describe('PIN handling and response sanitisation', () => {
+  const PIN_WAITER = {
+    username: PIN_WAITER_USERNAME,
+    password: 'PinWaiterPassword!234',
+    fullName: 'Phase 2 Pin Waiter',
+  };
+  let pinWaiterId: string;
+
+  beforeAll(async () => {
+    await prisma.user.deleteMany({ where: { username: PIN_WAITER.username } });
+    const row = await prisma.user.create({
+      data: {
+        username: PIN_WAITER.username,
+        fullName: PIN_WAITER.fullName,
+        role: 'WAITER',
+        passwordHash: await argon2.hash(PIN_WAITER.password, { type: argon2.argon2id }),
+        isActive: true,
+      },
+    });
+    pinWaiterId = row.id;
+  });
+
+  it('never returns the PIN or its hash when setting one', async () => {
+    const ownerAgent = await loginAs(OWNER);
+    const res = await ownerAgent
+      .post('/api/v1/auth/set-pin')
+      .send({ userId: pinWaiterId, pin: '135790' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toEqual({ id: pinWaiterId, username: PIN_WAITER.username });
+    expect(JSON.stringify(res.body)).not.toContain('135790');
+  });
+
+  it("revokes the waiter's existing sessions when the PIN is reset", async () => {
+    const waiterAgent = await request.agent(app);
+    const login = await waiterAgent
+      .post('/api/v1/auth/login')
+      .send({ username: PIN_WAITER.username, password: PIN_WAITER.password });
+    expect(login.status).toBe(200);
+    expect((await waiterAgent.get('/api/v1/auth/me')).status).toBe(200);
+
+    const ownerAgent = await loginAs(OWNER);
+    const reset = await ownerAgent
+      .post('/api/v1/auth/set-pin')
+      .send({ userId: pinWaiterId, pin: '246810' });
+    expect(reset.status).toBe(200);
+
+    expect((await waiterAgent.get('/api/v1/auth/me')).status).toBe(401);
+  });
+
+  it('PATCH /users/:id surfaces hasPin without pinHash or passwordHash', async () => {
+    const ownerAgent = await loginAs(OWNER);
+    const res = await ownerAgent
+      .patch(`/api/v1/users/${pinWaiterId}`)
+      .send({ fullName: 'Phase 2 Pin Waiter Renamed' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.hasPin).toBe(true);
+    expect(res.body.user).not.toHaveProperty('pinHash');
+    expect(res.body.user).not.toHaveProperty('passwordHash');
+
+    const read = await ownerAgent.get(`/api/v1/users/${pinWaiterId}`);
+    expect(read.status).toBe(200);
+    expect(read.body.user).not.toHaveProperty('pinHash');
+    expect(read.body.user).not.toHaveProperty('passwordHash');
   });
 });
 

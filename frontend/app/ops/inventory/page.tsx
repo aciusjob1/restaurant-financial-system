@@ -274,6 +274,7 @@ export default function InventoryPage() {
   const [autoAllocate, setAutoAllocate] = useState(true);
   const [manualInvoiceIds, setManualInvoiceIds] = useState<string[]>([]);
   const [payBusy, setPayBusy] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   function loadValuationAndFixtures() {
     setValuationLoading(true);
@@ -317,7 +318,7 @@ export default function InventoryPage() {
       })
       .catch((e) => setUsageErr(errOf(e)))
       .finally(() => setUsageLoading(false));
-  }, [period, anchorDate, periodMaterialId]);
+  }, [period, anchorDate, periodMaterialId, refreshKey]);
 
   useEffect(() => {
     setHistoryLoading(true);
@@ -396,7 +397,7 @@ export default function InventoryPage() {
       })
       .catch((e) => setHistoryErr(errOf(e)))
       .finally(() => setHistoryLoading(false));
-  }, [period, anchorDate, periodMaterialId, materials, suppliers]);
+  }, [period, anchorDate, periodMaterialId, materials, suppliers, refreshKey]);
 
   useEffect(() => {
     if (!paySupplierId) { setOutstanding([]); return; }
@@ -454,6 +455,7 @@ export default function InventoryPage() {
       setMvNotes('');
       setFlash(t('ops.inventory.flash.recorded'));
       loadValuationAndFixtures();
+      setRefreshKey((k) => k + 1);
     } catch (e2) { setErr(errOf(e2)); }
     finally { setMvBusy(false); }
   }
@@ -508,6 +510,7 @@ export default function InventoryPage() {
       resetPurchaseForm();
       setFlash(postNow ? t('ops.purchasing.flash.purchasePosted') : t('ops.purchasing.flash.purchaseDraft'));
       loadValuationAndFixtures();
+      setRefreshKey((k) => k + 1);
     } catch (e2) { setErr(errOf(e2)); }
     finally { setPurchaseBusy(null); }
   }
@@ -530,6 +533,7 @@ export default function InventoryPage() {
       setShowNewSupplier(false);
       setFlash(t('ops.purchasing.flash.supplierCreated'));
       await loadValuationAndFixtures();
+      setRefreshKey((k) => k + 1);
       setPurchaseSupplierId(res.supplier.id);
       setPaySupplierId(res.supplier.id);
     } catch (e2) { setErr(errOf(e2)); }
@@ -574,6 +578,7 @@ export default function InventoryPage() {
       setManualInvoiceIds([]);
       setFlash(t('ops.purchasing.flash.paymentRecorded'));
       loadValuationAndFixtures();
+      setRefreshKey((k) => k + 1);
       const res = await apiFetch<{ success: true; invoices: InvoiceFull[] }>(
         '/api/v1/purchase-invoices?supplierId=' + paySupplierId + '&status=POSTED&unpaidOnly=true',
       );

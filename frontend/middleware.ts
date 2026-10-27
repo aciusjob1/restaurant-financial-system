@@ -10,6 +10,8 @@ export function middleware(req: NextRequest) {
   }
   const target = 'http://127.0.0.1:' + port;
   const url = new URL(req.nextUrl.pathname + req.nextUrl.search, target);
+  // Next fills X-Forwarded-For from the socket when the client does not
+  // send one. The backend accepts that header only from loopback.
   return NextResponse.rewrite(url);
 }
 

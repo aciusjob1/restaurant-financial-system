@@ -3,12 +3,12 @@ import { login, loginWithPin, loginPinOnly, setUserPin, logout, me, changeMyPass
 import { validateBody } from '../middleware/validate.js';
 import { LoginSchema, LoginPinSchema, LoginPinOnlySchema, SetPinSchema, ChangePasswordSchema, UpdateMyProfileSchema } from '../validators/auth.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { loginLimiter, loginPinLimiter, loginPinOnlyLimiter } from '../middleware/rateLimit.js';
+import { loginLimiter, loginAccountLimiter, loginPinLimiter, loginPinOnlyLimiter, changePasswordLimiter } from '../middleware/rateLimit.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const authRouter = Router();
 
-authRouter.post('/login', loginLimiter, validateBody(LoginSchema), asyncHandler(login));
+authRouter.post('/login', loginLimiter, loginAccountLimiter, validateBody(LoginSchema), asyncHandler(login));
 authRouter.post('/login-pin', loginPinLimiter, validateBody(LoginPinSchema), asyncHandler(loginWithPin));
 authRouter.post('/login-pin-only', loginPinOnlyLimiter, validateBody(LoginPinOnlySchema), asyncHandler(loginPinOnly));
 authRouter.post(
@@ -29,6 +29,7 @@ authRouter.patch(
 authRouter.post(
   '/change-password',
   requireAuth,
+  changePasswordLimiter,
   validateBody(ChangePasswordSchema),
   asyncHandler(changeMyPassword)
 );

@@ -4,7 +4,13 @@ import { toDecimal, toMoneyString } from '../utils/money.js';
 import { parseBusinessDate, toDateOnly } from '../utils/businessDate.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
 import { nextExpenseNumber } from '../utils/expenseNumber.js';
-import type { PaymentMethod, Prisma, Role, SalaryStatus } from '@prisma/client';
+import { nextDocumentNumber } from '../utils/documentNumber.js';
+import type { PaymentMethod, Prisma, Role, SalarySource, SalaryStatus } from '@prisma/client';
+
+
+async function nextSalaryNumber(tx: Prisma.TransactionClient): Promise<string> {
+  return nextDocumentNumber(tx, 'salary');
+}
 
 function isUniqueViolation(err: unknown): boolean {
   return (
@@ -103,6 +109,7 @@ function serializePayment(p: {
   paidAt: Date;
   reference: string | null;
   notes: string | null;
+  source: SalarySource;
   recordedBy: string;
   voidedAt: Date | null;
   voidedBy: string | null;
@@ -119,6 +126,7 @@ function serializePayment(p: {
     paidAt: p.paidAt.toISOString(),
     reference: p.reference,
     notes: p.notes,
+    source: p.source,
     recordedBy: p.recordedBy,
     voidedAt: p.voidedAt ? p.voidedAt.toISOString() : null,
     voidedBy: p.voidedBy,
@@ -128,13 +136,7 @@ function serializePayment(p: {
   };
 }
 
-async function nextSalaryNumber(tx: Prisma.TransactionClient): Promise<string> {
-  const rows = await tx.$queryRawUnsafe<Array<{ nextval: bigint }>>(
-    "SELECT nextval('salary_number_seq') AS nextval"
-  );
-  const n = rows[0]?.nextval ?? 1n;
-  return `SAL-${n.toString().padStart(4, '0')}`;
-}
+
 
 function computeNetSalary(
   baseSalary: Prisma.Decimal,
@@ -212,6 +214,7 @@ export async function getSalaryById(id: string) {
       employee: {
         select: {
           salaryAdvances: {
+            where: { voidedAt: null },
             select: {
               id: true,
               amount: true,
@@ -265,9 +268,9 @@ export async function createSalaryRecord(input: {
   const adjustments = input.adjustments !== undefined ? toDecimal(input.adjustments) : toDecimal('0');
   const explicitDeductions = input.deductions !== undefined ? toDecimal(input.deductions) : toDecimal('0');
 
-  // Sum unsettled advances for this employee — they become part of this record's deductions.
+  // Sum unsettled, non-voided advances for this employee — they become part of this record's deductions.
   const unsettledAdvances = await prisma.salaryAdvance.findMany({
-    where: { employeeId: input.employeeId, settledAt: null },
+    where: { employeeId: input.employeeId, settledAt: null, voidedAt: null },
     select: { id: true, amount: true },
   });
   const advanceSum = unsettledAdvances.reduce((acc, a) => acc.plus(a.amount), toDecimal('0'));
@@ -323,7 +326,7 @@ export async function createSalaryRecord(input: {
 
         if (unsettledAdvances.length > 0) {
           await tx.salaryAdvance.updateMany({
-            where: { id: { in: unsettledAdvances.map((a) => a.id) } },
+            where: { id: { in: unsettledAdvances.map((a) => a.id) }, voidedAt: null },
             data: { settledById: created.id, settledAt: new Date() },
           });
         }
@@ -515,6 +518,76 @@ export async function getSalaryPaymentById(id: string) {
   return serializePayment(row);
 }
 
+async function voidSalaryAdvancesForExpense(
+  tx: Prisma.TransactionClient,
+  expenseId: string,
+  actorId: string,
+  reason: string
+) {
+  const advances = await tx.salaryAdvance.findMany({
+    where: { expenseId, voidedAt: null },
+    select: { settledAt: true },
+  });
+  if (advances.some((a) => a.settledAt !== null)) {
+    throw new ApiError(
+      409,
+      'ADVANCE_SETTLED',
+      'An advance from this kiosk entry has already been settled into a salary record. Adjust the salary record before resubmitting.'
+    );
+  }
+  if (advances.length > 0) {
+    await tx.salaryAdvance.updateMany({
+      where: { expenseId, voidedAt: null },
+      data: { voidedAt: new Date(), voidedBy: actorId, voidReason: reason },
+    });
+  }
+}
+
+/**
+ * Reverses the payroll effect of a kiosk-entered salary expense: voids the
+ * linked SalaryPayment (recomputing the parent record status) and any
+ * unsettled SalaryAdvance. Throws if an advance has already been settled, so
+ * daily-report resubmission can never silently double-pay.
+ * The expense itself is voided by the caller.
+ */
+export async function reverseKioskSalaryExpense(
+  tx: Prisma.TransactionClient,
+  input: { expenseId: string; actorId: string; reason: string }
+) {
+  const expense = await tx.expense.findUnique({ where: { id: input.expenseId } });
+  if (!expense) return;
+
+  await voidSalaryAdvancesForExpense(tx, expense.id, input.actorId, input.reason);
+
+  if (!expense.salaryPaymentId) return;
+  const payment = await tx.salaryPayment.findUnique({
+    where: { id: expense.salaryPaymentId },
+  });
+  if (!payment || payment.voidedAt) return;
+
+  await tx.salaryPayment.update({
+    where: { id: payment.id },
+    data: {
+      voidedAt: new Date(),
+      voidedBy: input.actorId,
+      voidReason: input.reason,
+    },
+  });
+
+  const parent = await tx.salaryRecord.findUnique({
+    where: { id: payment.salaryRecordId },
+  });
+  if (!parent) return;
+  const newTotal = await sumActivePaid(tx, parent.id);
+  const nextStatus = statusFromPaid(newTotal, parent.netSalary, parent.status);
+  if (nextStatus !== parent.status) {
+    await tx.salaryRecord.update({
+      where: { id: parent.id },
+      data: { status: nextStatus },
+    });
+  }
+}
+
 export async function createSalaryPayment(input: {
   actor: { id: string; role: Role };
   salaryRecordId: string;
@@ -639,6 +712,13 @@ export async function voidSalaryPayment(input: {
 
         await assertDayNotClosed(existing.businessDate, input.actor.role);
 
+        const linked = await tx.expense.findUnique({
+          where: { salaryPaymentId: existing.id },
+        });
+        if (linked) {
+          await voidSalaryAdvancesForExpense(tx, linked.id, input.actor.id, input.reason);
+        }
+
         const voided = await tx.salaryPayment.update({
           where: { id: input.id },
           data: {
@@ -648,9 +728,6 @@ export async function voidSalaryPayment(input: {
           },
         });
 
-        const linked = await tx.expense.findUnique({
-          where: { salaryPaymentId: existing.id },
-        });
         if (linked && linked.status !== 'VOID') {
           await tx.expense.update({
             where: { id: linked.id },
@@ -700,7 +777,29 @@ export async function applySalaryExpense(tx: Prisma.TransactionClient, input: {
   businessDate: Date;
   recordedBy: string;
   notes: string | null;
+  source: SalarySource;
 }): Promise<{ paymentId: string | null; advanceId: string | null }> {
+  if (input.amount.lessThanOrEqualTo(0)) {
+    throw new ApiError(400, 'INVALID_AMOUNT', 'Salary amount must be greater than zero.');
+  }
+
+  const expense = await tx.expense.findUnique({
+    where: { id: input.expenseId },
+    select: { id: true, salaryPaymentId: true },
+  });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The expense being applied to payroll does not exist.');
+  }
+  // Linking the payment to the expense is what lets a later void or kiosk
+  // resubmission reverse the payroll effect as well as the cash movement.
+  if (expense.salaryPaymentId) {
+    throw new ApiError(
+      409,
+      'SALARY_EXPENSE_ALREADY_APPLIED',
+      'This expense has already been applied to payroll.'
+    );
+  }
+
   const record = await tx.salaryRecord.findFirst({
     where: { employeeId: input.employeeId, status: { in: ['APPROVED', 'PAID'] } },
     orderBy: { periodEnd: 'desc' },
@@ -731,9 +830,15 @@ export async function applySalaryExpense(tx: Prisma.TransactionClient, input: {
         businessDate: input.businessDate,
         notes: input.notes ?? null,
         recordedBy: input.recordedBy,
+        source: input.source,
       },
     });
     paymentId = created.id;
+
+    await tx.expense.update({
+      where: { id: input.expenseId },
+      data: { salaryPaymentId: created.id },
+    });
 
     const newTotal = totalPaid.plus(paidNow);
     const nextStatus = statusFromPaid(newTotal, record.netSalary, record.status);
@@ -754,6 +859,7 @@ export async function applySalaryExpense(tx: Prisma.TransactionClient, input: {
         businessDate: input.businessDate,
         notes: input.notes ?? null,
         recordedBy: input.recordedBy,
+        source: input.source,
       },
     });
     advanceId = adv.id;

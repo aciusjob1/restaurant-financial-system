@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { KioskShell, KioskHeader } from '@/components/kiosk/KioskShell';
+import { IdleTimeout } from '@/components/ops/IdleTimeout';
 import { FormError } from '@/components/ops/Form';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
@@ -31,6 +32,7 @@ type ActiveExpense = {
   description: string;
   amount: string;
   categoryId: string;
+  salaryTargetEmployeeId: string | null;
   categoryName: string;
   categorySystemKey: string | null;
 };
@@ -92,14 +94,11 @@ function money(n: number): string {
 }
 
 function sanitizeMoney(v: string): string {
-  let s = v.replace(/[^\d.-]/g, '');
+  let s = v.replace(/[^\d.]/g, '');
   const firstDot = s.indexOf('.');
   if (firstDot >= 0) {
     s = s.slice(0, firstDot + 1) + s.slice(firstDot + 1).replace(/\./g, '');
   }
-  const neg = s.startsWith('-');
-  s = s.replace(/-/g, '');
-  if (neg) s = '-' + s;
   return s;
 }
 
@@ -132,8 +131,9 @@ export default function KioskPage() {
       setMe(meRes.user);
 
       // Fetch categories before setting expense rows so we have a
-      // default categoryId for the initial row. Waiters do not record
-      // salaries, so SALARY is filtered out of the picker.
+      // default categoryId for the initial row. SALARY stays available:
+      // waiters may record their own salary, and the backend rejects any
+      // target other than the employee linked to the assigned waiter.
       const catRes = await apiFetch<{ success: true; categories: ExpenseCategory[] }>(
         '/api/v1/expense-categories?includeInactive=false',
       );
@@ -141,12 +141,13 @@ export default function KioskPage() {
       setCategories(usable);
 
       const empRes = await apiFetch<{ success: true; employees: Employee[] }>(
-        '/api/v1/employees/for-kiosk',
+        '/api/v1/employees/for-kiosk' +
+          (actingForRef.current ? '?userId=' + encodeURIComponent(actingForRef.current) : ''),
       ).catch(() => ({ success: true as const, employees: [] as Employee[] }));
       setEmployees(empRes.employees);
 
-      // The /for-kiosk endpoint returns the caller's own Employee record
-      // only, or []. When exactly one is returned, prefill it on new
+      // The /for-kiosk endpoint returns the assigned waiter's own Employee
+      // record, or []. When exactly one is returned, prefill it on new
       // expense rows so the waiter does not have to pick from a
       // one-item dropdown.
       const onlyEmployee = empRes.employees.length === 1 ? empRes.employees[0].id : '';
@@ -189,7 +190,7 @@ export default function KioskPage() {
               categoryId: e.categoryId,
               description: e.description,
               amount: e.amount,
-              salaryTargetEmployeeId: onlyEmployee,
+              salaryTargetEmployeeId: e.salaryTargetEmployeeId ?? onlyEmployee,
             }))
           : [{ key: uid(), categoryId: usable[0]?.id ?? '', description: '', amount: '', salaryTargetEmployeeId: onlyEmployee }],
       );
@@ -218,6 +219,31 @@ export default function KioskPage() {
       setActingForName(asName ?? '');
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Live net-cash: poll /mine every 30s so that if the manager adds
+  // or updates the day's sales total, the kiosk reflects it without
+  // requiring a reload. Only `summary` state is updated — form values
+  // (M-Pesa rows, expenses) are never touched by this effect.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch<MyResponse>(
+          '/api/v1/sales-summaries/mine?businessDate=' + todayISO() +
+          (actingForRef.current ? '&userId=' + encodeURIComponent(actingForRef.current) : ''),
+        );
+        if (res.summary) {
+          setSummary((prev) => {
+            if (prev && prev.id === res.summary!.id && prev.totalSales === res.summary!.totalSales) return prev;
+            return res.summary;
+          });
+        }
+      } catch {
+        // Ignore — next tick will retry
+      }
+    }, 30000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -281,7 +307,6 @@ export default function KioskPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!summary) return;
     setBusy(true);
     setErr(null);
     setSaved(false);
@@ -317,7 +342,51 @@ export default function KioskPage() {
           };
         });
 
-      await apiFetch('/api/v1/sales-summaries/' + summary.id + '/waiter-collections', {
+      let summaryId = summary?.id;
+
+      // First-time submission: waiter is creating their own summary
+      // because no manager has entered one for them yet.
+      if (!summaryId) {
+        // The waiter never declares the sales total. If the manager has
+        // not yet entered one, create a zero-summary placeholder so the
+        // collections/expenses have a home. The manager edits the total
+        // later via /ops/sales, and the net cash updates live (kiosk polls
+        // every 30s via the useEffect below).
+        try {
+          const created = await apiFetch<{ success: true; summary: { id: string } }>(
+            '/api/v1/sales-summaries',
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                businessDate: todayISO(),
+                totalSales: '0.00',
+                lines: [],
+                userId: actingForRef.current ?? me!.id,
+                sourceReference: '',
+              }),
+            },
+          );
+          summaryId = created.summary.id;
+        } catch (e2) {
+          if (e2 instanceof ApiError && e2.code === 'SUMMARY_EXISTS') {
+            // Race condition: another tab/test created it concurrently.
+            // Fetch the existing summary rather than failing.
+            const fresh = await apiFetch<MyResponse>(
+              '/api/v1/sales-summaries/mine?businessDate=' + todayISO() +
+              (actingForRef.current ? '&userId=' + encodeURIComponent(actingForRef.current) : ''),
+            );
+            if (fresh.summary) {
+              summaryId = fresh.summary.id;
+            } else {
+              throw e2;
+            }
+          } else {
+            throw e2;
+          }
+        }
+      }
+
+      await apiFetch('/api/v1/sales-summaries/' + summaryId + '/waiter-collections', {
         method: 'POST',
         body: JSON.stringify({ mpesaEntries, expenses: expenseRows }),
       });
@@ -338,6 +407,7 @@ export default function KioskPage() {
   if (loading) {
     return (
       <KioskShell>
+        <IdleTimeout timeoutMinutes={3} warningSeconds={30} />
         <KioskHeader
           title={t('kiosk.home.brandTitle')}
           subtitle={t('kiosk.home.loadingSubtitle')}
@@ -353,21 +423,6 @@ export default function KioskPage() {
     ? t('kiosk.report.actingForTitle') + ' ' + (actingForName || actingFor)
     : greeting;
 
-  if (!summary) {
-    return (
-      <KioskShell>
-        <KioskHeader title={effectiveTitle} />
-        <div className='rounded-2xl border border-amber-200 bg-amber-50 p-6 space-y-2'>
-          <div className='text-lg font-medium text-amber-900'>
-            {t('kiosk.report.noSales.heading')}
-          </div>
-          <div className='text-sm text-amber-800'>
-            {t('kiosk.report.noSales.body')}
-          </div>
-        </div>
-      </KioskShell>
-    );
-  }
 
   const noCategories = categories.length === 0;
   const noEmployee = employees.length === 0;
@@ -388,6 +443,8 @@ export default function KioskPage() {
 
   return (
     <KioskShell>
+      {/* Auto-logout after 3 minutes of inactivity for kiosk safety */}
+      <IdleTimeout timeoutMinutes={3} warningSeconds={30} />
       <KioskHeader title={effectiveTitle} subtitle={t('kiosk.report.subtitle')} />
 
       {actingFor && (
@@ -540,7 +597,7 @@ export default function KioskPage() {
             {t('kiosk.report.readOnlyTotal')}
           </div>
           <div className='mt-1 text-3xl font-mono font-semibold text-slate-900'>
-            {summary.totalSales}
+            {summary ? summary.totalSales : '0.00'}
           </div>
         </div>
 

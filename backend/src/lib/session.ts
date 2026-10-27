@@ -17,22 +17,27 @@ export async function createSession(params: {
   userId: string;
   ipAddress?: string | null;
   userAgent?: string | null;
-}): Promise<{ token: string; expiresAt: Date }> {
+  deviceId?: string | null;
+  deviceName?: string | null;
+}): Promise<{ token: string; expiresAt: Date; sessionId: string }> {
   const token = generateSessionToken();
   const tokenHash = hashSessionToken(token);
   const expiresAt = new Date(Date.now() + env.SESSION_TTL_HOURS * 60 * 60 * 1000);
 
-  await prisma.session.create({
+  const session = await prisma.session.create({
     data: {
       userId: params.userId,
       tokenHash,
       expiresAt,
       ipAddress: params.ipAddress ?? null,
       userAgent: params.userAgent ?? null,
+      deviceId: params.deviceId ?? null,
+      deviceName: params.deviceName ?? null,
+      lastSeenAt: new Date(),
     },
   });
 
-  return { token, expiresAt };
+  return { token, expiresAt, sessionId: session.id };
 }
 
 export async function revokeSessionByToken(token: string): Promise<void> {

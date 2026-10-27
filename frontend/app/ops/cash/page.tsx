@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { DecimalField, FormError } from '@/components/ops/Form';
@@ -38,7 +39,12 @@ type Row = {
   receipt: Receipt | null;
 };
 
-type Closing = { id: string; businessDate: string };
+type Closing = {
+  id: string;
+  businessDate: string;
+  version: number;
+  status: 'CLOSED' | 'REOPENED' | 'SUPERSEDED';
+};
 type InsufficientForm = { userId: string; amount: string } | null;
 
 function todayISO(): string {
@@ -111,7 +117,7 @@ export default function CashPage() {
       .then(([rRes, meRes, dRes]) => {
         setRows(rRes.rows);
         setMyRole(meRes.user.role);
-        setTodayClosing(dRes.closings.length > 0 ? dRes.closings[0] : null);
+        setTodayClosing(dRes.closings.find((c) => c.status === 'CLOSED') ?? null);
       })
       .catch((e) => { if (e instanceof ApiError) setErr({ code: e.code, message: e.message }); })
       .finally(() => setLoading(false));
@@ -133,10 +139,7 @@ export default function CashPage() {
     return { pending, approved, insufficient, noNet, awaitingSubmission };
   }, [rows]);
 
-  const allClosed = useMemo(() => {
-    if (rows.length === 0) return false;
-    return rows.every((r) => r.receipt && r.receipt.status !== 'PENDING');
-  }, [rows]);
+  const hasActivity = rows.length > 0;
 
   function clearAndReload(msg?: string) {
     if (msg) setFlash(msg);
@@ -189,7 +192,8 @@ export default function CashPage() {
       await apiFetch('/api/v1/daily-closings', {
         method: 'POST', body: JSON.stringify({ businessDate: todayISO() }),
       });
-      clearAndReload();
+      setCloseDayConfirming(false);
+      clearAndReload(t('ops.cashFlow.closeToday.closedFlash'));
     } catch (e) {
       if (e instanceof ApiError) setErr({ code: e.code, message: e.message });
     } finally {
@@ -352,13 +356,30 @@ export default function CashPage() {
             </div>
           )}
 
+          {isManager && (
           <section className='rounded-2xl border border-slate-200 bg-white p-5 space-y-3'>
             <h2 className='text-sm font-medium text-slate-700'>{t('ops.cashFlow.closeToday.heading')}</h2>
             {todayClosing ? (
-              <div className='text-sm text-emerald-800'>{t('ops.cashFlow.closeToday.alreadyClosed')}</div>
-            ) : allClosed ? (
+              <div className='space-y-2'>
+                <div className='text-sm text-emerald-800'>
+                  {t('ops.cashFlow.closeToday.alreadyClosed')} (v{todayClosing.version})
+                </div>
+                <Link
+                  href={`/ops/daily-closing/${todayClosing.id}`}
+                  className='inline-block text-sm font-medium text-slate-900 underline'
+                >
+                  {t('ops.cashFlow.closeToday.viewClosing')}
+                </Link>
+              </div>
+            ) : (
               <>
-                <div className='text-sm text-slate-600'>{t('ops.cashFlow.closeToday.ready')}</div>
+                {summary.pending > 0 ? (
+                  <div className='text-sm text-amber-800'>{t('ops.cashFlow.closeToday.pendingWarning')}</div>
+                ) : hasActivity ? (
+                  <div className='text-sm text-slate-600'>{t('ops.cashFlow.closeToday.ready')}</div>
+                ) : (
+                  <div className='text-sm text-slate-600'>{t('ops.cashFlow.closeToday.noActivity')}</div>
+                )}
                 {closeDayConfirming ? (
                   <div className='flex gap-2'>
                     <button type='button' onClick={doCloseToday} disabled={busyKey === 'day'}
@@ -370,15 +391,15 @@ export default function CashPage() {
                   </div>
                 ) : (
                   <button type='button' onClick={() => setCloseDayConfirming(true)}
+                    data-testid='close-day-button'
                     className='rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium'>
                     {t('ops.cashFlow.closeToday.button')}
                   </button>
                 )}
               </>
-            ) : (
-              <div className='text-sm text-slate-500'>{t('ops.cashFlow.closeToday.notReady')}</div>
             )}
           </section>
+          )}
         </>
       )}
           {recordingFor && (

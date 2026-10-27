@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useState, type FormEvent } from 'react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import {
   DateField, DecimalField, SelectField, TextField, TextArea, FormError, SubmitButton,
@@ -65,6 +65,7 @@ type Payment = {
   paidAt: string;
   reference: string | null;
   notes: string | null;
+  source: 'PAYROLL' | 'KIOSK';
   recordedBy: string;
   voidedAt: string | null;
   voidReason: string | null;
@@ -72,6 +73,12 @@ type Payment = {
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '\u2014';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
 }
 
 function errOf(e: unknown): { code: string; message: string } {
@@ -189,6 +196,14 @@ export default function SalariesPage() {
     setExpandedId((cur) => (cur === id ? null : id));
   }
 
+  const baseNum = parseFloat(baseSalary);
+  const adjNum = parseFloat(adjustments) || 0;
+  const dedNum = parseFloat(deductions) || 0;
+  const previewNet =
+    baseSalary.trim() !== '' && Number.isFinite(baseNum)
+      ? (baseNum + adjNum - dedNum).toFixed(2)
+      : null;
+
   return (
     <OpsShell>
       <OpsHeader
@@ -238,19 +253,78 @@ export default function SalariesPage() {
             required
             placeholder={t('ops.salaries.labelPlaceholder')}
           />
-          <DateField label={t('form.periodStart')} value={periodStart} onChange={setPeriodStart} required />
+          <DateField
+            label={t('form.periodStart')}
+            value={periodStart}
+            onChange={setPeriodStart}
+            required
+            hint={t('ops.salaries.hint.period')}
+          />
           <DateField label={t('form.periodEnd')} value={periodEnd} onChange={setPeriodEnd} required />
-          <DecimalField label={t('form.baseSalary')} value={baseSalary} onChange={setBaseSalary} required placeholder='0.00' />
-          <DecimalField label={t('form.adjustments')} value={adjustments} onChange={setAdjustments} placeholder='0.00' />
-          <DecimalField label={t('form.deductions')} value={deductions} onChange={setDeductions} placeholder='0.00' />
+          <DecimalField
+            label={t('form.baseSalary')}
+            value={baseSalary}
+            onChange={setBaseSalary}
+            required
+            placeholder='0.00'
+            hint={t('ops.salaries.hint.baseSalary')}
+          />
+          <DecimalField
+            label={t('form.adjustments')}
+            value={adjustments}
+            onChange={setAdjustments}
+            placeholder='0.00'
+            hint={t('ops.salaries.hint.adjustments')}
+          />
+          <DecimalField
+            label={t('form.deductions')}
+            value={deductions}
+            onChange={setDeductions}
+            placeholder='0.00'
+            hint={t('ops.salaries.hint.deductions')}
+          />
         </div>
-        <TextArea label={t('form.notesOptional')} value={notes} onChange={setNotes} rows={2} />
+        <TextArea
+          label={t('form.notesOptional')}
+          value={notes}
+          onChange={setNotes}
+          rows={2}
+          hint={t('ops.salaries.hint.notes')}
+        />
+        <div className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm'>
+          <span className='text-slate-600'>{t('ops.salaries.netPreview')}</span>
+          <span className='font-mono font-medium text-slate-900'>{previewNet ?? '\u2014'}</span>
+        </div>
         <div className='text-xs text-slate-500'>
           {t('ops.salaries.note')}
         </div>
         {err && <FormError code={err.code} message={tError(err.code, err.message)} />}
         <SubmitButton busy={busy}>{t('action.createSalary')}</SubmitButton>
       </form>
+
+      <div className='rounded-2xl border border-slate-200 bg-white p-4'>
+        <h2 className='text-sm font-medium text-slate-700'>{t('ops.salaries.flowHeading')}</h2>
+        <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-3'>
+          <div className='rounded-xl border border-slate-200 bg-slate-50 p-3'>
+            <span className='text-xs font-medium rounded bg-slate-200 text-slate-700 px-2 py-0.5'>
+              {t('status.draft')}
+            </span>
+            <p className='mt-2 text-sm text-slate-600'>{t('ops.salaries.flowDraft')}</p>
+          </div>
+          <div className='rounded-xl border border-slate-200 bg-slate-50 p-3'>
+            <span className='text-xs font-medium rounded bg-slate-200 text-slate-700 px-2 py-0.5'>
+              {t('status.approved')}
+            </span>
+            <p className='mt-2 text-sm text-slate-600'>{t('ops.salaries.flowApproved')}</p>
+          </div>
+          <div className='rounded-xl border border-slate-200 bg-slate-50 p-3'>
+            <span className='text-xs font-medium rounded bg-slate-200 text-slate-700 px-2 py-0.5'>
+              {t('status.paid')}
+            </span>
+            <p className='mt-2 text-sm text-slate-600'>{t('ops.salaries.flowPaid')}</p>
+          </div>
+        </div>
+      </div>
 
       <div className='rounded-2xl border border-slate-200 bg-white overflow-hidden'>
         <table className='w-full text-sm'>
@@ -279,8 +353,8 @@ export default function SalariesPage() {
               const paid = paidOf(s);
               const remaining = remainingOf(s);
               return (
-                <>
-                  <tr key={s.id} className='border-t border-slate-100 hover:bg-slate-50'>
+                <Fragment key={s.id}>
+                  <tr className='border-t border-slate-100 hover:bg-slate-50'>
                     <td className='px-2 py-2 text-center'>
                       <button
                         type='button'
@@ -293,7 +367,7 @@ export default function SalariesPage() {
                     </td>
                     <td className='px-3 py-2 font-mono'>{s.salaryNumber}</td>
                     <td className='px-3 py-2'>{employeeName(employeeOf(s.employeeId))}</td>
-                    <td className='px-3 py-2 text-slate-600'>{s.periodStart} \u2192 {s.periodEnd}</td>
+                    <td className='px-3 py-2 text-slate-600'>{s.periodStart} {'\u2192'} {s.periodEnd}</td>
                     <td className='px-3 py-2 text-slate-600'>{s.label}</td>
                     <td className='px-3 py-2 text-right font-mono'>{s.netSalary}</td>
                     <td className='px-3 py-2 text-right font-mono'>{paid.toFixed(2)}</td>
@@ -309,7 +383,7 @@ export default function SalariesPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
@@ -466,7 +540,7 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
         <h3 className='text-sm font-medium text-slate-700'>{t('ops.salaries.summaryHeading')}</h3>
         <div className='grid grid-cols-2 md:grid-cols-3 gap-3 text-sm'>
           <div><span className='text-slate-500'>{t('table.employee')}: </span>{employeeName(employees.find((e) => e.id === record.employeeId))}</div>
-          <div><span className='text-slate-500'>{t('table.period')}: </span>{record.periodStart} \u2192 {record.periodEnd}</div>
+          <div><span className='text-slate-500'>{t('table.period')}: </span>{record.periodStart} {'\u2192'} {record.periodEnd}</div>
           <div><span className='text-slate-500'>{t('form.label')}: </span>{record.label}</div>
           <div><span className='text-slate-500'>{t('form.baseSalary')}: </span><span className='font-mono'>{record.baseSalary}</span></div>
           <div><span className='text-slate-500'>{t('form.adjustments')}: </span><span className='font-mono'>{record.adjustments}</span></div>
@@ -477,7 +551,7 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
         </div>
         {record.notes && <div className='text-sm text-slate-600'>{record.notes}</div>}
         {record.approvedAt && (
-          <div className='text-xs text-slate-500'>{t('ops.salaries.approvedAtPrefix')}{record.approvedAt}</div>
+          <div className='text-xs text-slate-500'>{t('ops.salaries.approvedAtPrefix')}{formatDateTime(record.approvedAt)}</div>
         )}
       </div>
 
@@ -488,7 +562,7 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
           <div className='text-amber-800'>{t('ops.salaries.advanceIntro')}</div>
           <ul className='font-mono text-amber-900'>
             {advances.map((a) => (
-              <li key={a.id}>{a.businessDate} \u2014 {a.amount}</li>
+              <li key={a.id}>{a.businessDate} {'\u2014'} {a.amount}</li>
             ))}
           </ul>
         </div>
@@ -506,7 +580,7 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
                 <span className='font-sans text-xs text-slate-500'>
                   {' \u00b7 '}{t('ops.salaries.settledAdvanceAbsorbedBy')}{' '}
                   {a.salaryNumber ?? '\u2014'}
-                  {a.settledAt ? ' \u00b7 ' + a.settledAt : ''}
+                  {a.settledAt ? ' \u00b7 ' + formatDateTime(a.settledAt) : ''}
                 </span>
               </li>
             ))}
@@ -519,13 +593,13 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
           <h3 className='text-sm font-medium text-slate-700'>{t('ops.salaries.editHeading')}</h3>
           <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
             <TextField label={t('form.label')} value={editLabel} onChange={setEditLabel} required />
-            <DateField label={t('form.periodStart')} value={editStart} onChange={setEditStart} required />
+            <DateField label={t('form.periodStart')} value={editStart} onChange={setEditStart} required hint={t('ops.salaries.hint.period')} />
             <DateField label={t('form.periodEnd')} value={editEnd} onChange={setEditEnd} required />
-            <DecimalField label={t('form.baseSalary')} value={editBase} onChange={setEditBase} required />
-            <DecimalField label={t('form.adjustments')} value={editAdj} onChange={setEditAdj} />
-            <DecimalField label={t('form.deductions')} value={editDed} onChange={setEditDed} />
+            <DecimalField label={t('form.baseSalary')} value={editBase} onChange={setEditBase} required hint={t('ops.salaries.hint.baseSalary')} />
+            <DecimalField label={t('form.adjustments')} value={editAdj} onChange={setEditAdj} hint={t('ops.salaries.hint.adjustments')} />
+            <DecimalField label={t('form.deductions')} value={editDed} onChange={setEditDed} hint={t('ops.salaries.hint.deductions')} />
           </div>
-          <TextArea label={t('form.notesOptional')} value={editNotes} onChange={setEditNotes} rows={2} />
+          <TextArea label={t('form.notesOptional')} value={editNotes} onChange={setEditNotes} rows={2} hint={t('ops.salaries.hint.notes')} />
           <div className='flex flex-wrap gap-2'>
             <button type='submit' disabled={busy} className='rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-60'>
               {busy ? t('ops.salaries.saving') : t('ops.salaries.saveChanges')}
@@ -541,6 +615,9 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
       {isApproved && (
         <form onSubmit={pay} className='rounded-xl border border-slate-200 bg-white p-4 space-y-3'>
           <h3 className='text-sm font-medium text-slate-700'>{t('ops.salaries.recordPaymentHeading')}</h3>
+          <div className='text-xs text-slate-500'>
+            {t('ops.salaries.paymentHelp')} <span className='font-mono text-slate-700'>{remaining.toFixed(2)}</span>
+          </div>
           <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
             <DecimalField label={t('form.amount')} value={payAmount} onChange={setPayAmount} required placeholder='0.00' />
             <SelectField
@@ -586,7 +663,20 @@ function SalaryExpanded({ record, employees, onChanged }: { record: Salary; empl
                 {payments.map((p) => (
                   <tr key={p.id} className='border-t border-slate-100'>
                     <td className='px-2 py-2'>{p.businessDate}</td>
-                    <td className='px-2 py-2'>{p.paymentMethod}</td>
+                    <td className='px-2 py-2'>
+                      <div>{p.paymentMethod}</div>
+                      <span
+                        className={
+                          p.source === 'KIOSK'
+                            ? 'text-[10px] uppercase tracking-wide rounded bg-sky-100 text-sky-700 px-1.5 py-0.5'
+                            : 'text-[10px] uppercase tracking-wide rounded bg-slate-100 text-slate-600 px-1.5 py-0.5'
+                        }
+                      >
+                        {p.source === 'KIOSK'
+                          ? t('ops.salaries.sourceKiosk')
+                          : t('ops.salaries.sourcePayroll')}
+                      </span>
+                    </td>
                     <td className='px-2 py-2 text-right font-mono'>{p.amount}</td>
                     <td className='px-2 py-2 text-slate-500'>{p.reference ?? '\u2014'}</td>
                     <td className='px-2 py-2'>

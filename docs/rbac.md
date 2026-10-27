@@ -109,6 +109,8 @@ full Reports sidebar (8 links), Kiosk denial.
 **Does:**
 - Approve expenses, approve salaries, void salary payments
 - Reopen a CLOSED daily-closing record
+- List, download, and restore backups (OWNER only; a backup contains
+  every password and PIN hash)
 - Every MANAGER action below
 - The only role permitted self-approval on expenses (Phase 17.6-M4
   addendum)
@@ -120,14 +122,17 @@ full Reports sidebar (8 links), Kiosk denial.
 **Sees:** identical UI to OWNER — same sidebar, same pages.
 
 **Does:** everything on `/ops` except OWNER-only actions (approve
-salaries, void salary payments, reopen closing). Day-to-day:
+salaries, void salary payments, reopen closing, backups). Day-to-day:
 - Create/update materials, categories, suppliers, employees, positions
 - Record purchase invoices, supplier payments, stock movements, sales
 - Review reconciliations (approve or send back)
-- Confirm cash handovers
+- Confirm cash handovers addressed to them
+- List/rename devices and allow/block device access
 - Create / submit / reject expenses (subject to self-approval block)
 
-**Denied:** the waiter kiosk, and OWNER-only actions above.
+**Denied:** the waiter kiosk, backups, and OWNER-only actions above.
+A MANAGER cannot block a device used by an OWNER, revoke an OWNER's
+session, or revoke their own session through the admin endpoint.
 
 **Self-approval note:** a MANAGER who created an expense cannot approve
 it (backend rule). An OWNER can approve their own expense; a MANAGER
@@ -144,12 +149,18 @@ chrome. All manager surfaces return a denial.
 - Submit the shift for reconciliation
 - Create a reconciliation, enter actuals, submit for review
 - Select a MANAGER/OWNER receiver and create the cash handover
+- Record the day's M-Pesa collections and daily expenses from the kiosk
+- Record a salary expense only for their own linked Employee record;
+  if a MANAGER operates the kiosk on their behalf, it targets the same
+  assigned waiter's Employee record
+- Confirm a cash handover only when they are its designated receiver
 - Sign out
 
 **Denied:** `/dashboard`, `/ops/*`, `/reports/*`.
 
 **Cannot:** see other waiters' shifts, approve their own
-reconciliation, confirm a handover, or see any management data.
+reconciliation, confirm someone else's handover, choose an arbitrary
+salary target, or see any management data.
 
 ### AUDITOR (untested — no account)
 

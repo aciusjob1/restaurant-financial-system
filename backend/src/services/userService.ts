@@ -13,13 +13,21 @@ const PUBLIC_USER_SELECT = {
   language: true,
   lastLogin: true,
   createdAt: true,
+  pinHash: true,
 } as const;
 
+// Strip pinHash from the response and replace it with a boolean hasPin flag
+function toPublicUser<T extends { pinHash: string | null }>(u: T): Omit<T, 'pinHash'> & { hasPin: boolean } {
+  const { pinHash, ...rest } = u;
+  return { ...rest, hasPin: pinHash !== null };
+}
+
 export async function listUsers() {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     select: PUBLIC_USER_SELECT,
     orderBy: { createdAt: 'desc' },
   });
+  return users.map(toPublicUser);
 }
 
 export async function getUserById(id: string) {
@@ -28,7 +36,7 @@ export async function getUserById(id: string) {
     select: PUBLIC_USER_SELECT,
   });
   if (!user) throw new ApiError(404, 'NOT_FOUND', 'User not found.');
-  return user;
+  return toPublicUser(user);
 }
 
 export async function createUser(params: {
@@ -44,7 +52,7 @@ export async function createUser(params: {
 
   const passwordHash = await hashPassword(params.password);
 
-  return prisma.user.create({
+  const created = await prisma.user.create({
     data: {
       username: params.username,
       fullName: params.fullName,
@@ -56,6 +64,7 @@ export async function createUser(params: {
     },
     select: PUBLIC_USER_SELECT,
   });
+  return toPublicUser(created);
 }
 
 export async function updateUser(
@@ -89,7 +98,7 @@ export async function updateUser(
       await tx.session.deleteMany({ where: { userId: id } });
     }
 
-    return user;
+    return toPublicUser(user);
   });
 }
 

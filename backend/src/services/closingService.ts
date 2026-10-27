@@ -127,24 +127,19 @@ interface ComputeResult {
 }
 
 async function computeClosing(businessDate: Date): Promise<ComputeResult> {
-  // 1. Every shift for the date must be CLOSED. Decision 2 (C).
+  // Closing is driven by the day's sales. Shifts are recorded for context
+  // only and do NOT have to be CLOSED (or even exist): a business that
+  // records sales without the shift workflow can still close its day.
   const shifts = await prisma.shift.findMany({
     where: { businessDate },
     select: { id: true, status: true, userId: true },
   });
-  const notClosed = shifts.filter((s) => s.status !== 'CLOSED');
-  if (notClosed.length > 0) {
-    throw new ApiError(
-      409,
-      'SHIFTS_NOT_CLOSED',
-      `Cannot close the day: ${notClosed.length} shift(s) are not CLOSED.`
-    );
-  }
 
   const shiftIds = shifts.map((s) => s.id);
   const shiftCount = shifts.length;
+  const openShiftCount = shifts.filter((s) => s.status !== 'CLOSED').length;
 
-  // 2. SalesSummary totals for the date (POS view).
+  // 1. SalesSummary totals for the date (POS view) - the basis for closing.
   const summaries = await prisma.salesSummary.findMany({
     where: { businessDate },
     select: {
@@ -167,8 +162,10 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
     ssMobile = ssMobile.plus(s.mobileSales);
     ssOther = ssOther.plus(s.otherSales);
   }
+  const hasSalesSummaries = summaries.length > 0;
 
-  // 3. Collections-derived expected values (waiter view).
+  // 2. Collections (waiter view), used for the POS <-> waiter discrepancies
+  // and as the expected-cash fallback for days without POS summaries.
   const collections = shiftIds.length
     ? await prisma.collection.findMany({
         where: { shiftId: { in: shiftIds }, voidedAt: null },
@@ -176,16 +173,42 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
       })
     : [];
 
-  let expCash = toDecimal('0');
-  let expMobile = toDecimal('0');
+  let colCash = toDecimal('0');
+  let colMobile = toDecimal('0');
   let colOther = toDecimal('0');
   for (const c of collections) {
-    if (c.paymentMethod === 'CASH') expCash = expCash.plus(c.amount);
-    else if (MOBILE_METHODS.has(c.paymentMethod)) expMobile = expMobile.plus(c.amount);
+    if (c.paymentMethod === 'CASH') colCash = colCash.plus(c.amount);
+    else if (MOBILE_METHODS.has(c.paymentMethod)) colMobile = colMobile.plus(c.amount);
     else colOther = colOther.plus(c.amount);
   }
 
-  // 4. Reconciliation-derived actuals.
+  // 3. Daily cash receipts: the manager-confirmed cash handed over by each
+  // waiter. These are the primary actual-cash source on a sales-only day.
+  const receipts = await prisma.dailyCashReceipt.findMany({
+    where: { businessDate },
+    select: { id: true, userId: true, status: true, amountReceived: true },
+  });
+
+  let receiptCash = toDecimal('0');
+  let decidedReceiptCount = 0;
+  let pendingReceiptCount = 0;
+  for (const r of receipts) {
+    if (r.status === 'PENDING') {
+      pendingReceiptCount += 1;
+      continue;
+    }
+    decidedReceiptCount += 1;
+    if (
+      (r.status === 'APPROVED' || r.status === 'INSUFFICIENT') &&
+      r.amountReceived !== null
+    ) {
+      receiptCash = receiptCash.plus(r.amountReceived);
+    }
+    // NO_NETCASH_HANDED_OVER contributes zero cash.
+  }
+
+  // 4. Reconciliation actuals (shift workflow). Used as the cash fallback
+  // when no receipt has been decided for the date, and always for mobile.
   const reconciliations = shiftIds.length
     ? await prisma.reconciliation.findMany({
         where: { shiftId: { in: shiftIds } },
@@ -202,23 +225,24 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
       })
     : [];
 
-  let actCash = toDecimal('0');
-  let actMobile = toDecimal('0');
-  let cashDiff = toDecimal('0');
-  let mobileDiff = toDecimal('0');
+  let reconCash = toDecimal('0');
+  let reconMobile = toDecimal('0');
   let reconciliationCount = 0;
-  let pendingReviewCount = 0;
+  let pendingReconciliationCount = 0;
 
   for (const r of reconciliations) {
     if (r.status === 'SUBMITTED' || r.status === 'REVIEWED') {
       reconciliationCount += 1;
-      if (r.actualCash !== null) actCash = actCash.plus(r.actualCash);
-      if (r.actualMobile !== null) actMobile = actMobile.plus(r.actualMobile);
-      if (r.cashDifference !== null) cashDiff = cashDiff.plus(r.cashDifference);
-      if (r.mobileDifference !== null) mobileDiff = mobileDiff.plus(r.mobileDifference);
+      if (r.actualCash !== null) reconCash = reconCash.plus(r.actualCash);
+      if (r.actualMobile !== null) reconMobile = reconMobile.plus(r.actualMobile);
     }
-    if (r.status === 'SUBMITTED') pendingReviewCount += 1;
+    if (r.status === 'SUBMITTED') pendingReconciliationCount += 1;
   }
+
+  const actualCashSource = decidedReceiptCount > 0 ? 'RECEIPTS' : 'RECONCILIATIONS';
+  const actCash = decidedReceiptCount > 0 ? receiptCash : reconCash;
+  const actMobile = reconMobile;
+  const pendingReviewCount = pendingReconciliationCount + pendingReceiptCount;
 
   // 5. Handovers for these shifts (Model 2: shift-anchored, voided excluded).
   const handovers = shiftIds.length
@@ -260,13 +284,26 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
     if (e.paymentMethod === 'CASH') totalCashExpenses = totalCashExpenses.plus(e.amount);
   }
 
-  // 6. Discrepancies between the POS view and the waiter view.
-  const cashSalesDiscrepancy = ssCash.minus(expCash);
-  const mobileSalesDiscrepancy = ssMobile.minus(expMobile);
+  // 6. Expected drawer cash. Sales-based: cash sales minus approved cash
+  // expenses. Only when the day has no POS summary at all do we fall back to
+  // the waiter collections, so older shift-only days still close sensibly.
+  const expectedCash = (hasSalesSummaries ? ssCash : colCash).minus(totalCashExpenses);
+  const expectedMobile = hasSalesSummaries ? ssMobile : colMobile;
+
+  // Differences are always actual - expected, whichever sources were used.
+  const cashDifference = actCash.minus(expectedCash);
+  const mobileDifference = actMobile.minus(expectedMobile);
+
+  // 7. Discrepancies between the POS view and the waiter view.
+  const cashSalesDiscrepancy = ssCash.minus(colCash);
+  const mobileSalesDiscrepancy = ssMobile.minus(colMobile);
   const otherSalesDiscrepancy = ssOther.minus(colOther);
 
   const snapshotJson = {
     businessDate: toDateOnly(businessDate),
+    expectedCashBasis: hasSalesSummaries ? 'SALES' : 'COLLECTIONS',
+    actualCashSource,
+    openShiftCount,
     shifts: shifts.map((s) => ({ id: s.id, userId: s.userId, status: s.status })),
     salesSummaries: summaries.map((s) => ({
       id: s.id,
@@ -278,6 +315,12 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
       otherSales: toMoneyString(s.otherSales),
     })),
     collectionsTotal: collections.length,
+    receipts: receipts.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      status: r.status,
+      amountReceived: r.amountReceived === null ? null : toMoneyString(r.amountReceived),
+    })),
     reconciliations: reconciliations.map((r) => ({
       id: r.id,
       shiftId: r.shiftId,
@@ -298,12 +341,12 @@ async function computeClosing(businessDate: Date): Promise<ComputeResult> {
     salesSummaryCash: ssCash,
     salesSummaryMobile: ssMobile,
     salesSummaryOther: ssOther,
-    expectedCash: expCash,
-    expectedMobile: expMobile,
+    expectedCash,
+    expectedMobile,
     actualCash: actCash,
     actualMobile: actMobile,
-    cashDifference: cashDiff,
-    mobileDifference: mobileDiff,
+    cashDifference,
+    mobileDifference,
     cashSalesDiscrepancy,
     mobileSalesDiscrepancy,
     otherSalesDiscrepancy,

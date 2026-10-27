@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../errors/ApiError.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
+import { nextDocumentNumber } from '../utils/documentNumber.js';
 import type { PaymentMethod, Prisma, Role } from '@prisma/client';
 
 function isUniqueViolation(err: unknown): boolean {
@@ -47,11 +48,7 @@ function serializeSupplier(s: {
 }
 
 async function nextSupplierNumber(tx: Prisma.TransactionClient): Promise<string> {
-  const rows = await tx.$queryRawUnsafe<Array<{ nextval: bigint }>>(
-    "SELECT nextval('supplier_number_seq') AS nextval"
-  );
-  const n = rows[0]?.nextval ?? 1n;
-  return `SUP-${n.toString().padStart(4, '0')}`;
+  return nextDocumentNumber(tx, 'supplier');
 }
 
 export async function listSuppliers(opts: {

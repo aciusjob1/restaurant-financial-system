@@ -6,9 +6,11 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 export const backupRouter = Router();
 backupRouter.use(requireAuth);
 
+// Backups contain every table, including password and PIN hashes. Treat
+// backup browsing as an OWNER-only capability; auditors do not need it.
 backupRouter.get(
   '/',
-  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  requireRole('OWNER'),
   asyncHandler(backupController.listBackups)
 );
 
@@ -20,7 +22,7 @@ backupRouter.post(
 
 backupRouter.get(
   '/destinations',
-  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  requireRole('OWNER'),
   asyncHandler(backupController.listDestinations)
 );
 
@@ -32,7 +34,7 @@ backupRouter.post(
 
 backupRouter.get(
   '/schedule',
-  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  requireRole('OWNER'),
   asyncHandler(backupController.getSchedule)
 );
 
@@ -44,7 +46,7 @@ backupRouter.post(
 
 backupRouter.get(
   '/:filename/download',
-  requireRole('OWNER', 'MANAGER', 'AUDITOR'),
+  requireRole('OWNER'),
   asyncHandler(backupController.downloadBackup)
 );
 

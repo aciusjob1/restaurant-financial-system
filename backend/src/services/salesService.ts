@@ -4,11 +4,11 @@ import { toDecimal, toMoneyString } from '../utils/money.js';
 import { parseBusinessDate, toDateOnly } from '../utils/businessDate.js';
 import { parseSalesCsv } from './posImporter.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
-import type { PaymentMethod, Prisma, Role } from '@prisma/client';
+import type { ExpenseOrigin, PaymentMethod, Prisma, Role } from '@prisma/client';
 import { ensureOpenShiftForUserAndDate } from './shiftService.js';
 import { buildSubmissionFingerprint, markSubmissionPending } from './dailyCashReceiptService.js';
 import { nextExpenseNumber } from '../utils/expenseNumber.js';
-import { applySalaryExpense } from './salaryService.js';
+import { applySalaryExpense, reverseKioskSalaryExpense } from './salaryService.js';
 
 const MOBILE_METHODS: ReadonlySet<PaymentMethod> = new Set([
   'MPESA',
@@ -164,20 +164,25 @@ export async function listMySummary(userId: string, businessDate: string) {
   });
   if (!summary) return null;
 
-  // Return all active expenses for this waiter/day, regardless of
-  // category. The kiosk renders them with their category name so the
-  // waiter can see what was previously recorded before resubmitting.
+  // Return all active kiosk expenses for this waiter/day, regardless of
+  // category. Attribution is by paidByUserId so a manager submitting on
+  // the waiter's behalf still surfaces the rows on the waiter's kiosk.
   const activeExpenses = await prisma.expense.findMany({
     where: {
       businessDate: bd,
-      createdBy: userId,
       voidedAt: null,
+      origin: 'KIOSK',
+      OR: [
+        { paidByUserId: userId },
+        { paidByUserId: null, createdBy: userId },
+      ],
     },
     select: {
       id: true,
       description: true,
       amount: true,
       categoryId: true,
+      salaryTargetEmployeeId: true,
       category: { select: { id: true, name: true, systemKey: true } },
     },
     orderBy: { createdAt: 'asc' },
@@ -210,6 +215,7 @@ export async function listMySummary(userId: string, businessDate: string) {
       description: e.description,
       amount: toMoneyString(e.amount),
       categoryId: e.categoryId,
+      salaryTargetEmployeeId: e.salaryTargetEmployeeId,
       categoryName: e.category.name,
       categorySystemKey: e.category.systemKey,
     })),
@@ -387,6 +393,7 @@ export async function submitWaiterCollections(input: {
         businessDate: summary.businessDate,
         userId: attributedUserId,
         enteredBy: input.actorId,
+        origin: 'KIOSK',
         expenseRows: input.expenses.map((e) => ({
           categoryId: e.categoryId,
           description: e.description,
@@ -401,14 +408,19 @@ export async function submitWaiterCollections(input: {
         include: INCLUDE_LINES,
       });
 
-      // Return every active expense for this waiter/day, regardless of
-      // category, so the kiosk can render the previous submission in
-      // full before the waiter replaces it.
+      // Return every active kiosk expense for this waiter/day, regardless
+      // of category, so the kiosk can render the previous submission in
+      // full before the waiter replaces it. Attribution is by
+      // paidByUserId so manager-on-behalf entries are included.
       const activeExpenses = await tx.expense.findMany({
         where: {
           businessDate: summary.businessDate,
-          createdBy: input.actorId,
           voidedAt: null,
+          origin: 'KIOSK',
+          OR: [
+            { paidByUserId: attributedUserId },
+            { paidByUserId: null, createdBy: input.actorId },
+          ],
         },
         select: {
           id: true,
@@ -417,6 +429,7 @@ export async function submitWaiterCollections(input: {
           description: true,
           paymentMethod: true,
           categoryId: true,
+          salaryTargetEmployeeId: true,
           category: { select: { id: true, name: true, systemKey: true } },
         },
         orderBy: { createdAt: 'asc' },
@@ -443,6 +456,7 @@ export async function submitWaiterCollections(input: {
           description: e.description,
           paymentMethod: e.paymentMethod,
           categoryId: e.categoryId,
+          salaryTargetEmployeeId: e.salaryTargetEmployeeId,
           categoryName: e.category.name,
           categorySystemKey: e.category.systemKey,
         })),
@@ -519,6 +533,13 @@ export async function submitWaiterReport(input: {
   );
   // Total stays; cash is whatever's left after the new mobile + other.
   const newCash = summary.totalSales.minus(newMobile).minus(summary.otherSales);
+  if (newCash.isNegative()) {
+    throw new ApiError(
+      400,
+      'NEGATIVE_CASH',
+      'M-Pesa and other sales exceed the recorded total sales; cash cannot be negative.'
+    );
+  }
 
   return prisma.$transaction(async (tx) => {
     // Replace only the MPESA lines. Manager-entered CASH/other lines stay.
@@ -544,6 +565,7 @@ export async function submitWaiterReport(input: {
       businessDate: summary.businessDate,
       userId: summary.userId,
       enteredBy: input.actorId,
+      origin: 'KIOSK',
       expenseRows: input.expenseRows.map((r) => ({
         description: r.description,
         amount: toDecimal(r.amount),
@@ -564,15 +586,16 @@ async function ensureActiveShift(businessDate: Date, userId: string | null) {
 }
 
 /**
- * Supersede prior DAILY expenses for this waiter+date, then create the
- * new rows. Called inside the summary transaction so a failure cannot
- * leave a partially updated report.
+ * Supersede this actor's prior expenses for the same date and entry
+ * channel, then create the new rows. Called inside the summary
+ * transaction so a failure cannot leave a partially updated report.
  *
- * Scope rules (per Step 2 safeguards):
- *   - only DAILY-category expenses are touched
- *   - only this user's expenses on this business date
+ * Scope rules:
+ *   - only expenses with the same origin (KIOSK vs MANUAL)
+ *   - only this actor's expenses on this business date
  *   - only currently-APPROVED, non-voided rows
- * Salary expenses and other categories are unaffected.
+ * Kiosk resubmission also reverses linked SalaryPayment/SalaryAdvance
+ * rows so payroll is not paid twice. Cross-channel rows are untouched.
  *
  * Semantics for opts.expenseRows:
  *   undefined  → do nothing (legacy callers / CSV import)
@@ -585,6 +608,7 @@ async function handleDailyExpenses(
     businessDate: Date;
     userId: string | null;
     enteredBy: string;
+    origin: ExpenseOrigin;
     expenseRows?: Array<{
       categoryId?: string;
       description: string;
@@ -600,6 +624,12 @@ async function handleDailyExpenses(
   }
 
   const rows = opts.expenseRows;
+
+  for (const row of rows) {
+    if (row.amount.lessThanOrEqualTo(0)) {
+      throw new ApiError(400, 'INVALID_AMOUNT', 'Expense amounts must be greater than zero.');
+    }
+  }
 
   // DAILY is the fallback for legacy callers (upsertSummary, submitWaiterReport)
   // that still submit { description, amount } without a category.
@@ -640,7 +670,7 @@ async function handleDailyExpenses(
 
   // Pre-validate SALARY rows and load target employees before any writes.
   // A single invalid row aborts the whole transaction, so no partial state.
-  const salaryTargets = new Map<string, { id: string; isActive: boolean }>();
+  let kioskAttributedRole: Role | null | undefined;
   for (const row of rows) {
     const cat = row.categoryId ? byId.get(row.categoryId) : undefined;
     const isSalary = cat?.systemKey === 'SALARY';
@@ -654,7 +684,7 @@ async function handleDailyExpenses(
     }
     const emp = await tx.employee.findUnique({
       where: { id: row.salaryTargetEmployeeId },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, userId: true },
     });
     if (!emp) {
       throw new ApiError(400, 'INVALID_EMPLOYEE', 'Employee ' + row.salaryTargetEmployeeId + ' does not exist.');
@@ -662,25 +692,78 @@ async function handleDailyExpenses(
     if (!emp.isActive) {
       throw new ApiError(409, 'EMPLOYEE_INACTIVE', 'Employee ' + emp.id + ' is not active.');
     }
-    salaryTargets.set(row.salaryTargetEmployeeId, emp);
+    // Kiosk entries may only pay the salary of the waiter the kiosk session
+    // is attributed to. Cross-employee payroll stays in the ops payroll flow.
+    if (opts.origin === 'KIOSK') {
+      if (kioskAttributedRole === undefined) {
+        const attributedUser = await tx.user.findUnique({
+          where: { id: opts.userId },
+          select: { role: true },
+        });
+        kioskAttributedRole = attributedUser?.role ?? null;
+      }
+      if (kioskAttributedRole !== 'WAITER') {
+        throw new ApiError(
+          403,
+          'KIOSK_SALARY_WAITER_ONLY',
+          'Kiosk salary entries are only available on a waiter kiosk report.'
+        );
+      }
+      if (emp.userId !== opts.userId) {
+        throw new ApiError(
+          403,
+          'SALARY_TARGET_FORBIDDEN',
+          'Kiosk salary entries can only pay the salary linked to the assigned waiter.'
+        );
+      }
+    }
   }
 
-  // Void this actor's prior non-voided rows for this business date,
-  // regardless of category. One resubmission replaces the whole list.
-  await tx.expense.updateMany({
+  // Void prior non-voided rows for this business date and entry channel.
+  // Kiosk rows are scoped to the attributed waiter, so a manager-on-behalf
+  // submission and the waiter's own resubmission replace each other rather
+  // than double-booking payroll. Manual ops expenses are actor-scoped.
+  const previous = await tx.expense.findMany({
     where: {
       businessDate: opts.businessDate,
-      createdBy: opts.enteredBy,
+      origin: opts.origin,
       status: 'APPROVED',
       voidedAt: null,
+      ...(opts.origin === 'KIOSK'
+        ? {
+            OR: [
+              { paidByUserId: opts.userId },
+              { paidByUserId: null, createdBy: opts.enteredBy },
+            ],
+          }
+        : { createdBy: opts.enteredBy }),
     },
-    data: {
-      status: 'VOID',
-      voidedAt: new Date(),
-      voidedBy: opts.enteredBy,
-      voidReason: 'Superseded by daily report resubmission',
-    },
+    select: { id: true },
   });
+
+  if (previous.length > 0) {
+    if (opts.origin === 'KIOSK') {
+      // Undo the payroll effect first. This throws (and rolls back the whole
+      // resubmission) if an advance was already settled, so a waiter can
+      // never double-pay by resubmitting their daily report.
+      for (const old of previous) {
+        await reverseKioskSalaryExpense(tx, {
+          expenseId: old.id,
+          actorId: opts.enteredBy,
+          reason: 'Superseded by daily report resubmission',
+        });
+      }
+    }
+    await tx.expense.updateMany({
+      where: { id: { in: previous.map((e) => e.id) } },
+      data: {
+        status: 'VOID',
+        voidedAt: new Date(),
+        voidedBy: opts.enteredBy,
+        voidReason: 'Superseded by daily report resubmission',
+      },
+    });
+  }
 
   for (const row of rows) {
     const cat = row.categoryId ? byId.get(row.categoryId) : undefined;
@@ -695,6 +778,8 @@ async function handleDailyExpenses(
         createdBy: opts.enteredBy,
         approvedBy: opts.enteredBy,
         approvedAt: new Date(),
+        paidByUserId: opts.origin === 'KIOSK' ? opts.userId : null,
+        origin: opts.origin,
         amount: row.amount,
         paymentMethod: 'CASH',
         description: row.description,
@@ -718,6 +803,7 @@ async function handleDailyExpenses(
         businessDate: created.businessDate,
         recordedBy: opts.enteredBy,
         notes: created.notes ?? null,
+        source: opts.origin === 'KIOSK' ? 'KIOSK' : 'PAYROLL',
       });
     }
   }
@@ -812,6 +898,14 @@ async function upsertSummary(opts: {
           other,
         };
 
+    if (finalTotals.cash.isNegative()) {
+      throw new ApiError(
+        400,
+        'NEGATIVE_CASH',
+        'Total sales must cover mobile and other sales; cash cannot be negative.'
+      );
+    }
+
     if (existing) {
       const updated = await tx.salesSummary.update({
         where: { id: existing.id },
@@ -829,6 +923,7 @@ async function upsertSummary(opts: {
         businessDate: opts.businessDate,
         userId: opts.userId,
         enteredBy: opts.enteredBy,
+        origin: 'MANUAL',
         expenseRows: opts.expenseRows,
       });
       return { summary: serializeSummary(updated), updated: true };
@@ -860,6 +955,7 @@ async function upsertSummary(opts: {
       businessDate: opts.businessDate,
       userId: opts.userId,
       enteredBy: opts.enteredBy,
+      origin: 'MANUAL',
       expenseRows: opts.expenseRows,
     });
     return { summary: serializeSummary(created), updated: false };
@@ -906,7 +1002,11 @@ export async function createManualSummary(input: {
   return summary;
 }
 
-export async function importFromCsv(input: { csv: string; enteredBy: string }) {
+export async function importFromCsv(input: {
+  csv: string;
+  enteredBy: string;
+  actorRole: Role;
+}) {
   const parsed = parseSalesCsv(input.csv);
 
   let imported = 0;
@@ -915,6 +1015,7 @@ export async function importFromCsv(input: { csv: string; enteredBy: string }) {
 
   for (const p of parsed) {
     const businessDate = parseBusinessDate(p.businessDate);
+    await assertDayNotClosed(businessDate, input.actorRole);
     const result = await upsertSummary({
       businessDate,
       source: 'EXISTING_POS',

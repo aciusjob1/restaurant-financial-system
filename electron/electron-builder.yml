@@ -1,6 +1,6 @@
 appId: com.rfs.restaurant-financial-system
 productName: RFS
-copyright: Copyright © 2026
+copyright: Copyright Â© 2026
 
 directories:
   output: ../dist-installer
@@ -13,6 +13,11 @@ files:
 
 afterPack: ./after-pack.js
 
+extraResources:
+  - from: ../vendor
+    to: pgsql
+    filter: ["**/*"]
+
 win:
   target:
     - target: nsis
@@ -20,6 +25,7 @@ win:
   artifactName: RFS-Setup-${version}.${ext}
 
 nsis:
+  include: installer.nsh
   oneClick: false
   perMachine: false
   allowElevation: true

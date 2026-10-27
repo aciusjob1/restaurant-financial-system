@@ -68,9 +68,12 @@ export async function listExpenses(req: Request, res: Response) {
 }
 
 export async function getExpense(req: Request, res: Response) {
-  const expense = await expenseService.getExpenseById(req.params.id!);
-  res.json({ success: true, expense });
-}
+    const expense = await expenseService.getExpenseById(
+      req.params.id!,
+      { id: req.user!.id, role: req.user!.role }
+    );
+    res.json({ success: true, expense });
+  }
 
 export async function createExpense(req: Request, res: Response) {
   const input = req.body as CreateExpenseInput;

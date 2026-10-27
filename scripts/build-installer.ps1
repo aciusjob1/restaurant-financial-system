@@ -1,7 +1,5 @@
 #!/usr/bin/env pwsh
 # Build the RFS installer end to end.
-# Every external command has an exit-code guard — a failure here stops the build,
-# it does not silently produce a stale installer.
 $ErrorActionPreference = 'Stop'
 $root = 'C:\Users\kmasu\restaurant-financial-system'
 Set-Location $root
@@ -25,8 +23,10 @@ pnpm --filter @rfs/backend build;   if ($LASTEXITCODE -ne 0) { throw 'backend bu
 pnpm --filter @rfs/frontend build;  if ($LASTEXITCODE -ne 0) { throw 'frontend build failed' }
 pnpm --filter @rfs/electron build;  if ($LASTEXITCODE -ne 0) { throw 'electron build failed' }
 
-Write-Host '=== 4. Mirror backend dist ===' -ForegroundColor Cyan
-Remove-Item 'backend-deployed\dist' -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host '=== 4. Deploy backend (hoisted) ===' -ForegroundColor Cyan
+Remove-Item 'backend-deployed' -Recurse -Force -ErrorAction SilentlyContinue
+pnpm --filter @rfs/backend deploy --prod --config.node-linker=hoisted backend-deployed
+if ($LASTEXITCODE -ne 0) { throw 'backend deploy failed' }
 Copy-Item 'backend\dist' 'backend-deployed\dist' -Recurse -Force
 
 Write-Host '=== 5. Prisma generate in deployed backend ===' -ForegroundColor Cyan
@@ -44,7 +44,8 @@ Copy-Item 'frontend\.next' 'frontend-deployed\.next' -Recurse -Force
 Write-Host '=== 7. Verify deployed folders ===' -ForegroundColor Cyan
 if (-not (Test-Path 'frontend-deployed\node_modules\next\dist\bin\next')) { throw 'frontend deploy verification failed' }
 if (-not (Test-Path 'backend-deployed\dist\server.js')) { throw 'backend deploy verification failed' }
-if (-not (Test-Path 'backend-deployed\node_modules\.pnpm\@prisma+client@5.22.0_prisma@5.22.0\node_modules\.prisma\client')) { throw 'deployed prisma client missing' }
+# FIXED: Prisma client is now in node_modules\@prisma\client for hoisted deployments
+if (-not (Test-Path 'backend-deployed\node_modules\@prisma\client')) { throw 'deployed prisma client missing' }
 
 Write-Host '=== 8. Stage into electron/ ===' -ForegroundColor Cyan
 Remove-Item 'electron\backend-deployed','electron\frontend-deployed' -Recurse -Force -ErrorAction SilentlyContinue

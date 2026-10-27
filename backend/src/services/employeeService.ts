@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../errors/ApiError.js';
 import { hashPassword } from '../lib/password.js';
+import { nextDocumentNumber } from '../utils/documentNumber.js';
 import type { Prisma, Role } from '@prisma/client';
 
 function toDateOnly(d: Date): string {
@@ -39,12 +40,7 @@ function serializeEmployee(e: {
 }
 
 async function nextEmployeeNumber(tx: Prisma.TransactionClient): Promise<string> {
-  // Uses the sequence created in prisma/sql/sequences.sql.
-  const rows = await tx.$queryRawUnsafe<Array<{ nextval: bigint }>>(
-    "SELECT nextval('employee_number_seq') AS nextval"
-  );
-  const n = rows[0]?.nextval ?? 1n;
-  return `EMP-${n.toString().padStart(4, '0')}`;
+  return nextDocumentNumber(tx, 'employee');
 }
 
 export async function listEmployees() {
@@ -185,25 +181,47 @@ export async function updateEmployee(
     }
   }
 
-  const row = await prisma.employee.update({
-    where: { id },
-    data: {
-      ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
-      ...(input.phone !== undefined ? { phone: input.phone } : {}),
-      ...(input.positionId !== undefined ? { positionId: input.positionId } : {}),
-      ...(input.userId !== undefined ? { userId: input.userId } : {}),
-      ...(input.employmentStatus !== undefined
-        ? { employmentStatus: input.employmentStatus }
-        : {}),
-      ...(input.startDate !== undefined
-        ? { startDate: new Date(`${input.startDate}T00:00:00.000Z`) }
-        : {}),
-      ...(input.endDate !== undefined
-        ? { endDate: input.endDate ? new Date(`${input.endDate}T00:00:00.000Z`) : null }
-        : {}),
-      ...(input.notes !== undefined ? { notes: input.notes } : {}),
-      ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-    },
+  const row = await prisma.$transaction(async (tx) => {
+    const updated = await tx.employee.update({
+      where: { id },
+      data: {
+        ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.positionId !== undefined ? { positionId: input.positionId } : {}),
+        ...(input.userId !== undefined ? { userId: input.userId } : {}),
+        ...(input.employmentStatus !== undefined
+          ? { employmentStatus: input.employmentStatus }
+          : {}),
+        ...(input.startDate !== undefined
+          ? { startDate: new Date(`${input.startDate}T00:00:00.000Z`) }
+          : {}),
+        ...(input.endDate !== undefined
+          ? { endDate: input.endDate ? new Date(`${input.endDate}T00:00:00.000Z`) : null }
+          : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      },
+    });
+
+    // Termination/deactivation must also cut off the linked login, not
+    // just the payroll record. Mirror deactivateEmployee here so there is
+    // no state where a terminated employee can still sign in. Include the
+    // previously linked user when the employee was unlinked in this call.
+    const deactivating = input.employmentStatus === 'TERMINATED' || input.isActive === false;
+    if (deactivating) {
+      const userIds = new Set<string>();
+      if (updated.userId) userIds.add(updated.userId);
+      if (existing.userId) userIds.add(existing.userId);
+      for (const userId of userIds) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { isActive: false },
+        });
+        await tx.session.deleteMany({ where: { userId } });
+      }
+    }
+
+    return updated;
   });
   return serializeEmployee(row);
 }

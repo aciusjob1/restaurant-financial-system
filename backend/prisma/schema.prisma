@@ -84,6 +84,21 @@ enum SalaryStatus {
   PAID
 }
 
+enum ExpenseOrigin {
+  MANUAL
+  KIOSK
+}
+
+enum SalarySource {
+  PAYROLL
+  KIOSK
+}
+
+enum DeviceAccessStatus {
+  ALLOWED
+  BLOCKED
+}
+
 enum PurchaseInvoiceStatus {
   DRAFT
   POSTED
@@ -159,19 +174,53 @@ model User {
   @@index([isActive])
 }
 
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
+model Device {
+  id         String             @id @default(cuid())
+  deviceKey  String             @unique
+  name       String
+  status     DeviceAccessStatus @default(ALLOWED)
+  platform   String?
+  userAgent  String?
+  lastIp     String?
+  lastSeenAt DateTime?
+  lastUserId String?
+  createdBy  String?
+
+  blockedAt   DateTime?
+  blockedBy   String?
+  blockReason String?
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions Session[]
+
+  @@index([status])
+  @@index([lastSeenAt])
+}
+
+model Session {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  ipAddress   String?
+  userAgent   String?
+  deviceId    String?
+  deviceName  String?
+  lastSeenAt  DateTime  @default(now())
+  revokedAt   DateTime?
+  revokedBy   String?
+  revokedReason String?
+  createdAt   DateTime  @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device    Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([deviceId])
+  @@index([revokedAt])
 }
 
 model Position {
@@ -529,6 +578,7 @@ model Expense {
   createdBy       String
   approvedBy      String?
   paidByUserId    String?
+  origin          ExpenseOrigin  @default(MANUAL)
 
   amount          Decimal        @db.Decimal(14, 2)
   paymentMethod   PaymentMethod
@@ -621,6 +671,7 @@ model SalaryPayment {
   paidAt          DateTime      @default(now())
   reference       String?
   notes           String?
+  source          SalarySource  @default(PAYROLL)
 
   recordedBy      String
 
@@ -888,9 +939,14 @@ model SalaryAdvance {
   businessDate    DateTime      @db.Date
   notes           String?
   recordedBy      String
+  source          SalarySource  @default(PAYROLL)
 
   settledById     String?
   settledAt       DateTime?
+
+  voidedAt        DateTime?
+  voidedBy        String?
+  voidReason      String?
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt

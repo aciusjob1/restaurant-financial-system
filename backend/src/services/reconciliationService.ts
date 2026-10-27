@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../errors/ApiError.js';
+import { assertDayNotClosed } from './closedDayGuard.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import type { PaymentMethod, Prisma, ReconciliationStatus } from '@prisma/client';
 
@@ -43,6 +44,15 @@ async function handoverSumForShift(shiftId: string): Promise<Prisma.Decimal> {
   let sum = toDecimal('0');
   for (const r of rows) sum = sum.plus(r.amount);
   return sum;
+}
+
+async function assertShiftDayOpen(shiftId: string, actorRole: 'OWNER' | 'MANAGER' | 'WAITER' | 'AUDITOR') {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { businessDate: true },
+  });
+  if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+  await assertDayNotClosed(shift.businessDate, actorRole);
 }
 
 function serialize(r: {
@@ -169,6 +179,21 @@ export async function createReconciliation(input: {
   if (shift.userId !== input.actor.id) {
     throw new ApiError(403, 'FORBIDDEN', 'That shift does not belong to you.');
   }
+
+  // Duplicate detection comes first: once a reconciliation exists, retrying
+  // must report that fact even if the shift has since moved on to RECONCILING.
+  const existingForShift = await prisma.reconciliation.findFirst({
+    where: { shiftId: input.shiftId },
+    select: { id: true },
+  });
+  if (existingForShift) {
+    throw new ApiError(
+      409,
+      'RECONCILIATION_EXISTS',
+      'A reconciliation already exists for that shift.'
+    );
+  }
+
   if (shift.status !== 'SUBMITTED') {
     throw new ApiError(
       409,
@@ -176,6 +201,8 @@ export async function createReconciliation(input: {
       'Shift must be SUBMITTED before creating a reconciliation.'
     );
   }
+
+  await assertDayNotClosed(shift.businessDate, input.actor.role);
 
   const expected = await computeExpected(input.shiftId);
 
@@ -237,6 +264,8 @@ export async function updateReconciliation(input: {
     );
   }
 
+  await assertShiftDayOpen(existing.shiftId, input.actor.role);
+
   const actualCash =
     input.actualCash !== undefined ? toDecimal(input.actualCash) : existing.actualCash;
   const actualMobile =
@@ -288,6 +317,8 @@ export async function submitReconciliation(input: {
     );
   }
 
+  await assertShiftDayOpen(existing.shiftId, input.actor.role);
+
   const row = await prisma.reconciliation.update({
     where: { id: input.id },
     data: { status: 'SUBMITTED', submittedAt: new Date() },
@@ -326,6 +357,8 @@ export async function reviewReconciliation(input: {
       `Only SUBMITTED reconciliations can be reviewed (currently ${existing.status}).`
     );
   }
+
+  await assertShiftDayOpen(existing.shiftId, input.actor.role);
 
   const data: Prisma.ReconciliationUpdateInput =
     input.decision === 'APPROVE'

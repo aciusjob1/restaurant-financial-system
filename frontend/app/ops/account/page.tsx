@@ -119,6 +119,10 @@ export default function AccountPage() {
       setPwErr({ code: 'MISMATCH', message: t('ops.account.pwMismatch') });
       return;
     }
+    if (newPassword.length < 12) {
+      setPwErr({ code: 'TOO_SHORT', message: 'Password must be at least 12 characters.' });
+      return;
+    }
     setPwBusy(true);
     try {
       await apiFetch('/api/v1/auth/change-password', {

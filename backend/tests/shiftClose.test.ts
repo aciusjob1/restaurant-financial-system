@@ -288,9 +288,10 @@ describe('POST /shifts/:id/complete-shift (existing collections)', () => {
     expect(res.body.handover).toBeNull();
     expect(res.body.created.mpesaEntries).toBe(0);
     expect(res.body.created.expenses).toBe(1);
-    expect(res.body.reconciliation.expectedCash).toBe('5800.00');
+    // Cash expenses are paid out of the drawer, so expected cash is 5000 - 200.
+    expect(res.body.reconciliation.expectedCash).toBe('4800.00');
     expect(res.body.reconciliation.actualCash).toBe('5800.00');
-    expect(res.body.reconciliation.cashDifference).toBe('0.00');
+    expect(res.body.reconciliation.cashDifference).toBe('1000.00');
 
     const recon = await prisma.reconciliation.findUnique({ where: { shiftId } });
     expect(recon.createdBy).toBe(managerId);
@@ -448,14 +449,16 @@ describe('Owner auto-approval preferences in close-money', () => {
     });
   });
 
-  it('MANAGER with both flags ON on their own account: still PENDING + SUBMITTED', async () => {
+  it('MANAGER cannot enable auto flags; close-money stays PENDING + SUBMITTED', async () => {
     const shiftId = await openShift(D_MGR_FLAGS, WAITER15);
     await seedSales(WAITER15, D_MGR_FLAGS, '300.00');
     const m = await loginAs(MANAGER);
-    await m.patch('/api/v1/auth/me').send({
+    const pref = await m.patch('/api/v1/auth/me').send({
       autoApproveExpenses: true,
       autoReviewReconciliations: true,
     });
+    expect(pref.status).toBe(403);
+    expect(pref.body.code).toBe('AUTO_FLAGS_OWNER_ONLY');
 
     const res = await m.post('/api/v1/shifts/' + shiftId + '/close-money').send({
       expenses: [
@@ -474,11 +477,6 @@ describe('Owner auto-approval preferences in close-money', () => {
     expect(exps.length).toBe(1);
     expect(exps[0].status).toBe('PENDING');
     expect(exps[0].approvedBy).toBeNull();
-
-    await m.patch('/api/v1/auth/me').send({
-      autoApproveExpenses: false,
-      autoReviewReconciliations: false,
-    });
   });
 });
 

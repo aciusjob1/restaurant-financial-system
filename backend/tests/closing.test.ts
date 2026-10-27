@@ -24,16 +24,20 @@ const D_SNAPSHOT = '2099-10-03';
 const D_VERSION = '2099-10-04';
 const D_ANCHOR  = '2099-10-05';
 const D_VOIDED  = '2099-10-06';
+const D_SALES_ONLY = '2099-10-07';
+const D_RECEIPT = '2099-10-08';
+const D_PENDING_RECEIPT = '2099-10-09';
 
 async function cleanup() {
   const usernames = ALL.map((u) => u.username);
-  const dates = [D_HAPPY, D_NOT_READY, D_SNAPSHOT, D_VERSION, D_ANCHOR, D_VOIDED];
+  const dates = [D_HAPPY, D_NOT_READY, D_SNAPSHOT, D_VERSION, D_ANCHOR, D_VOIDED, D_SALES_ONLY, D_RECEIPT, D_PENDING_RECEIPT];
 
   await prisma.dailyClosing.deleteMany({
     where: {
       businessDate: { in: dates.map((d) => new Date(`${d}T00:00:00.000Z`)) },
     },
   });
+  await prisma.dailyCashReceipt.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.cashHandover.deleteMany({ where: { fromUser: { username: { in: usernames } } } });
   await prisma.reconciliation.deleteMany({ where: { user: { username: { in: usernames } } } });
   await prisma.collection.deleteMany({ where: { user: { username: { in: usernames } } } });
@@ -137,20 +141,33 @@ async function setupClosedShift(opts: {
 }
 
 describe('Daily Closing — creation and prerequisites', () => {
-  it('refuses to close a day with an open shift (409)', async () => {
-    // Use a dedicated waiter so this test can leave an open shift behind
-    // without blocking the rest of the file.
-    const w = await loginAs(WAITER_OPEN);
-    // Seed the shift via Prisma; POST /api/v1/shifts was removed.
+  it('closes a day whose shift is still open (sales-based closing)', async () => {
+    // Sales-only businesses never close today's shifts. The day must still
+    // close from the sales summary that is already recorded.
+    const m = await loginAs(MANAGER);
+    const ss = await m.post('/api/v1/sales-summaries').send({
+      businessDate: D_NOT_READY,
+      sourceReference: 'phase9-open-shift-sales',
+      lines: [
+        { paymentMethod: 'CASH', amount: '5000.00' },
+        { paymentMethod: 'MPESA', amount: '1000.00' },
+      ],
+    });
+    expect(ss.status).toBe(201);
+
     await seedShiftForUser(WAITER_OPEN, {
       businessDate: D_NOT_READY,
       openingCash: '0.00',
     });
 
-    const m = await loginAs(MANAGER);
     const res = await m.post('/api/v1/daily-closings').send({ businessDate: D_NOT_READY });
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('SHIFTS_NOT_CLOSED');
+    expect(res.status).toBe(201);
+    expect(res.body.closing.status).toBe('CLOSED');
+    expect(res.body.closing.shiftCount).toBe(1);
+    expect(res.body.closing.salesSummaryCash).toBe('5000.00');
+    expect(res.body.closing.expectedCash).toBe('5000.00');
+    expect(res.body.closing.actualCash).toBe('0.00');
+    expect(res.body.closing.cashDifference).toBe('-5000.00');
   });
 
   it('closes a fully-closed day; POS totals, collection expected, and actuals are all correct', async () => {
@@ -178,13 +195,14 @@ describe('Daily Closing — creation and prerequisites', () => {
 
     // Waiter view (from collections)
     expect(c.expectedCash).toBe('100000.00');
-    expect(c.expectedMobile).toBe('0.00');
+    // Closing is sales-based: expected mobile is the POS mobile total.
+    expect(c.expectedMobile).toBe('50000.00');
 
     // Physical count (from reconciliation)
     expect(c.actualCash).toBe('99500.00');
     expect(c.actualMobile).toBe('0.00');
     expect(c.cashDifference).toBe('-500.00');
-    expect(c.mobileDifference).toBe('0.00');
+    expect(c.mobileDifference).toBe('-50000.00');
 
     // Cross-check: POS vs collections
     expect(c.cashSalesDiscrepancy).toBe('0.00');
@@ -327,8 +345,103 @@ describe('Daily Closing — permissions', () => {
   });
 });
 
-describe('Daily Closing - shift-anchored handovers', () => {
-  it('handover with reconciliationId null still counts toward the closing', async () => {
+describe('Daily Closing - sales-only workflow', () => {
+  it('closes a day that has sales but no shifts and no receipts', async () => {
+    const m = await loginAs(MANAGER);
+    const ss = await m.post('/api/v1/sales-summaries').send({
+      businessDate: D_SALES_ONLY,
+      sourceReference: 'phase9-sales-only',
+      lines: [
+        { paymentMethod: 'CASH', amount: '1000.00' },
+        { paymentMethod: 'MPESA', amount: '250.00' },
+        { paymentMethod: 'CARD', amount: '150.00' },
+      ],
+    });
+    expect(ss.status).toBe(201);
+
+    const res = await m.post('/api/v1/daily-closings').send({ businessDate: D_SALES_ONLY });
+    expect(res.status).toBe(201);
+    const c = res.body.closing;
+    expect(c.status).toBe('CLOSED');
+    expect(c.shiftCount).toBe(0);
+    expect(c.salesSummaryTotal).toBe('1400.00');
+    expect(c.salesSummaryCash).toBe('1000.00');
+    expect(c.salesSummaryMobile).toBe('250.00');
+    expect(c.salesSummaryOther).toBe('150.00');
+    // Expected drawer cash is cash sales; nothing has been counted yet.
+    expect(c.expectedCash).toBe('1000.00');
+    expect(c.expectedMobile).toBe('250.00');
+    expect(c.actualCash).toBe('0.00');
+    expect(c.cashDifference).toBe('-1000.00');
+    expect(c.snapshotJson.expectedCashBasis).toBe('SALES');
+    expect(c.snapshotJson.actualCashSource).toBe('RECONCILIATIONS');
+  });
+
+  it('uses an approved daily cash receipt as the actual cash', async () => {
+    const m = await loginAs(MANAGER);
+    const ss = await m.post('/api/v1/sales-summaries').send({
+      businessDate: D_RECEIPT,
+      sourceReference: 'phase9-receipt-sales',
+      lines: [{ paymentMethod: 'CASH', amount: '1000.00' }],
+    });
+    expect(ss.status).toBe(201);
+
+    const waiter = await prisma.user.findUnique({ where: { username: WAITER.username } });
+    const manager = await prisma.user.findUnique({ where: { username: MANAGER.username } });
+    await prisma.dailyCashReceipt.create({
+      data: {
+        userId: waiter!.id,
+        businessDate: new Date(`${D_RECEIPT}T00:00:00.000Z`),
+        status: 'APPROVED',
+        amountReceived: '900.00',
+        createdBy: manager!.id,
+        decidedBy: manager!.id,
+        decidedAt: new Date(),
+      },
+    });
+
+    const res = await m.post('/api/v1/daily-closings').send({ businessDate: D_RECEIPT });
+    expect(res.status).toBe(201);
+    const c = res.body.closing;
+    expect(c.expectedCash).toBe('1000.00');
+    expect(c.actualCash).toBe('900.00');
+    expect(c.cashDifference).toBe('-100.00');
+    expect(c.pendingReviewCount).toBe(0);
+    expect(c.snapshotJson.actualCashSource).toBe('RECEIPTS');
+  });
+
+  it('a pending receipt does not block closing and is recorded as pending review', async () => {
+    const m = await loginAs(MANAGER);
+    const ss = await m.post('/api/v1/sales-summaries').send({
+      businessDate: D_PENDING_RECEIPT,
+      sourceReference: 'phase9-pending-sales',
+      lines: [{ paymentMethod: 'CASH', amount: '500.00' }],
+    });
+    expect(ss.status).toBe(201);
+
+    const waiter = await prisma.user.findUnique({ where: { username: WAITER.username } });
+    await prisma.dailyCashReceipt.create({
+      data: {
+        userId: waiter!.id,
+        businessDate: new Date(`${D_PENDING_RECEIPT}T00:00:00.000Z`),
+        status: 'PENDING',
+        createdBy: waiter!.id,
+      },
+    });
+
+    const res = await m.post('/api/v1/daily-closings').send({ businessDate: D_PENDING_RECEIPT });
+    expect(res.status).toBe(201);
+    const c = res.body.closing;
+    expect(c.status).toBe('CLOSED');
+    expect(c.expectedCash).toBe('500.00');
+    expect(c.actualCash).toBe('0.00');
+    expect(c.pendingReviewCount).toBe(1);
+    expect(c.snapshotJson.receipts).toHaveLength(1);
+    expect(c.snapshotJson.receipts[0].status).toBe('PENDING');
+  });
+});
+
+describe('Daily Closing - shift-anchored handovers', () => {  it('handover with reconciliationId null still counts toward the closing', async () => {
     const { shiftId } = await setupClosedShift({
       businessDate: D_ANCHOR,
       waiter: WAITER,

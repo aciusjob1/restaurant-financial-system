@@ -8,8 +8,8 @@ const PAYMENT_METHODS = [
 
 const MoneyString = z
   .string()
-  .regex(/^-?[0-9]+(\.[0-9]{1,2})?$/, 'Must be a decimal string with up to 2 places')
-  .refine((v) => v.replace('-', '').replace('.', '').length <= 14, {
+  .regex(/^[0-9]+(\.[0-9]{1,2})?$/, 'Must be a non-negative decimal string with up to 2 places')
+  .refine((v) => v.replace('.', '').length <= 14, {
     message: 'Too many digits for Decimal(14,2)',
   });
 

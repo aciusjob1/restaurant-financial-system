@@ -160,21 +160,18 @@ describe('Expense paidByUserId', () => {
 });
 
 describe('Owner autoApproveExpenses preference', () => {
-  it('MANAGER cannot benefit from the OWNER preference even if set on their account', async () => {
+  it('MANAGER cannot enable the OWNER auto-approve preference', async () => {
     const m = await loginAs(MANAGER);
     const pref = await m.patch('/api/v1/auth/me').send({ autoApproveExpenses: true });
-    expect(pref.status).toBe(200);
-    expect(pref.body.user.autoApproveExpenses).toBe(true);
+    expect(pref.status).toBe(403);
+    expect(pref.body.code).toBe('AUTO_FLAGS_OWNER_ONLY');
 
     const created = await m.post('/api/v1/expenses').send({
       businessDate: D, categoryId, amount: '5.00', paymentMethod: 'CASH',
-      description: 'manager with flag on',
+      description: 'manager tried to enable auto-approve',
     });
     expect(created.status).toBe(201);
     expect(created.body.expense.status).toBe('DRAFT');
-
-    // reset for the rest of the tests
-    await m.patch('/api/v1/auth/me').send({ autoApproveExpenses: false });
   });
 
   it('OWNER flag OFF -> expense lands DRAFT', async () => {

@@ -87,16 +87,25 @@ describe('Daily report — waiter fetch + submit', () => {
   });
 
   it('listMySummary returns the summary plus active DAILY expenses', async () => {
-    await createManualSummary({
+    const created = await createManualSummary({
       businessDate: todayISO(),
       sourceReference: '',
       userId: waiterId,
       notes: null,
       lines: [],
       totalSales: '50000.00',
-      expenseRows: [{ description: 'Seed', amount: '100.00' }],
       enteredBy: waiterId,
       actorRole: 'WAITER',
+    });
+    // Kiosk submission is the source of activeExpenses; manager-entered
+    // MANUAL daily expenses stay off the kiosk so a resubmission cannot
+    // re-book them as KIOSK rows.
+    await submitWaiterReport({
+      summaryId: created.id,
+      actorId: waiterId,
+      actorRole: 'WAITER',
+      mpesaRows: [],
+      expenseRows: [{ description: 'Seed', amount: '100.00' }],
     });
     const result = await listMySummary(waiterId, todayISO());
     expect(result).not.toBeNull();
@@ -180,16 +189,22 @@ describe('Daily report — waiter fetch + submit', () => {
 
   it('does not void another waiter\'s DAILY expenses', async () => {
     const d = todayISO();
-    await createManualSummary({
+    const others = await createManualSummary({
       businessDate: d,
       sourceReference: '',
       userId: otherId,
       notes: null,
       lines: [],
       totalSales: '10000.00',
-      expenseRows: [{ description: 'Other', amount: '50.00' }],
       enteredBy: otherId,
       actorRole: 'WAITER',
+    });
+    await submitWaiterReport({
+      summaryId: others.id,
+      actorId: otherId,
+      actorRole: 'WAITER',
+      mpesaRows: [],
+      expenseRows: [{ description: 'Other', amount: '50.00' }],
     });
     const mine = await createManualSummary({
       businessDate: d,

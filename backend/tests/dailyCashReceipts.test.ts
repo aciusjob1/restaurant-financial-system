@@ -215,7 +215,8 @@ describe('DailyCashReceipt — decisions', () => {
     const summary = await seedSummary('50000.00', '10000.00');
     await submitWaiterCollections({
       summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
-      mpesaEntries: [], expenses: [{ categoryId: dailyCategoryId, description: 'Fuel', amount: '2000.00' }],
+      mpesaEntries: [{ payerName: 'Amina', amount: '10000.00' }],
+      expenses: [{ categoryId: dailyCategoryId, description: 'Fuel', amount: '2000.00' }],
     });
     const before = await currentReceipt();
     const res = await upsertReceipt({
@@ -312,7 +313,7 @@ describe('DailyCashReceipt — zero and negative net', () => {
     const summary = await seedSummary('5000.00', '5000.00');
     await submitWaiterCollections({
       summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
-      mpesaEntries: [], expenses: [],
+      mpesaEntries: [{ payerName: 'Amina', amount: '5000.00' }], expenses: [],
     });
     const before = await currentReceipt();
     const res = await upsertReceipt({
@@ -327,7 +328,7 @@ describe('DailyCashReceipt — zero and negative net', () => {
     const summary = await seedSummary('5000.00', '5000.00');
     await submitWaiterCollections({
       summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
-      mpesaEntries: [], expenses: [],
+      mpesaEntries: [{ payerName: 'Amina', amount: '5000.00' }], expenses: [],
     });
     const before = await currentReceipt();
     await expect(upsertReceipt({
@@ -341,7 +342,7 @@ describe('DailyCashReceipt — zero and negative net', () => {
     const summary = await seedSummary('1000.00', '5000.00');
     await submitWaiterCollections({
       summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
-      mpesaEntries: [], expenses: [],
+      mpesaEntries: [{ payerName: 'Amina', amount: '5000.00' }], expenses: [],
     });
     const before = await currentReceipt();
     await expect(upsertReceipt({
@@ -355,7 +356,7 @@ describe('DailyCashReceipt — zero and negative net', () => {
     const summary = await seedSummary('1000.00', '5000.00');
     await submitWaiterCollections({
       summaryId: summary.id, actorId: waiterId, actorRole: 'WAITER',
-      mpesaEntries: [], expenses: [],
+      mpesaEntries: [{ payerName: 'Amina', amount: '5000.00' }], expenses: [],
     });
     const before = await currentReceipt();
     const res = await upsertReceipt({

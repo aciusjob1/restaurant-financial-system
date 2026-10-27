@@ -3,7 +3,13 @@ import { ApiError } from '../errors/ApiError.js';
 import { toDecimal, toMoneyString } from '../utils/money.js';
 import { parseBusinessDate, toDateOnly } from '../utils/businessDate.js';
 import { assertDayNotClosed } from './closedDayGuard.js';
+import { nextDocumentNumber } from '../utils/documentNumber.js';
 import type { PaymentMethod, Prisma, Role } from '@prisma/client';
+
+
+async function nextPaymentNumber(tx: Prisma.TransactionClient): Promise<string> {
+  return nextDocumentNumber(tx, 'payment');
+}
 
 function isSerializationFailure(err: unknown): boolean {
   return (
@@ -72,13 +78,7 @@ function serializeAllocation(a: {
   };
 }
 
-async function nextPaymentNumber(tx: Prisma.TransactionClient): Promise<string> {
-  const rows = await tx.$queryRawUnsafe<Array<{ nextval: bigint }>>(
-    "SELECT nextval('payment_number_seq') AS nextval"
-  );
-  const n = rows[0]?.nextval ?? 1n;
-  return `PAY-${n.toString().padStart(4, '0')}`;
-}
+
 
 async function sumActiveAllocationsForPayment(
   tx: Prisma.TransactionClient,

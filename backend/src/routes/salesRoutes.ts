@@ -76,7 +76,10 @@ salesRouter.post(
 // Manual entry: OWNER, MANAGER only
 salesRouter.post(
   '/',
-  requireRole('OWNER', 'MANAGER'),
+  // WAITER included so a waiter can self-report their sales total
+  // when no manager has entered one yet. The controller enforces
+  // that a WAITER can only create a summary for themselves.
+  requireRole('OWNER', 'MANAGER', 'WAITER'),
   validateBody(ManualSalesSummarySchema),
   asyncHandler(salesController.createManualSummary)
 );

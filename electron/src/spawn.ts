@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import { app } from 'electron';
 
 export type ManagedChild = {
   name: string;
@@ -8,9 +9,22 @@ export type ManagedChild = {
   stop: () => Promise<void>;
 };
 
+function isDev(): boolean {
+  return process.env.RFS_DEV === '1';
+}
+
 function repoRoot(): string {
-  // __dirname at runtime = electron/dist
-  return path.resolve(__dirname, '..', '..');
+  return app.isPackaged
+    ? process.resourcesPath
+    : path.resolve(__dirname, '..', '..');
+}
+
+function backendDir(): string {
+  return isDev() ? 'backend' : 'backend-deployed';
+}
+
+function frontendDir(): string {
+  return isDev() ? 'frontend' : 'frontend-deployed';
 }
 
 function prefixStream(name: string, stream: NodeJS.ReadableStream | null, isErr: boolean) {
@@ -39,7 +53,7 @@ function makeStop(name: string, proc: ChildProcess): () => Promise<void> {
     new Promise<void>((resolve) => {
       if (proc.exitCode !== null || proc.signalCode !== null) return resolve();
       const timer = setTimeout(() => {
-        console.warn('[spawn:' + name + '] kill timeout — forcing');
+        console.warn('[spawn:' + name + '] kill timeout - forcing');
         try { proc.kill('SIGKILL'); } catch {}
         resolve();
       }, 5000);
@@ -52,17 +66,21 @@ function makeStop(name: string, proc: ChildProcess): () => Promise<void> {
 }
 
 export function startBackend(port: number): ManagedChild {
-  const cwd = path.join(repoRoot(), 'backend');
+  const cwd = path.join(repoRoot(), backendDir());
   const entry = path.join(cwd, 'dist', 'server.js');
-  const isDev = process.env.RFS_DEV === '1';
+  const isPackaged = app.isPackaged;
 
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: isDev() ? 'development' : 'production',
+    PORT: String(port),
+    ...(isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {})
+  };
+
+  // Quote execPath to handle spaces in C:\Program Files or AppData paths
   const proc = spawn(process.execPath, [entry], {
     cwd,
-    env: {
-      ...process.env,
-      NODE_ENV: isDev ? 'development' : 'production',
-      PORT: String(port),
-    },
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -81,20 +99,24 @@ export function startBackend(port: number): ManagedChild {
 }
 
 export function startFrontend(port: number): ManagedChild {
-  const cwd = path.join(repoRoot(), 'frontend');
+  const cwd = path.join(repoRoot(), frontendDir());
   const nextBin = path.join(cwd, 'node_modules', 'next', 'dist', 'bin', 'next');
+  const isDevRun = isDev();
+  const isPackaged = app.isPackaged;
 
-  // Dev mode runs "next dev" (compiles on request). Production runs "next start".
-  const isDev = process.env.RFS_DEV === '1';
-  const args = isDev
+  const args = isDevRun
     ? ['dev', '-H', '0.0.0.0', '-p', String(port)]
     : ['start', '-H', '0.0.0.0', '-p', String(port)];
+    
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: isDevRun ? 'development' : 'production',
+    ...(isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {})
+  };
+
   const proc = spawn(process.execPath, [nextBin, ...args], {
     cwd,
-    env: {
-      ...process.env,
-      NODE_ENV: isDev ? 'development' : 'production',
-    },
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });

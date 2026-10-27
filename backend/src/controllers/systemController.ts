@@ -15,9 +15,18 @@ const VIRTUAL_IFACE_HINTS = [
   'npcap', 'bluetooth',
 ];
 
-function looksVirtual(name: string): boolean {
+function looksVirtual(name: string, addr: string): boolean {
   const n = name.toLowerCase();
-  return VIRTUAL_IFACE_HINTS.some((h) => n.includes(h));
+  // 1. Filter by interface name
+  if (VIRTUAL_IFACE_HINTS.some((h) => n.includes(h))) return true;
+  
+  // 2. Filter by known virtual IP ranges (VirtualBox, Docker, etc.)
+  // VirtualBox Host-Only defaults to 192.168.56.x
+  if (addr.startsWith('192.168.56.')) return true;
+  // Docker defaults to 192.168.99.x
+  if (addr.startsWith('192.168.99.')) return true;
+  
+  return false;
 }
 
 function isPrivateV4(addr: string): boolean {
@@ -49,7 +58,7 @@ export function listNetworkCandidates(): Candidate[] {
         iface: name,
         private: isPrivateV4(a.address),
         linkLocal: isLinkLocalV4(a.address),
-        likelyVirtual: looksVirtual(name),
+        likelyVirtual: looksVirtual(name, a.address),
       });
     }
   }

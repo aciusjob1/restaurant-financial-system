@@ -105,8 +105,11 @@ describe('POST /api/v1/auth/login-pin', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.user.role).toBe('WAITER');
-    const setCookie = res.headers['set-cookie']?.[0] ?? '';
-    expect(setCookie).toMatch(/rfs_session=/);
+    // Login also sets the rfs_device cookie first, so find the session cookie
+    // by name instead of relying on header order.
+    const cookies = (res.headers['set-cookie'] ?? []) as unknown as string[];
+    const setCookie = cookies.find((c) => c.startsWith('rfs_session=')) ?? '';
+    expect(setCookie).not.toBe('');
     expect(setCookie).toMatch(/HttpOnly/i);
   });
 

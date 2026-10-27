@@ -113,11 +113,22 @@ export async function listExpenses(opts: {
   return rows.map(serialize);
 }
 
-export async function getExpenseById(id: string) {
-  const row = await prisma.expense.findUnique({ where: { id } });
-  if (!row) throw new ApiError(404, 'NOT_FOUND', 'Expense not found.');
-  return serialize(row);
-}
+export async function getExpenseById(
+    id: string,
+    actor?: { id: string; role: Role }
+  ) {
+    const row = await prisma.expense.findUnique({ where: { id } });
+    if (!row) throw new ApiError(404, 'NOT_FOUND', 'Expense not found.');
+    // Waiter can only read expenses they created or were recorded as payer.
+    if (
+      actor?.role === 'WAITER' &&
+      row.createdBy !== actor.id &&
+      row.paidByUserId !== actor.id
+    ) {
+      throw new ApiError(403, 'FORBIDDEN', 'You can only view your own expenses.');
+    }
+    return serialize(row);
+  }
 
 export async function createExpense(input: {
   actor: { id: string; role: Role };
@@ -262,6 +273,7 @@ export async function createExpense(input: {
         businessDate,
         recordedBy: input.actor.id,
         notes: input.notes ?? null,
+        source: 'PAYROLL',
       });
     }
 
@@ -420,6 +432,7 @@ export async function approveExpense(input: {
         businessDate: updated.businessDate,
         recordedBy: input.actor.id,
         notes: updated.notes,
+        source: 'PAYROLL',
       });
     }
 
@@ -489,6 +502,7 @@ export async function bulkApproveExpenses(input: {
           businessDate: updated.businessDate,
           recordedBy: input.actor.id,
           notes: updated.notes,
+          source: 'PAYROLL',
         });
       }
     }

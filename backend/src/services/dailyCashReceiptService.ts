@@ -32,23 +32,53 @@ async function computeExpectedNet(
 ): Promise<Prisma.Decimal> {
   const summaries = await tx.salesSummary.findMany({
     where: { userId, businessDate },
-    select: { totalSales: true, mobileSales: true, otherSales: true },
+    select: { totalSales: true },
   });
   let totalSales = toDecimal('0');
-  let mobileSales = toDecimal('0');
-  let otherSales = toDecimal('0');
-  for (const s of summaries) {
-    totalSales = totalSales.plus(s.totalSales);
-    mobileSales = mobileSales.plus(s.mobileSales);
-    otherSales = otherSales.plus(s.otherSales);
+  for (const s of summaries) totalSales = totalSales.plus(s.totalSales);
+
+  // Non-cash money that actually left the drawer. This mirrors listForDate
+  // exactly: the M-Pesa/other figures come from recorded collections, not
+  // from the POS summary, so the approved amount always matches the number
+  // the manager sees on the Cash for Today page.
+  const shifts = await tx.shift.findMany({
+    where: { userId, businessDate },
+    select: { id: true },
+  });
+  const shiftIds = shifts.map((s) => s.id);
+  const collections = shiftIds.length
+    ? await tx.collection.findMany({
+        where: { shiftId: { in: shiftIds }, voidedAt: null },
+        select: { paymentMethod: true, amount: true },
+      })
+    : [];
+  let collectedMobile = toDecimal('0');
+  let collectedOther = toDecimal('0');
+  for (const c of collections) {
+    if (MOBILE_METHODS.has(c.paymentMethod)) collectedMobile = collectedMobile.plus(c.amount);
+    else if (c.paymentMethod !== 'CASH') collectedOther = collectedOther.plus(c.amount);
   }
+
+  // Only cash expenses reduce the drawer. A salary paid by M-Pesa or bank
+  // never passed through the waiter's cash box. Attribution follows the
+  // paid-by user so a manager-entered expense still lands on the waiter
+  // who actually paid it.
   const expenses = await tx.expense.findMany({
-    where: { businessDate, createdBy: userId, status: 'APPROVED', voidedAt: null },
+    where: {
+      businessDate,
+      status: 'APPROVED',
+      voidedAt: null,
+      paymentMethod: 'CASH',
+      OR: [
+        { paidByUserId: userId },
+        { paidByUserId: null, createdBy: userId },
+      ],
+    },
     select: { amount: true },
   });
   let expensesTotal = toDecimal('0');
   for (const e of expenses) expensesTotal = expensesTotal.plus(e.amount);
-  return totalSales.minus(mobileSales).minus(otherSales).minus(expensesTotal);
+  return totalSales.minus(collectedMobile).minus(collectedOther).minus(expensesTotal);
 }
 
 export async function markSubmissionPending(
@@ -175,13 +205,25 @@ export async function listForDate(businessDateInput: string) {
   }
 
   const expenseRows = await prisma.expense.findMany({
-    where: { businessDate, status: 'APPROVED', voidedAt: null, createdBy: { in: userIds } },
-    select: { createdBy: true, amount: true },
+    where: {
+      businessDate,
+      status: 'APPROVED',
+      voidedAt: null,
+      paymentMethod: 'CASH',
+      OR: [
+        { paidByUserId: { in: userIds } },
+        { paidByUserId: null, createdBy: { in: userIds } },
+      ],
+    },
+    select: { createdBy: true, paidByUserId: true, amount: true },
   });
+  const userIdSet = new Set(userIds);
   const expensesByUser = new Map<string, Prisma.Decimal>();
   for (const e of expenseRows) {
-    const cur = expensesByUser.get(e.createdBy) ?? toDecimal('0');
-    expensesByUser.set(e.createdBy, cur.plus(e.amount));
+    const attributedTo = e.paidByUserId ?? e.createdBy;
+    if (!userIdSet.has(attributedTo)) continue;
+    const cur = expensesByUser.get(attributedTo) ?? toDecimal('0');
+    expensesByUser.set(attributedTo, cur.plus(e.amount));
   }
 
   const receipts = await prisma.dailyCashReceipt.findMany({
@@ -195,9 +237,9 @@ export async function listForDate(businessDateInput: string) {
       ?? { cash: toDecimal('0'), mobile: toDecimal('0'), other: toDecimal('0'), total: toDecimal('0') };
     const expensesTotal = expensesByUser.get(uid) ?? toDecimal('0');
     // Expected net cash = what the drawer should hold. Sales minus the
-    // money that did not go into the drawer вЂ” M-Pesa and other non-cash
-    // collections, as actually collected вЂ” minus the cash expenses the
-    // waiter recorded. The waiter's kiosk shows the same number.
+    // money that did not go into the drawer (M-Pesa and other non-cash
+    // collections, as actually collected) minus cash expenses. The
+    // waiter's kiosk shows the same number.
     const expectedNet = sums.totalSales
       .minus(col.mobile)
       .minus(col.other)
@@ -268,7 +310,7 @@ export async function upsertReceipt(input: {
           'Expected net cash is ' + toMoneyString(expectedNet) + '; cannot mark as approved.');
       }
       finalAmount = submittedAmount ?? expectedNet;
-      if (!finalAmount.equals(expectedNet)) {
+      if (!finalAmount!.equals(expectedNet)) {
         throw new ApiError(409, 'AMOUNT_MISMATCH',
           'Approved amount must equal expected net cash (' + toMoneyString(expectedNet) + ').');
       }

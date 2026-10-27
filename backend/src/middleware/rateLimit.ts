@@ -57,6 +57,30 @@ export const loginLimiter: RequestHandler = createLoginLimiter({
   message: 'Too many attempts. Please try again later.',
 });
 
+// Password login is also limited per username, so rotating source IPs
+// does not grant unlimited guesses against one account.
+export const loginAccountLimiter: RequestHandler =
+  env.NODE_ENV === 'test'
+    ? noopLimiter
+    : rateLimit({
+        windowMs: FIFTEEN_MINUTES,
+        max: env.NODE_ENV === 'production' ? 5 : 50,
+        skipSuccessfulRequests: true,
+        standardHeaders: true,
+        legacyHeaders: false,
+        keyGenerator: (req) => {
+          const body = req.body as { username?: unknown } | undefined;
+          const username =
+            typeof body?.username === 'string' ? body.username.trim().toLowerCase() : '';
+          return username ? 'user:' + username : 'user:unknown';
+        },
+        message: {
+          success: false,
+          code: 'RATE_LIMITED',
+          message: 'Too many attempts for this account. Please try again later.',
+        },
+      });
+
 // PIN login (username + PIN) shares the SAME limiter instance as password
 // login. The per-account lockout in User.failedPinAttempts / lockedUntil is
 // the primary defense for PIN guessing; this limiter is the secondary layer
@@ -74,4 +98,15 @@ export const loginPinOnlyLimiter: RequestHandler = createLoginLimiter({
   prodMax: 5,
   devMax: 50,
   message: 'Too many PIN attempts. Please try again later.',
+});
+
+// Change-password verifies the current password, so it is also a
+// password-guessing surface. Failed attempts count; successful changes
+// (which end the session anyway) do not.
+export const changePasswordLimiter: RequestHandler = createLoginLimiter({
+  nodeEnv: env.NODE_ENV,
+  windowMs: FIFTEEN_MINUTES,
+  prodMax: 5,
+  devMax: 50,
+  message: 'Too many password attempts. Please try again later.',
 });

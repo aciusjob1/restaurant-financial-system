@@ -12,12 +12,20 @@ export const PAYMENT_METHODS = [
   'OTHER',
 ] as const;
 
-const MoneyString = z
+// Sales and expense amounts are never negative. Allowing a minus sign here
+// let a caller inflate expected cash by "recording" a negative expense or
+// hide a shortfall with a negative M-Pesa entry.
+const NonNegativeMoneyString = z
   .string()
-  .regex(/^-?\d+(\.\d{1,2})?$/, 'Must be a decimal string with up to 2 places')
-  .refine((v) => v.replace('-', '').replace('.', '').length <= 14, {
+  .regex(/^\d+(\.\d{1,2})?$/, 'Must be a non-negative decimal string with up to 2 places')
+  .refine((v) => v.replace('.', '').length <= 14, {
     message: 'Too many digits for Decimal(14,2)',
   });
+
+const PositiveMoneyString = NonNegativeMoneyString.refine(
+  (v) => Number(v) > 0,
+  { message: 'Must be greater than zero' }
+);
 
 const DateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -29,7 +37,7 @@ export const ManualSalesSummarySchema = z.object({
   // Optional explicit total for callers that receive a number on a
   // paper form (e.g. the waiter daily report) rather than itemised lines.
   // When absent, totalSales remains derived from `lines` — same as before.
-  totalSales: MoneyString.optional(),
+  totalSales: NonNegativeMoneyString.optional(),
   // When true, allow replacing an existing MANUAL summary for the same
   // waiter + date. When false/absent, the controller returns 409
   // SUMMARY_EXISTS so the manager confirms the replacement explicitly.
@@ -40,7 +48,7 @@ export const ManualSalesSummarySchema = z.object({
     .array(
       z.object({
         paymentMethod: z.enum(PAYMENT_METHODS),
-        amount: MoneyString,
+        amount: NonNegativeMoneyString,
         notes: z.string().trim().max(500).nullable().optional(),
       })
     )
@@ -53,7 +61,7 @@ export const ManualSalesSummarySchema = z.object({
     .array(
       z.object({
         description: z.string().trim().min(1).max(200),
-        amount: MoneyString,
+        amount: PositiveMoneyString,
       })
     )
     .optional(),
@@ -86,7 +94,7 @@ export const WaiterReportSchema = z.object({
     .array(
       z.object({
         name: z.string().trim().min(1).max(120),
-        amount: MoneyString,
+        amount: PositiveMoneyString,
       })
     )
     .default([]),
@@ -94,7 +102,7 @@ export const WaiterReportSchema = z.object({
     .array(
       z.object({
         description: z.string().trim().min(1).max(200),
-        amount: MoneyString,
+        amount: PositiveMoneyString,
       })
     )
     .default([]),
@@ -107,10 +115,8 @@ export type WaiterReportInput = z.infer<typeof WaiterReportSchema>;
 // category. The service never touches `SalesSummary`. Declared sales and
 // recorded collections are independent inputs to the closing comparison.
 //
-// Amounts accept MoneyString (up to 2 decimal places, within Decimal(14,2)).
-// Negative amounts are not currently rejected at the schema level; the
-// service trusts the validator. If we want positivity enforced, add a
-// PositiveMoneyString variant here and switch these two `amount` fields.
+// Amounts must be strictly positive: a zero or negative collection or
+// expense would distort expected cash without moving real money.
 //
 // Payer names are stored in Collection.mobileReference, which has a partial
 // unique index on (shiftId, paymentMethod, mobileReference) scoped to active
@@ -122,7 +128,7 @@ export const WaiterCollectionsSchema = z.object({
     .array(
       z.object({
         payerName: z.string().trim().min(1).max(64).transform(titleCaseName),
-        amount: MoneyString,
+        amount: PositiveMoneyString,
       })
     )
     .default([]),
@@ -131,7 +137,7 @@ export const WaiterCollectionsSchema = z.object({
       z.object({
         categoryId: z.string().min(1),
         description: z.string().trim().min(1).max(200),
-        amount: MoneyString,
+        amount: PositiveMoneyString,
         // Required when the category is the SALARY system category.
         // The service enforces that. Left optional in the schema so the
         // error can carry a specific code.
