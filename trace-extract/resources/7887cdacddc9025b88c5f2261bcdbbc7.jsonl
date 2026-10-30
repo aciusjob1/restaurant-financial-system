@@ -1,0 +1,12 @@
+{"type":"receive","time":1791640122922.6528,"opcode":1,"data":"{\"action\":\"sync\",\"hash\":\"1f2774fa15968eda\",\"errors\":[],\"warnings\":[],\"versionInfo\":{\"staleness\":\"stale-major\",\"expected\":\"16.4.0\",\"installed\":\"14.2.15\"}}"}
+{"type":"send","time":1791640122924.0588,"opcode":1,"data":"{\"event\":\"client-success\",\"clientId\":1791640122908}"}
+{"type":"send","time":1791640125403.471,"opcode":1,"data":"{\"event\":\"ping\",\"tree\":[\"\",{\"children\":[\"login\",{\"children\":[\"__PAGE__\",{},\"/login\",\"refresh\"]}]},null,null,true],\"appDirRoute\":true}"}
+{"type":"receive","time":1791640126508.775,"opcode":1,"data":"{\"action\":\"building\"}"}
+{"type":"send","time":1791640127899.9458,"opcode":1,"data":"{\"event\":\"ping\",\"tree\":[\"\",{\"children\":[\"login\",{\"children\":[\"__PAGE__\",{},\"/login\",\"refresh\"]}]},null,null,true],\"appDirRoute\":true}"}
+{"type":"receive","time":1791640129962.2917,"opcode":1,"data":"{\"action\":\"built\",\"hash\":\"ecca3599c1ae1074\",\"warnings\":[],\"errors\":[]}"}
+{"type":"send","time":1791640129962.4058,"opcode":1,"data":"{\"event\":\"client-success\",\"clientId\":1791640122908}"}
+{"type":"send","time":1791640130090.7578,"opcode":1,"data":"{\"event\":\"client-hmr-latency\",\"startTime\":1791640126508,\"endTime\":1791640130090,\"page\":\"/login\",\"updatedModules\":[],\"isPageHidden\":false}"}
+{"type":"send","time":1791640130449.4258,"opcode":1,"data":"{\"event\":\"ping\",\"tree\":[\"\",{\"children\":[\"login\",{\"children\":[\"__PAGE__\",{},\"/login\",\"refresh\"]}]},null,null,true],\"appDirRoute\":true}"}
+{"type":"send","time":1791640133035.1228,"opcode":1,"data":"{\"event\":\"ping\",\"tree\":[\"\",{\"children\":[\"login\",{\"children\":[\"__PAGE__\",{},\"/login\",\"refresh\"]}]},null,null,true],\"appDirRoute\":true}"}
+{"type":"send","time":1791640135537.18,"opcode":1,"data":"{\"event\":\"ping\",\"tree\":[\"\",{\"children\":[\"login\",{\"children\":[\"__PAGE__\",{},\"/login\",\"refresh\"]}]},null,null,true],\"appDirRoute\":true}"}
+{"type":"send","time":1791640138025.2698,"opcode":1,"data":"{\"event\":\"ping\",\"tree\":[\"\",{\"children\":[\"login\",{\"children\":[\"__PAGE__\",{},\"/login\",\"refresh\"]}]},null,null,true],\"appDirRoute\":true}"}

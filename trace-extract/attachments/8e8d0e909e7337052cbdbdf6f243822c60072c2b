@@ -1,0 +1,65 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: smoke.spec.ts >> login page renders and owner signs in to /dashboard
+- Location: e2e\smoke.spec.ts:3:5
+
+# Error details
+
+```
+Error: expect(page).toHaveURL(expected) failed
+
+Expected pattern: /\/dashboard/
+Received string:  "http://localhost:3000/login"
+Timeout: 15000ms
+
+Call log:
+  - Expect "toHaveURL" with timeout 15000ms
+    33 × locator resolved to <html lang="en">…</html>
+       - unexpected value "http://localhost:3000/login"
+
+```
+
+```yaml
+- alert
+- main:
+  - button "Switch to English": EN
+  - text: "|"
+  - button "Switch to Swahili": SW
+  - heading "Sign in" [level=1]
+  - paragraph: Restaurant Financial System
+  - text: Username
+  - textbox "Username"
+  - text: Password
+  - textbox "Password"
+  - button "Show password"
+  - button "Sign in"
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from '@playwright/test';
+  2  | 
+  3  | test('login page renders and owner signs in to /dashboard', async ({ page }) => {
+  4  |   await page.goto('/login');
+  5  | 
+  6  |   // Login form must render with both inputs and a submit control.
+  7  |   await expect(page.getByLabel(/username/i)).toBeVisible({ timeout: 15_000 });
+  8  |   await expect(page.getByLabel(/^password$/i)).toBeVisible();
+  9  | 
+  10 |   await page.getByLabel(/username/i).fill('owner');
+  11 |   await page.getByLabel(/^password$/i).fill('ChangeMe!Now123');
+  12 |   await page.getByRole('button', { name: /sign in|ingia/i }).click();
+  13 | 
+  14 |   // Owner role redirects to /dashboard (LoginPage.tsx L25).
+> 15 |   await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
+     |                      ^ Error: expect(page).toHaveURL(expected) failed
+  16 | });
+  17 | 
+```

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
@@ -83,6 +84,12 @@ export default function LoginPage() {
                 className='w-full text-sm text-slate-500 hover:text-slate-800 underline'>
           {t('login.pinToggle')}
         </button>
+
+        <nav className='flex justify-center gap-4 border-t border-slate-100 pt-3 text-xs text-slate-500'>
+          <Link href='/about' className='hover:text-slate-900'>{t('public.footer.about')}</Link>
+          <Link href='/policies' className='hover:text-slate-900'>{t('public.footer.policies')}</Link>
+          <Link href='/policies/cookies' className='hover:text-slate-900'>{t('public.footer.cookies')}</Link>
+        </nav>
       </form>
     </main>
   );

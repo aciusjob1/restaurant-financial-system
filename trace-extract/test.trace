@@ -1,0 +1,62 @@
+{"version":10,"type":"context-options","origin":"testRunner","browserName":"","playwrightVersion":"1.64.0","options":{},"platform":"win32","wallTime":1791640121506,"monotonicTime":10003.562,"sdkLanguage":"javascript","testTimeout":30000,"annotations":[]}
+{"type":"before","callId":"qzjr@1","startTime":10027.659,"class":"Test","method":"hook","title":"Before Hooks","params":{},"stack":[]}
+{"type":"before","callId":"qzjr@30","parentId":"qzjr@1","startTime":10036.217,"class":"Test","method":"fixture","title":"Fixture \"browser\"","params":{},"stack":[]}
+{"type":"before","callId":"qzjr@31","parentId":"qzjr@30","startTime":10037.826,"class":"Test","method":"pw:api","title":"Launch browser","params":{},"stack":[]}
+{"type":"after","callId":"qzjr@31","endTime":10222.545,"annotations":[]}
+{"type":"after","callId":"qzjr@30","endTime":10222.794,"annotations":[]}
+{"type":"before","callId":"qzjr@34","parentId":"qzjr@1","startTime":10225.095,"class":"Test","method":"fixture","title":"Fixture \"context\"","params":{},"stack":[]}
+{"type":"before","callId":"qzjr@35","parentId":"qzjr@34","startTime":10227.509,"class":"Test","method":"pw:api","title":"Create context","params":{},"stack":[]}
+{"type":"after","callId":"qzjr@35","endTime":10242.277,"annotations":[]}
+{"type":"after","callId":"qzjr@34","endTime":10254.933,"annotations":[]}
+{"type":"before","callId":"qzjr@42","parentId":"qzjr@1","startTime":10255.353,"class":"Test","method":"fixture","title":"Fixture \"page\"","params":{},"stack":[]}
+{"type":"before","callId":"qzjr@43","parentId":"qzjr@42","startTime":10256.067,"class":"Test","method":"pw:api","title":"Create page","params":{},"stack":[]}
+{"type":"after","callId":"qzjr@43","endTime":10439.727,"annotations":[]}
+{"type":"after","callId":"qzjr@42","endTime":10439.849,"annotations":[]}
+{"type":"after","callId":"qzjr@1","endTime":10439.909,"annotations":[]}
+{"type":"before","callId":"qzjr@45","startTime":10441.142,"class":"Test","method":"pw:api","title":"Navigate","subtitle":"/login","params":{"url":"/login"},"stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":4,"column":14}]}
+{"type":"after","callId":"qzjr@45","endTime":11411.823,"annotations":[]}
+{"type":"before","callId":"qzjr@47","startTime":11420.077,"class":"Test","method":"expect","title":"Expect \"toBeVisible\"","subtitle":"getByLabel(/username/i)","params":{"locator":"getByLabel(/username/i)","expected":"Object"},"stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":7,"column":46}]}
+{"type":"after","callId":"qzjr@47","endTime":11463.385,"annotations":[]}
+{"type":"before","callId":"qzjr@49","startTime":11464.053,"class":"Test","method":"expect","title":"Expect \"toBeVisible\"","subtitle":"getByLabel(/^password$/i)","params":{"locator":"getByLabel(/^password$/i)"},"stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":8,"column":48}]}
+{"type":"after","callId":"qzjr@49","endTime":11471.748,"annotations":[]}
+{"type":"before","callId":"qzjr@51","startTime":11472.82,"class":"Test","method":"pw:api","title":"Fill \"owner\"","subtitle":"getByLabel(/username/i)","params":{"locator":"getByLabel(/username/i)","value":"owner"},"stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":10,"column":38}]}
+{"type":"after","callId":"qzjr@51","endTime":11522.901,"annotations":[]}
+{"type":"before","callId":"qzjr@53","startTime":11523.479,"class":"Test","method":"pw:api","title":"Fill \"ChangeMe!Now123\"","subtitle":"getByLabel(/^password$/i)","params":{"locator":"getByLabel(/^password$/i)","value":"ChangeMe!Now123"},"stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":11,"column":40}]}
+{"type":"after","callId":"qzjr@53","endTime":11546.137,"annotations":[]}
+{"type":"before","callId":"qzjr@55","startTime":11549.503,"class":"Test","method":"pw:api","title":"Click","subtitle":"getByRole('button', { name: /sign in|ingia/i })","params":{"locator":"getByRole('button', { name: /sign in|ingia/i })"},"stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":12,"column":62}]}
+{"type":"after","callId":"qzjr@55","endTime":11628.375,"annotations":[]}
+{"type":"before","callId":"qzjr@57","startTime":11629.264,"class":"Test","method":"expect","title":"Expect \"toHaveURL\"","params":{"expected":"Object"},"stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":15,"column":22}]}
+{"type":"after","callId":"qzjr@57","endTime":26647.553,"annotations":[],"error":{"name":"","message":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/dashboard/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:3000/login\"\u001b[39m\nTimeout: 15000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 15000ms\u001b[22m\n\u001b[2m    33 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:3000/login\"\u001b[22m\n","stack":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/dashboard/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:3000/login\"\u001b[39m\nTimeout: 15000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 15000ms\u001b[22m\n\u001b[2m    33 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:3000/login\"\u001b[22m\n\n    at C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts:15:22"}}
+{"type":"error","message":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/dashboard/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:3000/login\"\u001b[39m\nTimeout: 15000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 15000ms\u001b[22m\n\u001b[2m    33 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:3000/login\"\u001b[22m\n","stack":[{"file":"C:\\Users\\kmasu\\restaurant-financial-system\\e2e\\smoke.spec.ts","line":15,"column":22}]}
+{"type":"before","callId":"qzjr@59","startTime":26648.52,"class":"Test","method":"hook","title":"After Hooks","params":{},"stack":[]}
+{"type":"before","callId":"qzjr@61","parentId":"qzjr@59","startTime":26688.644,"class":"Test","method":"fixture","title":"Fixture \"page\"","params":{},"stack":[]}
+{"type":"after","callId":"qzjr@61","endTime":26688.829,"annotations":[]}
+{"type":"before","callId":"qzjr@62","parentId":"qzjr@59","startTime":26689.007,"class":"Test","method":"fixture","title":"Fixture \"context\"","params":{},"stack":[]}
+{"type":"before","callId":"qzjr@68","parentId":"qzjr@62","startTime":26766.784,"class":"Test","method":"pw:api","title":"Close context","params":{},"stack":[]}
+{"type":"after","callId":"qzjr@68","endTime":26777.783,"annotations":[]}
+{"type":"after","callId":"qzjr@62","endTime":26777.814,"annotations":[]}
+{"type":"before","callId":"qzjr@75","startTime":26783.799,"class":"Test","method":"test.attach","title":"Attach \"error-context\"","params":{},"stack":[]}
+{"type":"after","callId":"qzjr@75","endTime":26783.81,"attachments":[{"name":"error-context","contentType":"text/markdown","file":"attachments/8e8d0e909e7337052cbdbdf6f243822c60072c2b"}]}
+{"type":"before","callId":"qzjr@78","parentId":"qzjr@59","startTime":26784.399,"class":"Test","method":"fixture","title":"Fixture \"baseURL\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@78","endTime":26784.414,"annotations":[]}
+{"type":"before","callId":"qzjr@79","parentId":"qzjr@59","startTime":26784.422,"class":"Test","method":"fixture","title":"Fixture \"userAgent\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@79","endTime":26784.43,"annotations":[]}
+{"type":"before","callId":"qzjr@81","parentId":"qzjr@59","startTime":26784.6,"class":"Test","method":"fixture","title":"Fixture \"viewport\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@81","endTime":26784.611,"annotations":[]}
+{"type":"before","callId":"qzjr@83","parentId":"qzjr@59","startTime":26784.726,"class":"Test","method":"fixture","title":"Fixture \"screen\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@83","endTime":26784.734,"annotations":[]}
+{"type":"before","callId":"qzjr@90","parentId":"qzjr@59","startTime":26785.265,"class":"Test","method":"fixture","title":"Fixture \"isMobile\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@90","endTime":26785.273,"annotations":[]}
+{"type":"before","callId":"qzjr@94","parentId":"qzjr@59","startTime":26785.554,"class":"Test","method":"fixture","title":"Fixture \"hasTouch\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@94","endTime":26785.562,"annotations":[]}
+{"type":"before","callId":"qzjr@97","parentId":"qzjr@59","startTime":26785.752,"class":"Test","method":"fixture","title":"Fixture \"deviceScaleFactor\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@97","endTime":26785.759,"annotations":[]}
+{"type":"after","callId":"qzjr@59","endTime":26786.548,"attachments":[{"name":"screenshot","contentType":"image/png","file":"attachments/71745cc1129ab37634b15679751d6a5225972b7a"}],"annotations":[]}
+{"type":"before","callId":"qzjr@104","startTime":26786.704,"class":"Test","method":"hook","title":"Worker Cleanup","params":{},"stack":[]}
+{"type":"before","callId":"qzjr@109","parentId":"qzjr@104","startTime":26787.629,"class":"Test","method":"fixture","title":"Fixture \"browser\"","params":{},"stack":[]}
+{"type":"after","callId":"qzjr@109","endTime":26908.497,"annotations":[]}
+{"type":"before","callId":"qzjr@114","parentId":"qzjr@104","startTime":26908.934,"class":"Test","method":"fixture","title":"Fixture \"defaultBrowserType\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@114","endTime":26908.944,"annotations":[]}
+{"type":"before","callId":"qzjr@115","parentId":"qzjr@104","startTime":26908.948,"class":"Test","method":"fixture","title":"Fixture \"screenshot\"","params":{},"stack":[{"file":"project#chromium","line":1,"column":1}],"group":"configuration"}
+{"type":"after","callId":"qzjr@115","endTime":26908.955,"annotations":[]}
+{"type":"after","callId":"qzjr@104","endTime":26909.397,"annotations":[]}

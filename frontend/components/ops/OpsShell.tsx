@@ -25,6 +25,7 @@ import {
   Coins,
   UserCog,
   Users,
+  Info,
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -66,6 +67,7 @@ const LINKS: LinkSpec[] = [
   // Settings (bottom, ungrouped)
   { href: '/ops/settings',             labelKey: 'nav.ops.settings',           icon: UserCog },
   { href: '/ops/system-access', labelKey: 'nav.ops.systemAccess', icon: Wifi },
+  { href: '/about',             labelKey: 'nav.about',                 icon: Info },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {
