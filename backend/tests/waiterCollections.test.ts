@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import { prisma } from '../src/lib/prisma.js';
 import {
   createManualSummary,
+  listMySummary,
   submitWaiterCollections,
 } from '../src/services/salesService.js';
 
@@ -461,6 +462,53 @@ describe('submitWaiterCollections', () => {
     });
     expect(activeExpenses).toHaveLength(1);
     expect(activeExpenses[0].description).toBe('OnlyExpense');
+  });
+});
+
+describe('listMySummary waiter details', () => {
+  it('returns M-Pesa and expense rows with recorder, status and timestamp', async () => {
+    const summary = await seedSummary(waiterId, '50000.00');
+
+    await submitWaiterCollections({
+      summaryId: summary.id,
+      actorId: waiterId,
+      actorRole: 'WAITER',
+      mpesaEntries: [{ payerName: 'Amina', amount: '5000.00' }],
+      expenses: [{ categoryId: dailyCategoryId, description: 'Fuel', amount: '2000.00' }],
+    });
+
+    // A manager records money on the waiter's behalf. Kiosk expenses are
+    // scoped to the attributed waiter, so the manager's row supersedes the
+    // waiter's earlier expense while both M-Pesa collections stay active
+    // (collection supersession is actor-scoped).
+    await submitWaiterCollections({
+      summaryId: summary.id,
+      actorId: managerId,
+      actorRole: 'MANAGER',
+      mpesaEntries: [{ payerName: 'Juma', amount: '3000.00' }],
+      expenses: [{ categoryId: dailyCategoryId, description: 'Ice', amount: '500.00' }],
+    });
+
+    const details = await listMySummary(waiterId, todayISO());
+    expect(details).not.toBeNull();
+
+    expect(details!.mpesaEntries).toHaveLength(2);
+    const byPayer = new Map(details!.mpesaEntries.map((m) => [m.payerName, m]));
+    expect(byPayer.get('Amina')!.amount).toBe('5000.00');
+    expect(byPayer.get('Amina')!.recordedByName).toBe(WAITER.fullName);
+    expect(byPayer.get('Juma')!.amount).toBe('3000.00');
+    expect(byPayer.get('Juma')!.recordedByName).toBe(MANAGER.fullName);
+    expect(byPayer.get('Juma')!.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    expect(details!.activeExpenses).toHaveLength(1);
+    const expense = details!.activeExpenses[0];
+    expect(expense.description).toBe('Ice');
+    expect(expense.amount).toBe('500.00');
+    expect(expense.status).toBe('APPROVED');
+    expect(expense.paymentMethod).toBe('CASH');
+    expect(expense.categoryName).toBeTruthy();
+    expect(expense.recordedByName).toBe(MANAGER.fullName);
+    expect(expense.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 

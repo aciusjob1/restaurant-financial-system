@@ -183,7 +183,11 @@ export async function listMySummary(userId: string, businessDate: string) {
       amount: true,
       categoryId: true,
       salaryTargetEmployeeId: true,
+      status: true,
+      paymentMethod: true,
+      createdAt: true,
       category: { select: { id: true, name: true, systemKey: true } },
+      createdByUser: { select: { fullName: true } },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -204,6 +208,8 @@ export async function listMySummary(userId: string, businessDate: string) {
       id: true,
       mobileReference: true,
       amount: true,
+      createdAt: true,
+      createdBy: { select: { fullName: true } },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -218,11 +224,17 @@ export async function listMySummary(userId: string, businessDate: string) {
       salaryTargetEmployeeId: e.salaryTargetEmployeeId,
       categoryName: e.category.name,
       categorySystemKey: e.category.systemKey,
+      status: e.status,
+      paymentMethod: e.paymentMethod,
+      recordedByName: e.createdByUser.fullName,
+      createdAt: e.createdAt.toISOString(),
     })),
     mpesaEntries: activeMpesa.map((c) => ({
       id: c.id,
       payerName: c.mobileReference ?? '',
       amount: toMoneyString(c.amount),
+      recordedByName: c.createdBy.fullName,
+      createdAt: c.createdAt.toISOString(),
     })),
   };
 }

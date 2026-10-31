@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ChevronDown } from 'lucide-react';
 import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { DecimalField, FormError } from '@/components/ops/Form';
 import { WaiterCollectionForm } from '@/components/kiosk/WaiterCollectionForm';
@@ -47,6 +48,36 @@ type Closing = {
 };
 type InsufficientForm = { userId: string; amount: string } | null;
 
+type DetailMpesaEntry = {
+  id: string;
+  payerName: string;
+  amount: string;
+  recordedByName?: string | null;
+  createdAt?: string | null;
+};
+
+type DetailExpense = {
+  id: string;
+  description: string;
+  amount: string;
+  categoryName?: string;
+  status?: string;
+  paymentMethod?: string;
+  recordedByName?: string | null;
+  createdAt?: string | null;
+};
+
+type WaiterDetails = {
+  mpesaEntries: DetailMpesaEntry[];
+  activeExpenses: DetailExpense[];
+};
+
+type DetailsState = {
+  loading: boolean;
+  error: { code: string; message: string } | null;
+  data: WaiterDetails | null;
+};
+
 function todayISO(): string {
   const d = new Date();
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
@@ -80,6 +111,58 @@ function statusPillClass(row: Row): string {
   }
 }
 
+function expenseStatusLabelKey(status: string | undefined): keyof Dict {
+  switch (status) {
+    case 'APPROVED': return 'status.approved';
+    case 'REJECTED': return 'status.rejected';
+    case 'PENDING': return 'status.pending';
+    case 'VOID': return 'status.voided';
+    default: return 'status.draft';
+  }
+}
+
+function expenseStatusPillClass(status: string | undefined): string {
+  const base = 'text-xs px-2 py-0.5 rounded-full ';
+  switch (status) {
+    case 'APPROVED': return base + 'bg-emerald-100 text-emerald-700';
+    case 'REJECTED': return base + 'bg-red-100 text-red-800';
+    case 'PENDING': return base + 'bg-amber-100 text-amber-800';
+    case 'VOID': return base + 'bg-slate-100 text-slate-500';
+    default: return base + 'bg-slate-100 text-slate-600';
+  }
+}
+
+function totalAmount(values: string[]): string {
+  let total = 0;
+  for (const v of values) total += parseFloat(v) || 0;
+  return total.toFixed(2);
+}
+
+function formatTime(iso: string | null | undefined): string {
+  if (!iso) return '\u2014';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '\u2014';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function Recorder({
+  name, waiterName, onBehalfLabel,
+}: {
+  name?: string | null;
+  waiterName: string;
+  onBehalfLabel: string;
+}) {
+  if (!name) return <span className='text-slate-400'>{'\u2014'}</span>;
+  return (
+    <span>
+      {name}
+      {name !== waiterName && (
+        <span className='ml-1.5 text-xs text-amber-700'>({onBehalfLabel})</span>
+      )}
+    </span>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className='rounded-2xl border border-slate-200 bg-white p-4'>
@@ -103,9 +186,13 @@ export default function CashPage() {
   const [closeDayConfirming, setCloseDayConfirming] = useState(false);
   const [insufficientForm, setInsufficientForm] = useState<InsufficientForm>(null);
   const [rowErr, setRowErr] = useState<{ userId: string; code: string; message: string } | null>(null);
+  const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
+  const [detailsByUser, setDetailsByUser] = useState<Record<string, DetailsState>>({});
 
   function load() {
     setLoading(true);
+    setOpenDetails({});
+    setDetailsByUser({});
     const today = todayISO();
     Promise.all([
       apiFetch<{ success: true; rows: Row[] }>('/api/v1/daily-cash-receipts?businessDate=' + today),
@@ -146,6 +233,54 @@ export default function CashPage() {
     setInsufficientForm(null);
     setRowErr(null);
     load();
+  }
+
+  async function toggleDetails(row: Row) {
+    const isOpen = !!openDetails[row.userId];
+    setOpenDetails((prev) => ({ ...prev, [row.userId]: !isOpen }));
+    if (isOpen) return;
+
+    const cached = detailsByUser[row.userId];
+    if (cached?.data || cached?.loading) return;
+
+    setDetailsByUser((prev) => ({
+      ...prev,
+      [row.userId]: { loading: true, error: null, data: null },
+    }));
+    try {
+      const res = await apiFetch<{
+        success: true;
+        mpesaEntries: DetailMpesaEntry[];
+        activeExpenses: DetailExpense[];
+      }>(
+        '/api/v1/sales-summaries/mine?businessDate=' +
+          encodeURIComponent(row.businessDate) +
+          '&userId=' +
+          encodeURIComponent(row.userId)
+      );
+      setDetailsByUser((prev) => ({
+        ...prev,
+        [row.userId]: {
+          loading: false,
+          error: null,
+          data: {
+            mpesaEntries: res.mpesaEntries ?? [],
+            activeExpenses: res.activeExpenses ?? [],
+          },
+        },
+      }));
+    } catch (e) {
+      setDetailsByUser((prev) => ({
+        ...prev,
+        [row.userId]: {
+          loading: false,
+          error: e instanceof ApiError
+            ? { code: e.code, message: e.message }
+            : { code: 'NETWORK', message: '' },
+          data: null,
+        },
+      }));
+    }
   }
 
   async function decide(row: Row, status: Exclude<ReceiptStatus, 'PENDING'>, amount: string | null) {
@@ -236,9 +371,11 @@ export default function CashPage() {
                 const isInsufficientFormOpen =
                   insufficientForm !== null && insufficientForm.userId === r.userId;
                 const rowError = rowErr && rowErr.userId === r.userId ? rowErr : null;
+                const detailsOpen = !!openDetails[r.userId];
+                const detailsState = detailsByUser[r.userId];
                 return (
                   <div key={r.userId} className='rounded-2xl border border-slate-200 bg-white p-4 space-y-3'>
-                    <div className='flex items-start gap-4'>
+                    <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'>
                       <div className='flex-1 min-w-0'>
                         <div className='flex items-center gap-3 flex-wrap'>
                           <span className='font-medium text-slate-900'>{r.waiterName}</span>
@@ -284,25 +421,41 @@ export default function CashPage() {
                         )}
                       </div>
 
-                      {isManager && (
-                        <div className='flex gap-2 shrink-0 flex-wrap justify-end'>
-                          {r.receipt && r.receipt.status === 'PENDING' && !isInsufficientFormOpen && (
-                            <>
-                              <button type='button' onClick={() => approve(r)} disabled={isBusy}
-                                className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
-                                {t('ops.cashFlow.row.action.approve')}
-                              </button>
-                              <button type='button' onClick={() => openInsufficientForm(r)} disabled={isBusy}
-                                className='rounded-lg border border-red-300 text-red-800 px-3 py-1.5 text-sm disabled:opacity-60'>
-                                {t('ops.cashFlow.row.action.insufficient')}
-                              </button>
-                              <button type='button' onClick={() => markNoNetcash(r)} disabled={isBusy}
-                                className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
-                                {t('ops.cashFlow.row.action.noNetcash')}
-                              </button>
-                            </>
-                          )}
-                          {!r.receipt && (
+                      <div className='flex flex-wrap gap-2 justify-start sm:shrink-0 sm:justify-end'>
+                        <button
+                          type='button'
+                          onClick={() => void toggleDetails(r)}
+                          aria-expanded={detailsOpen}
+                          aria-controls={`waiter-details-${r.userId}`}
+                          data-testid={`waiter-details-toggle-${r.userId}`}
+                          className='inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700'
+                        >
+                          <ChevronDown
+                            size={16}
+                            aria-hidden='true'
+                            className={'transition-transform ' + (detailsOpen ? 'rotate-180' : '')}
+                          />
+                          {detailsOpen
+                            ? t('ops.cashFlow.details.hide')
+                            : t('ops.cashFlow.details.show')}
+                        </button>
+                        {isManager && r.receipt && r.receipt.status === 'PENDING' && !isInsufficientFormOpen && (
+                          <>
+                            <button type='button' onClick={() => approve(r)} disabled={isBusy}
+                              className='rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-60'>
+                              {t('ops.cashFlow.row.action.approve')}
+                            </button>
+                            <button type='button' onClick={() => openInsufficientForm(r)} disabled={isBusy}
+                              className='rounded-lg border border-red-300 text-red-800 px-3 py-1.5 text-sm disabled:opacity-60'>
+                              {t('ops.cashFlow.row.action.insufficient')}
+                            </button>
+                            <button type='button' onClick={() => markNoNetcash(r)} disabled={isBusy}
+                              className='rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-60'>
+                              {t('ops.cashFlow.row.action.noNetcash')}
+                            </button>
+                          </>
+                        )}
+                        {isManager && !r.receipt && (
                           <button
                             type='button'
                             onClick={() => setRecordingFor({ userId: r.userId, waiterName: r.waiterName })}
@@ -311,9 +464,8 @@ export default function CashPage() {
                           >
                             {t('ops.cashFlow.row.action.recordOnBehalf')}
                           </button>
-                          )}
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
 
                     {isInsufficientFormOpen && (
@@ -348,6 +500,137 @@ export default function CashPage() {
                     {rowError && (
                       <div className='border-t border-slate-100 pt-3'>
                         <FormError code={rowError.code} message={tError(rowError.code, rowError.message)} />
+                      </div>
+                    )}
+
+                    {detailsOpen && (
+                      <div
+                        id={`waiter-details-${r.userId}`}
+                        data-testid={`waiter-details-${r.userId}`}
+                        className='border-t border-slate-100 pt-3 space-y-4'
+                      >
+                        {(!detailsState || detailsState.loading) && (
+                          <div className='text-sm text-slate-500'>{t('ops.cashFlow.details.loading')}</div>
+                        )}
+                        {detailsState?.error && (
+                          <FormError
+                            code={detailsState.error.code}
+                            message={tError(
+                              detailsState.error.code,
+                              detailsState.error.message || t('ops.cashFlow.details.loadError')
+                            )}
+                          />
+                        )}
+                        {detailsState?.data && (
+                          <>
+                            <section className='space-y-2'>
+                              <h3 className='text-sm font-medium text-slate-700'>
+                                {t('ops.cashFlow.details.mpesaTitle')}
+                              </h3>
+                              {detailsState.data.mpesaEntries.length === 0 ? (
+                                <p className='text-sm text-slate-500'>{t('ops.cashFlow.details.emptyMpesa')}</p>
+                              ) : (
+                                <div className='overflow-x-auto rounded-xl border border-slate-200'>
+                                  <table className='min-w-full text-sm'>
+                                    <thead className='bg-slate-50 text-xs uppercase tracking-wide text-slate-500'>
+                                      <tr>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.payer')}</th>
+                                        <th className='px-3 py-2 text-right font-medium'>{t('ops.cashFlow.details.amount')}</th>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.recordedBy')}</th>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.time')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className='divide-y divide-slate-100'>
+                                      {detailsState.data.mpesaEntries.map((m) => (
+                                        <tr key={m.id}>
+                                          <td className='px-3 py-2 text-slate-900'>{m.payerName || '\u2014'}</td>
+                                          <td className='px-3 py-2 text-right font-mono text-slate-900'>{m.amount}</td>
+                                          <td className='px-3 py-2 text-slate-600'>
+                                            <Recorder
+                                              name={m.recordedByName}
+                                              waiterName={r.waiterName}
+                                              onBehalfLabel={t('ops.cashFlow.details.onBehalf')}
+                                            />
+                                          </td>
+                                          <td className='px-3 py-2 font-mono text-slate-600'>{formatTime(m.createdAt)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    <tfoot className='border-t border-slate-200 bg-slate-50'>
+                                      <tr>
+                                        <td className='px-3 py-2 text-xs uppercase tracking-wide text-slate-500'>
+                                          {t('ops.cashFlow.details.total')}
+                                        </td>
+                                        <td className='px-3 py-2 text-right font-mono font-medium text-slate-900'>
+                                          {totalAmount(detailsState.data.mpesaEntries.map((m) => m.amount))}
+                                        </td>
+                                        <td className='px-3 py-2' colSpan={2} />
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              )}
+                            </section>
+
+                            <section className='space-y-2'>
+                              <h3 className='text-sm font-medium text-slate-700'>
+                                {t('ops.cashFlow.details.expensesTitle')}
+                              </h3>
+                              {detailsState.data.activeExpenses.length === 0 ? (
+                                <p className='text-sm text-slate-500'>{t('ops.cashFlow.details.emptyExpenses')}</p>
+                              ) : (
+                                <div className='overflow-x-auto rounded-xl border border-slate-200'>
+                                  <table className='min-w-full text-sm'>
+                                    <thead className='bg-slate-50 text-xs uppercase tracking-wide text-slate-500'>
+                                      <tr>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.description')}</th>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.category')}</th>
+                                        <th className='px-3 py-2 text-right font-medium'>{t('ops.cashFlow.details.amount')}</th>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.status')}</th>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.recordedBy')}</th>
+                                        <th className='px-3 py-2 text-left font-medium'>{t('ops.cashFlow.details.time')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className='divide-y divide-slate-100'>
+                                      {detailsState.data.activeExpenses.map((e) => (
+                                        <tr key={e.id}>
+                                          <td className='px-3 py-2 text-slate-900'>{e.description}</td>
+                                          <td className='px-3 py-2 text-slate-600'>{e.categoryName || '\u2014'}</td>
+                                          <td className='px-3 py-2 text-right font-mono text-slate-900'>{e.amount}</td>
+                                          <td className='px-3 py-2'>
+                                            <span className={expenseStatusPillClass(e.status)}>
+                                              {t(expenseStatusLabelKey(e.status))}
+                                            </span>
+                                          </td>
+                                          <td className='px-3 py-2 text-slate-600'>
+                                            <Recorder
+                                              name={e.recordedByName}
+                                              waiterName={r.waiterName}
+                                              onBehalfLabel={t('ops.cashFlow.details.onBehalf')}
+                                            />
+                                          </td>
+                                          <td className='px-3 py-2 font-mono text-slate-600'>{formatTime(e.createdAt)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    <tfoot className='border-t border-slate-200 bg-slate-50'>
+                                      <tr>
+                                        <td className='px-3 py-2 text-xs uppercase tracking-wide text-slate-500'>
+                                          {t('ops.cashFlow.details.total')}
+                                        </td>
+                                        <td className='px-3 py-2' />
+                                        <td className='px-3 py-2 text-right font-mono font-medium text-slate-900'>
+                                          {totalAmount(detailsState.data.activeExpenses.map((e) => e.amount))}
+                                        </td>
+                                        <td className='px-3 py-2' colSpan={3} />
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              )}
+                            </section>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
