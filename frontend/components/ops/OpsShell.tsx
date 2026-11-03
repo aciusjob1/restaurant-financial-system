@@ -28,6 +28,7 @@ import {
   Info,
 } from 'lucide-react';
 import { AppSidebar, type NavLink } from '@/components/ui/AppSidebar';
+import { IdleTimeout } from '@/components/ops/IdleTimeout';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n/LanguageContext';
 import { useRestaurantName } from '@/hooks/useRestaurantName';
@@ -133,6 +134,11 @@ export function OpsShell({ children }: { children: ReactNode }) {
     >
             <AppHeader restaurantName={restaurantName} me={me} />
       <div className='p-6'>{children}</div>
+      {/* Owner/manager screens lock after 30 minutes of inactivity — a kiosk
+          left unattended locks in 3, so privileged screens must not be the
+          weakest link. Server-side idle limit is 2 hours; this is the
+          client-side guard for an unattended machine. */}
+      <IdleTimeout timeoutMinutes={30} warningSeconds={60} />
     </AppSidebar>
   );
 }

@@ -13,6 +13,11 @@ const EnvSchema = z.object({
   // NODE_ENV=production does not imply HTTPS; LAN deployments run over plain HTTP.
   COOKIE_SECURE: z.enum(['true', 'false']).default('false'),
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
+  // Sliding idle limit: a session left unused for this long is terminated
+  // server-side, even if the sliding cookie expiry has not been reached.
+  SESSION_IDLE_HOURS: z.coerce.number().int().positive().default(2),
+  // Absolute cap from login time, independent of activity.
+  SESSION_MAX_AGE_HOURS: z.coerce.number().int().positive().default(24),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 chars'),
   PIN_LOOKUP_SECRET: z.string().min(32, 'PIN_LOOKUP_SECRET must be at least 32 chars'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),

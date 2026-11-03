@@ -8,9 +8,11 @@ type SettingsResponse = { success: true; settings: Record<string, string> };
 
 // Module-level cache so N components rendering the header do not each
 // trigger their own fetch. First caller populates it; everyone else
-// reads the same promise. Cache survives navigation within the SPA,
-// which is fine — the restaurant name rarely changes mid-session.
+// reads the same promise. The restaurant settings page calls
+// refreshRestaurantName() after a successful save so consumers do not
+// keep showing the value cached at page load.
 let cached: Promise<string> | null = null;
+const listeners = new Set<(name: string) => void>();
 
 function loadOnce(): Promise<string> {
   if (!cached) {
@@ -19,6 +21,17 @@ function loadOnce(): Promise<string> {
       .catch(() => '');
   }
   return cached;
+}
+
+/**
+ * Invalidates the cached name and refetches it. Every hook subscriber
+ * (header, report shells, …) re-renders with the fresh value.
+ */
+export function refreshRestaurantName(): void {
+  cached = null;
+  loadOnce().then((n) => {
+    for (const l of listeners) l(n);
+  });
 }
 
 /**
@@ -31,10 +44,14 @@ export function useRestaurantName(): string {
   const [name, setName] = useState('');
   useEffect(() => {
     let cancelled = false;
+    listeners.add(setName);
     loadOnce().then((n) => {
       if (!cancelled) setName(n);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      listeners.delete(setName);
+    };
   }, []);
   return name;
 }

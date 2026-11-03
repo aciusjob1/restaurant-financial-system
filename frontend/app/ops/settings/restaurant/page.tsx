@@ -5,6 +5,7 @@ import { OpsShell, OpsHeader } from '@/components/ops/OpsShell';
 import { TextField, FormError, SubmitButton } from '@/components/ops/Form';
 import { apiFetch, ApiError, API_BASE } from '@/lib/api';
 import { OPS_PATHS } from '@/lib/ops';
+import { refreshRestaurantName } from '@/hooks/useRestaurantName';
 import { useT } from '@/lib/i18n/LanguageContext';
 
 type SettingsResponse = { success: true; settings: Record<string, string> };
@@ -54,6 +55,9 @@ export default function RestaurantSettingsPage() {
         method: 'PATCH',
         body: JSON.stringify({ settings: { 'restaurant.name': name.trim() } }),
       });
+      // The header reads a module-cached value loaded at page load;
+      // without this it would keep showing the old name.
+      refreshRestaurantName();
       setSaved(true);
     } catch (e2) {
       if (e2 instanceof ApiError) setErr({ code: e2.code, message: e2.message });

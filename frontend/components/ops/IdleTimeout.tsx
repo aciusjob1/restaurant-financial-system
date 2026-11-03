@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { useT } from '@/lib/i18n/LanguageContext';
 
 export function IdleTimeout({
   timeoutMinutes = 5,
@@ -12,6 +13,7 @@ export function IdleTimeout({
   warningSeconds?: number;
 }) {
   const router = useRouter();
+  const { t } = useT();
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   const firedRef = useRef<boolean>(false);
@@ -71,10 +73,9 @@ export function IdleTimeout({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-medium text-slate-900">Session expiring soon</h2>
+        <h2 className="text-lg font-medium text-slate-900">{t('idleTimeout.title')}</h2>
         <p className="mt-2 text-sm text-slate-600">
-          You will be logged out in <strong>{secondsLeft} seconds</strong> due to inactivity.
-          Touch the screen or press any key to stay logged in.
+          {t('idleTimeout.bodyBefore')} <strong>{secondsLeft}</strong> {t('idleTimeout.bodyAfter')}
         </p>
         <button
           onClick={() => {
@@ -84,7 +85,7 @@ export function IdleTimeout({
           }}
           className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
-          I'm still here
+          {t('idleTimeout.stayLoggedIn')}
         </button>
       </div>
     </div>

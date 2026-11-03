@@ -1144,6 +1144,11 @@ export const en = {
   'ops.cashFlow.details.total': 'Total',
   'ops.cashFlow.details.onBehalf': 'on behalf',
 
+  'idleTimeout.title': 'Session expiring soon',
+  'idleTimeout.bodyBefore': 'You will be logged out in',
+  'idleTimeout.bodyAfter': 'seconds due to inactivity. Touch the screen or press any key to stay logged in.',
+  'idleTimeout.stayLoggedIn': "I'm still here",
+
   'action.recordAndApprove': 'Record & approve',
 
   'shiftStatus.open': 'Shift running',
@@ -1410,7 +1415,7 @@ export const en = {
   'policies.privacyTitle': 'Privacy',
   'policies.privacyBody': 'The system stores the records staff enter: users and roles, shifts, sales, collections, expenses, salaries, stock movements, handovers, reconciliations, and audit details such as who recorded or approved an entry and when. The data stays in the restaurant\u2019s own database on the host computer and is not sent to third parties. Backups are created only when the owner runs them.',
   'policies.securityTitle': 'Security',
-  'policies.securityBody': 'Passwords are stored as salted hashes, never in plain text. Sessions expire automatically, and the owner can rename, block or sign out any device from System Access.',
+  'policies.securityBody': 'Passwords are stored as salted hashes, never in plain text. Sessions end after 2 hours without activity and always within 24 hours of sign-in; manager screens also lock after 30 minutes idle, and waiter kiosks after 3 minutes. The owner can rename, block or sign out any device from System Access.',
   'policies.termsTitle': 'Acceptable use',
   'policies.termsBody': 'Access is limited to authorised restaurant staff. Record real transactions only, never share accounts or PINs, and report a lost or stolen device so it can be blocked. The owner is responsible for backups and for keeping the host computer secure.',
   'policies.cookiesTitle': 'Cookies',
@@ -1428,7 +1433,7 @@ export const en = {
   'cookies.table.duration': 'Duration',
   'cookies.session.purpose': 'Signs you in and keeps your session active. It is HttpOnly, and the server stores only a hash of its value.',
   'cookies.session.type': 'Strictly necessary',
-  'cookies.session.duration': 'Up to 12 hours',
+  'cookies.session.duration': 'Ends 2 hours after your last activity, and always within 24 hours of sign-in. The cookie is refreshed on activity for up to 12 hours.',
   'cookies.device.purpose': 'Identifies this device so the owner can rename, block or sign it out. It is not a login credential; the server stores only a hash.',
   'cookies.device.type': 'Strictly necessary',
   'cookies.device.duration': 'Up to 400 days',
