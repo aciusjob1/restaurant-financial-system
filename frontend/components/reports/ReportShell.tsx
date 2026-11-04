@@ -60,7 +60,25 @@ export function ReportShell({
   const { t } = useT();
   const [me, setMe] = useState<MeResponse['user'] | null>(null);
   const [denied, setDenied] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const restaurantName = useRestaurantName();
+
+  // The native print dialog cannot show a preview under Electron/Chromium,
+  // so "Chapisha" first switches the screen to exactly what will be printed
+  // (globals.css applies the print:* utilities under body[data-print-preview]),
+  // and the banner's Print button then opens the real system print dialog.
+  useEffect(() => {
+    if (!previewing) return;
+    document.body.toggleAttribute('data-print-preview', true);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewing(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.toggleAttribute('data-print-preview', false);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [previewing]);
 
   const links = useMemo<NavLink[]>(
     () => LINKS.map((l) => ({ href: l.href, label: t(l.labelKey), section: l.sectionKey ? t(l.sectionKey) : undefined, icon: l.icon })),
@@ -120,15 +138,36 @@ export function ReportShell({
         <AppHeader restaurantName={restaurantName} me={me} />
       </div>
 
-      {printTitle && (
+      {printTitle && !previewing && (
         <div className='flex justify-end px-4 print:hidden'>
           <button
             type='button'
-            onClick={() => window.print()}
+            onClick={() => setPreviewing(true)}
             className='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50'
           >
             {t('print.printButton')}
           </button>
+        </div>
+      )}
+      {printTitle && previewing && (
+        <div className='preview-banner print:hidden sticky top-4 z-30 mx-4 mb-4 flex items-center justify-between gap-4 rounded-xl border border-slate-300 bg-white px-4 py-3 shadow-lg'>
+          <p className='text-sm text-slate-600'>{t('print.previewBanner')}</p>
+          <div className='flex shrink-0 gap-2'>
+            <button
+              type='button'
+              onClick={() => window.print()}
+              className='rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800'
+            >
+              {t('print.printButton')}
+            </button>
+            <button
+              type='button'
+              onClick={() => setPreviewing(false)}
+              className='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50'
+            >
+              {t('print.closePreview')}
+            </button>
+          </div>
         </div>
       )}
       {printTitle && (

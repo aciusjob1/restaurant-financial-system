@@ -396,6 +396,8 @@ export const sw: Dict = {
   'ops.domains.dailyClosing.description': 'Funga siku ya biashara; fungua tena kama OWNER ikihitajika.',
 
   'print.printButton': 'Chapisha',
+  'print.previewBanner': 'Hakikisho la kuchapisha — hivi ndivyo ripoti itakavyoonekana karatasini.',
+  'print.closePreview': 'Funga hakikisho',
   'print.generatedBy': 'Imetengenezwa na',
   'print.generatedAt': 'Imetengenezwa',
   'print.printedAt': 'Ilichapishwa',

@@ -30,3 +30,17 @@ body { @apply bg-slate-50 text-slate-900; }
     box-shadow: none !important;
   }
 }
+
+/* Print-preview mode (ReportShell "Chapisha" button): body[data-print-preview]
+   makes the SCREEN show exactly what the print CSS produces, by applying the
+   print:* utilities outside the print media. The native print dialog cannot
+   render a preview under Electron/Chromium, so the app previews first. */
+body[data-print-preview] {
+  background: #fff !important;
+}
+body[data-print-preview] .print\:hidden:not(.preview-banner) {
+  display: none !important;
+}
+body[data-print-preview] main {
+  padding-left: 0 !important;
+}
